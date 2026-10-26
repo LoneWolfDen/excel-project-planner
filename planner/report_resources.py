@@ -13,6 +13,7 @@ from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 
 from .core import BOX, CALC_FILL, CALC_FONT, Col, Tab, add_table, fill, font, header_cell, name, title
+from .leave import leave_days, leave_row, month_column, month_start, team_leave_hours
 from .sprints import work_upto
 
 SHEET = "Resource Report"
@@ -26,16 +27,18 @@ def build_resource_report(wb, n_resources, n_weeks=DEFAULT_WEEKS):
     ws["A1"] = '=ProjectName&"  -  Resource Report"'
     ws["A2"] = ('="Weeks from "&TEXT(ResourceWeekStart,"ddd dd-mmm-yyyy")&" (Settings > ResourceWeekStart). Hours are '
                 'each task\'s work spread over its forecast working days; red = more than Max Units x HoursPerDay x '
-                'working days in the week."')
+                'working days in the week, less leave (Leave sheet)."')
     ws.column_dimensions["A"].width = 3
 
     summary_top = 5
     _summary(ws, summary_top, n_resources)
     load_top = summary_top + n_resources + 4
     util_top = load_top + n_resources + 7
-    _grid(wb, ws, "load", load_top, n_resources, n_weeks, "Weekly hours by resource")
-    _grid(wb, ws, "util", util_top, n_resources, n_weeks, "Weekly utilisation by resource (hours / capacity)")
-    _cumulative(wb, ws, util_top + n_resources + 4, n_resources, n_weeks)
+    leave_top = util_top + n_resources + 5
+    _grid(wb, ws, "load", load_top, n_resources, n_weeks, "Weekly hours by resource", util_top - load_top)
+    _grid(wb, ws, "util", util_top, n_resources, n_weeks, "Weekly utilisation by resource (hours / capacity after leave)")
+    _leave_grid(wb, ws, leave_top, n_resources, n_weeks)
+    _cumulative(wb, ws, leave_top + n_resources + 4, n_resources, n_weeks)
     _team_chart(ws, load_top, n_resources, n_weeks)
     ws.freeze_panes = "D4"
     ws.page_setup.orientation = "landscape"
@@ -73,7 +76,9 @@ def _summary(ws, top, n_resources):
             note="Highest weekly utilisation in the grid."),
         Col("Weeks Over", width=10, fmt="0", center=True,
             formula=f'IF({blank},"",COUNTIF({week_row("rw_Util")},">1"))',
-            note="Weeks in the grid above 100% of capacity."),
+            note="Weeks in the grid above 100% of capacity (after leave)."),
+        Col("Leave Days", width=10, fmt="0.#", center=True, formula=f'IF({blank},"",SUM({week_row("rw_Leave")}))',
+            note="Working days of leave in the weeks shown below (Leave sheet)."),
     ], n_resources, autofilter=False)
     first, last = top + 1, top + n_resources
     over = f"N{first}:N{last}"
@@ -83,8 +88,9 @@ def _summary(ws, top, n_resources):
         formula=[f"AND(ISNUMBER(M{first}),M{first}>1)"], font=Font(color="9C0006", bold=True)))
 
 
-def _grid(wb, ws, kind, top, n_resources, n_weeks, heading):
-    """Rows = resources, columns = weeks. The origin cell (the "Resource" header) anchors every position."""
+def _grid(wb, ws, kind, top, n_resources, n_weeks, heading, util_offset=0):
+    """Rows = resources, columns = weeks. The origin cell (the "Resource" header) anchors every position.
+    kind: "load" (hours) or "util" (hours / capacity after leave, from the leave grid)."""
     ws.cell(top - 2, 2, heading).font = font(bold=True, size=12, color="1F4E78")
     origin = f"rw_{kind.capitalize()}Origin"
     name(wb, origin, f"'{SHEET}'!$B${top}")
@@ -117,9 +123,11 @@ def _grid(wb, ws, kind, top, n_resources, n_weeks, heading):
                 v = f'=IFERROR(IF({resource}="","",INDEX(rw_Cum,{i},{j}+1)-INDEX(rw_Cum,{i},{j})),"")'
                 fmt = "#,##0;;-"
             else:
-                capacity = f"{units}*HoursPerDay*INDEX(rw_WeekDays,{j})"
+                # capacity after leave; a week with work but no capacity left shows 999%
+                capacity = f"({units}*HoursPerDay*(INDEX(rw_WeekDays,{j})-INDEX(rw_Leave,{i},{j})))"
+                load = f"INDEX(rw_Load,{i},{j})"
                 v = (f'=IFERROR(IF(OR({resource}="",N({units})=0,INDEX(rw_WeekDays,{j})=0),"",'
-                     f'INDEX(rw_Load,{i},{j})/({capacity})),"")')
+                     f'IF({capacity}<=0,IF(N({load})>0,9.99,""),{load}/{capacity})),"")')
                 fmt = "0%;;-"
             cell = ws.cell(r, c, v)
             cell.number_format, cell.border, cell.font = fmt, BOX, CALC_FONT
@@ -127,22 +135,70 @@ def _grid(wb, ws, kind, top, n_resources, n_weeks, heading):
     name(wb, f"rw_{kind.capitalize()}", f"'{SHEET}'!${L(first_col)}${first_row}:${L(last_col)}${last_row}")
     tl = f"{L(first_col)}{first_row}"
     if kind == "load":
+        # red when the matching utilisation cell (same column, util_offset rows down) is over 100%: leave counts
+        util_cell = f"{L(first_col)}{first_row + util_offset}"
         ws.conditional_formatting.add(grid, FormulaRule(
-            formula=[f"AND(ISNUMBER({tl}),{tl}>$C{first_row}*HoursPerDay*{L(first_col)}${top + 1})"],
-            fill=fill("FFC7CE"), font=Font(color="9C0006", bold=True)))
+            formula=[f"AND(ISNUMBER({util_cell}),{util_cell}>1)"], fill=fill("FFC7CE"), font=Font(color="9C0006", bold=True)))
         # team totals: the chart below plots them
         totals = [("Team hours", f"SUM(INDEX(rw_Load,0,{j}))"),
-                  ("Team capacity", f'SUMIFS(res_MaxUnits,res_Type,"Work")*HoursPerDay*INDEX(rw_WeekDays,{j})')]
+                  ("Team capacity", f'SUMIFS(res_MaxUnits,res_Type,"Work")*HoursPerDay*INDEX(rw_WeekDays,{j})'
+                                    f'-{team_leave_hours(week, f"{week}+6", _week_months(week, j))}')]
         for n, (label, formula) in enumerate(totals):
             r = last_row + 1 + n
             ws.cell(r, 2, label).font = font(bold=True)
             for c in range(first_col, last_col + 1):
                 cell = ws.cell(r, c, f"={formula}")
                 cell.number_format, cell.border, cell.font, cell.fill = "#,##0;;-", BOX, font(bold=True), CALC_FILL
-    else:
+    elif kind == "util":
         ws.conditional_formatting.add(grid, ColorScaleRule(
             start_type="num", start_value=0, start_color="FFFFFF", mid_type="num", mid_value=0.8, mid_color="C6EFCE",
             end_type="num", end_value=1.2, end_color="F8696B"))
+
+
+def _week_months(week, j):
+    """The two calendar months a week can touch, with their LeaveTable columns (helper rows of the leave grid)."""
+    return [(month_start(week, k), f"INDEX(rw_LeaveCol{k},{j})") for k in (0, 1)]
+
+
+def _leave_grid(wb, ws, top, n_resources, n_weeks):
+    """Working days of leave per person per week (Leave sheet). Two helper rows hold the LeaveTable column of the
+    week's month and the next month, and a helper column holds each person's LeaveTable row, so every cell reuses
+    them instead of repeating the look-ups."""
+    ws.cell(top - 2, 2, "Leave by resource (working days, from the Leave sheet)").font = font(bold=True, size=12,
+                                                                                               color="1F4E78")
+    origin = "rw_LeaveOrigin"
+    name(wb, origin, f"'{SHEET}'!$B${top}")
+    header_cell(ws.cell(top, 2), "Resource")
+    header_cell(ws.cell(top, 3), "_Leave Row", "help")
+    i = f"(ROW()-ROW({origin})-2)"
+    j = f"(COLUMN()-COLUMN({origin})-1)"
+    week = f"(ResourceWeekStart+7*({j}-1))"
+    first_col, last_col = 4, 3 + n_weeks
+    L = get_column_letter
+    for k in (0, 1):
+        r = top + 1 + k
+        ws.cell(r, 2, f"_Leave column: {'week' if k == 0 else 'next'} month").font = font(italic=True, size=8,
+                                                                                         color="7F7F7F")
+        for c in range(first_col, last_col + 1):
+            ws.cell(r, c, f"={month_column(month_start(week, k))}").font = font(size=8, color="7F7F7F")
+        name(wb, f"rw_LeaveCol{k}", f"'{SHEET}'!${L(first_col)}${r}:${L(last_col)}${r}")
+    for c in range(first_col, last_col + 1):
+        header_cell(ws.cell(top, c), None)
+        ws.cell(top, c).value = f"={week}"
+        ws.cell(top, c).number_format = "dd-mmm"
+    resource = f"INDEX(res_Name,{i})"
+    first_row, last_row = top + 3, top + 2 + n_resources
+    days = leave_days(week, f"{week}+6", f"INDEX(rw_LeaveRow,{i})", _week_months(week, j))
+    for r in range(first_row, last_row + 1):
+        ws.cell(r, 2, f'=IFERROR({resource}&"","")').font = font(bold=True)
+        ws.cell(r, 3, f'=IFERROR(IF({resource}="",0,{leave_row(resource)}),0)').font = font(size=8, color="7F7F7F")
+        for c in range(first_col, last_col + 1):
+            cell = ws.cell(r, c, f'=IFERROR(IF({resource}="","",{days}),"")')
+            cell.number_format, cell.border, cell.font = "0.#;;-", BOX, CALC_FONT
+    name(wb, "rw_LeaveRow", f"'{SHEET}'!$C${first_row}:$C${last_row}")
+    name(wb, "rw_Leave", f"'{SHEET}'!${L(first_col)}${first_row}:${L(last_col)}${last_row}")
+    ws.conditional_formatting.add(f"{L(first_col)}{first_row}:{L(last_col)}{last_row}", FormulaRule(
+        formula=[f"N({L(first_col)}{first_row})>0"], fill=fill("E4DFEC"), font=Font(color="7030A0", bold=True)))
 
 
 def _team_chart(ws, load_top, n_resources, n_weeks):

@@ -37,7 +37,7 @@ N = {
     "FS": "Forecast Start", "FF": "Forecast Finish", "SVar": "Start Var", "Var": "Finish Var",
     "LS": "Late Start", "LF": "Late Finish", "TS": "Total Slack", "FSl": "Free Slack", "Crit": "Critical",
     "DLChk": "Deadline Check", "LinkChk": "Link Check", "Pct": "% Complete", "Prog": "Progress", "Status": "Status",
-    "Res": "Resource", "Units": "Units", "Work": "Work", "Cost": "Cost", "ACin": "Actual Cost", "SprIn": "Planned Sprint",
+    "Res": "Resource", "Units": "Units", "OverAlloc": "Over-allocated", "Work": "Work", "Cost": "Cost", "ACin": "Actual Cost", "SprIn": "Planned Sprint",
     "Sprint": "Sprint", "SP": "Story Points",
     "PredTxt": "Predecessors", "Notes": "Notes",
     "SrcS": "BL Source Start", "SrcF": "BL Source Finish", "SrcD": "BL Source Duration", "SrcW": "BL Source Work",
@@ -87,7 +87,7 @@ NAMES = {
     "PlanPct": "tsk_PlannedPct", "LBud": "tsk_LeafBudget", "LPV": "tsk_LeafPV", "LEV": "tsk_LeafEV",
     "LAC": "tsk_LeafAC", "Phase": "tsk_Phase", "PhaseKey": "tsk_PhaseKey", "MsKey": "tsk_MilestoneOrder", "LateKey": "tsk_LateKey",
     "StartKey": "tsk_StartSoonKey", "DueKey": "tsk_DueSoonKey", "CritKey": "tsk_CriticalKey",
-    "SP": "tsk_StoryPoints", "SprIn": "tsk_PlannedSprint", "LWDone": "tsk_LeafWorkDone", "DoneDate": "tsk_DoneDate",
+    "OverAlloc": "tsk_OverAllocated", "SP": "tsk_StoryPoints", "SprIn": "tsk_PlannedSprint", "LWDone": "tsk_LeafWorkDone", "DoneDate": "tsk_DoneDate",
     "LPts": "tsk_LeafPoints", "CurKey": "tsk_CurrentSprintKey",
 }
 
@@ -335,6 +335,14 @@ def formulas():
     f["LWDone"] = f'{R("LWork")}*{R("LProg")}'
     f["DoneDate"] = f'IF(AND({leaf},{R("LProg")}>=1),IF(N({R("AF")})>0,{R("AF")},{R("LFF")}),"")'
     f["LPts"] = f'IF({leaf},N({R("SP")}),0)'
+    # over-allocation (Resource Report weekly utilisation, after leave): Yes when the task's resource is over 100% in
+    # any week the task runs. Only weeks in the Resource Report window and its first resources are known.
+    week_of = lambda d: f"(INT(({d}-ResourceWeekStart)/7)+1)"
+    first, last = f"MAX(1,{week_of(R('LFS'))})", f"MIN(COLUMNS(rw_Util),{week_of(R('LFF'))})"
+    util_row = f"MATCH({R('Res')},res_Name,0)"
+    weeks = f"INDEX(rw_Util,{util_row},{first}):INDEX(rw_Util,{util_row},{last})"
+    f["OverAlloc"] = (f'IF(OR(NOT({leaf}),{R("Res")}="",{R("LProg")}>=1),"",IFERROR(IF({first}>{last},"",'
+                      f'IF(COUNTIF({weeks},">1")>0,"Yes","")),""))')
     f["CurKey"] = f'IF(AND({leaf},CurrentSprint<>"",{R("Sprint")}=CurrentSprint),{R("Idx")},"")'
     return f
 
@@ -376,6 +384,8 @@ LAYOUT = [
     ("Status", "calc", 12, None, True, None),
     ("Res", "in", 16, None, False, None),
     ("Units", "in", 7, "0%", False, "Share of the resource's time (blank = DefaultUnits)."),
+    ("OverAlloc", "calc", 9, None, True, "Yes when this task's resource is over 100% of capacity (after leave) in a "
+                                         "week the task runs: see Resource Report. Only weeks shown there count."),
     ("Work", "calc", 9, "#,##0.0", False, "Hours = Duration x HoursPerDay x Units."),
     ("Cost", "calc", 11, "#,##0.00", False, None),
     ("ACin", "in", 11, "#,##0.00", False, "Cost to date of a detail task. Blank = Cost x Progress (as MS Project "
@@ -502,6 +512,8 @@ def _validation_and_formatting(ws, L, n_rows):
         fill=fill("FFC7CE"), font=Font(color="9C0006", bold=True)))
     cf.add(rng("LinkChk"), FormulaRule(formula=[f'{at("LinkChk")}<>""'], fill=fill("FFC7CE"), font=Font(color="9C0006")))
     cf.add(rng("DLChk"), FormulaRule(formula=[f'LEFT({at("DLChk")},4)="Late"'], font=Font(color="C00000", bold=True)))
+    cf.add(rng("OverAlloc"), FormulaRule(formula=[f'{at("OverAlloc")}="Yes"'], font=Font(color="9C0006", bold=True),
+                                         fill=fill("FFC7CE")))
     cf.add(rng("Crit"), FormulaRule(formula=[f'{at("Crit")}="Yes"'], font=Font(color="FFFFFF", bold=True), fill=fill("C00000")))
     for k in ("TS", "FSl"):
         cf.add(rng(k), FormulaRule(formula=[f"AND(ISNUMBER({at(k)}),{at(k)}<0)"], font=Font(color="C00000", bold=True)))

@@ -95,6 +95,13 @@ def text(n_tasks):
                   "to the build is timed in CI; see docs/ARCHITECTURE.md in the repository. Keep the status date typed "
                   "(not =TODAY()), which would recalculate everything after every edit."),
         ("MOVING TO MICROSOFT PROJECT", None),
+        ("Best: MS Project XML", "Save this workbook, then convert it with the browser page docs/export.html in the "
+                                 "repository (nothing to install; works on a phone; the file stays on your device) or "
+                                 "python scripts/export_mspdi.py. In MS Project: File > Open > the .xml > 'Open as a new "
+                                 "project'. It carries the calendar and holidays, links by UID with lags, constraints, "
+                                 "deadlines, actuals, the baseline, resources, assignments, Sprint (Text1) and Story "
+                                 "Points (Number1), so MS Project schedules the plan the same way."),
+        ("Or: Import Wizard", "The MSP_Tasks / MSP_Resources sheets below. Carries less (no calendar or holidays)."),
         ("One-time setting", "MS Project > File > Options > Trust Center > Trust Center Settings > Legacy Formats > 'Allow "
                              "loading files with legacy or non-default file formats'."),
         ("Import", "In MS Project: File > Open > choose this .xlsx > Import Wizard > New map > 'As a new project' > tick Tasks "

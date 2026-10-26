@@ -33,9 +33,22 @@ jobs:
       - name: Performance check (1,000-task stress workbook)
         run: python3 scripts/perf_check.py dist/Stress_1000_tasks.xlsx --profile stress --timing
 
+      # docs/export.html in headless Chromium, with Pyodide from its GitHub release instead of the CDN
+      - name: Browser export page
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+          curl -sSL -o /tmp/pyodide.tar.bz2 https://github.com/pyodide/pyodide/releases/download/0.26.4/pyodide-core-0.26.4.tar.bz2
+          tar xjf /tmp/pyodide.tar.bz2 -C /tmp
+          PYODIDE_DIR=/tmp/pyodide python3 -m unittest tests.test_mspdi.ExportPageTest -v
+
+      - name: Export the sample to MS Project XML
+        run: python3 scripts/export_mspdi.py dist/Project_Planner.xlsx dist/Project_Planner.xml
+
       - uses: actions/upload-artifact@v4
         with:
           name: workbooks
           path: |
             dist/Project_Planner.xlsx
             dist/Project_Planner_Blank.xlsx
+            dist/Project_Planner.xml

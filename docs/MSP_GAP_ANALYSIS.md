@@ -27,8 +27,7 @@ The biggest gaps against MS Project are:
 3. ~~**Links break when rows are inserted.**~~ *Done in v1.1 (UID).* Predecessors refer to the row-sequence ID; MS Project re-points
    links automatically.
 4. **One resource per task, at most two predecessors per task.**
-5. **Import is via the Excel Import Wizard only.** No Microsoft Project XML (MSPDI) export, so calendars,
-   holidays, baselines and assignments do not travel.
+5. ~~**Import is via the Excel Import Wizard only.**~~ *Done in v1.4:* Microsoft Project XML export (browser page and CLI).
 6. **Never opened in real Excel or MS Project.** Everything was verified in LibreOffice only.
 
 ## Your requirements vs what exists
@@ -148,7 +147,7 @@ Legend: ✅ equivalent · 🟡 partial / simplified · ❌ missing · ⛔ not pr
 | Feature | Planner | Notes |
 |---|---|---|
 | Import into MS Project via Import Wizard | 🟡 | Field names match; untested; blank rows import as blank tasks. |
-| Microsoft Project XML (MSPDI) export | ❌ | Would carry calendars, holidays, links by UID, baselines, assignments. |
+| Microsoft Project XML (MSPDI) export | ✅ | v1.4: browser page and CLI; calendar, holidays, links by UID, constraints, baseline, resources, assignments. Element order checked against files MS Project wrote; not yet opened in MS Project. |
 | Import from MS Project (.mpp / .xml) | ❌ | Manual paste today. |
 | Saved import/export maps | ❌ | |
 | Excel for the web / Mac / Google Sheets | ? | Untested. OFFSET is supported everywhere; Google Sheets unknown. |

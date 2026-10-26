@@ -87,13 +87,14 @@ def leave_days(start, end, row, columns):
     return "(" + "+".join(terms) + ")"
 
 
-def team_leave_hours(start, end, columns):
-    """Capacity hours everyone's leave removes from start to end: days x Max Units x HoursPerDay (Work resources).
-    columns as for leave_days; each month is one SUMPRODUCT over the whole leave column x 31 days."""
-    units = f'SUMIFS(res_MaxUnits,res_Name,{TABLE}[Resource],res_Type,"Work")'
-    terms = [f'IF({col}=0,0,{_in_month(start, end, first, _text(f"INDEX({TABLE}[#Data],0,{col})"), units)})'
-             for first, col in columns]
-    return "(HoursPerDay*(" + "+".join(terms) + "))"
+def team_leave_hours(grid, column):
+    """Capacity hours the team's leave removes in one period: the sum over a per-person leave grid's column (people
+    in ResourceTable order) of days x Max Units x HoursPerDay, for Work resources. Reading the grid, which already
+    holds each person's days, is far cheaper than parsing everyone's leave text again."""
+    people = f"ROWS({grid})"
+    units = f"INDEX(res_MaxUnits,1):INDEX(res_MaxUnits,{people})"
+    work = f'(INDEX(res_Type,1):INDEX(res_Type,{people})="Work")'
+    return f"(HoursPerDay*SUMPRODUCT({work}*{units}*INDEX({grid},0,{column})))"
 
 
 def build_leave(wb, blank, n_rows=50, months=None):

@@ -142,7 +142,7 @@ def _grid(wb, ws, kind, top, n_resources, n_weeks, heading, util_offset=0):
         # team totals: the chart below plots them
         totals = [("Team hours", f"SUM(INDEX(rw_Load,0,{j}))"),
                   ("Team capacity", f'SUMIFS(res_MaxUnits,res_Type,"Work")*HoursPerDay*INDEX(rw_WeekDays,{j})'
-                                    f'-{team_leave_hours(week, f"{week}+6", _week_months(week, j))}')]
+                                    f'-{team_leave_hours("rw_Leave", j)}')]
         for n, (label, formula) in enumerate(totals):
             r = last_row + 1 + n
             ws.cell(r, 2, label).font = font(bold=True)
@@ -193,7 +193,7 @@ def _leave_grid(wb, ws, top, n_resources, n_weeks):
         ws.cell(r, 2, f'=IFERROR({resource}&"","")').font = font(bold=True)
         ws.cell(r, 3, f'=IFERROR(IF({resource}="",0,{leave_row(resource)}),0)').font = font(size=8, color="7F7F7F")
         for c in range(first_col, last_col + 1):
-            cell = ws.cell(r, c, f'=IFERROR(IF({resource}="","",{days}),"")')
+            cell = ws.cell(r, c, f'=IFERROR(IF({resource}="",0,{days}),0)')        # 0, not "": summed for the team
             cell.number_format, cell.border, cell.font = "0.#;;-", BOX, CALC_FONT
     name(wb, "rw_LeaveRow", f"'{SHEET}'!$C${first_row}:$C${last_row}")
     name(wb, "rw_Leave", f"'{SHEET}'!${L(first_col)}${first_row}:${L(last_col)}${last_row}")

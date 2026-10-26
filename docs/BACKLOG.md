@@ -100,7 +100,7 @@ flowchart LR
 | [B-302](https://github.com/LoneWolfDen/excel-project-planner/issues/31) | Cost model | P2 | M | F | Overtime rate, cost per use, fixed cost per task; Material = quantity × rate (no hours); Cost resources take an amount. |
 | [B-303](https://github.com/LoneWolfDen/excel-project-planner/issues/32) | Resource availability and leave | P2 | M | F | Leave sheet (resource, from, to); part-time max units by date range; capacity excludes leave. |
 | [B-304](https://github.com/LoneWolfDen/excel-project-planner/issues/33) | ✅ Weekly resource usage | P1 | M | F | Resource × week grid of hours counting working days only, over-allocation in red, resource histogram chart. |
-| [B-305](https://github.com/LoneWolfDen/excel-project-planner/issues/34) | Over-allocation flag on tasks | P2 | S | F | Task row flags when its resource is over-allocated in any week of the task. |
+| [B-305](https://github.com/LoneWolfDen/excel-project-planner/issues/34) | ✅ Over-allocation flag on tasks (after leave) | P2 | S | F | Task row flags when its resource is over-allocated in any week of the task. |
 | [B-306](https://github.com/LoneWolfDen/excel-project-planner/issues/35) | Role-based (generic) resources | P3 | S | F | Plan by role, then swap in named people; capacity by role. |
 
 ## E4 – Agile and sprint planning

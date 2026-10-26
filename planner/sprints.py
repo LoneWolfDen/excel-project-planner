@@ -58,9 +58,10 @@ def build_sprints(wb, blank, n_sprints, n_resources):
         Col("Planned Work", width=11, fmt="#,##0.0", formula=f'IF({has},"",{work_between(r("Start"), r("End"))})',
             note="Hours of task work falling in the sprint."),
         Col("Capacity", width=11, fmt="#,##0.0",
-            note="Sum of Work resources' Max Units x HoursPerDay x working days, less their leave (Leave sheet).",
+            note="Sum of Work resources' Max Units x HoursPerDay x working days, less the leave of the people in the "
+                 "grids below (Leave sheet).",
             formula=(f'IF({has},"",SUMIFS(res_MaxUnits,res_Type,"Work")*HoursPerDay*{r("Working Days")}'
-                     f'-{team_leave_hours(r("Start"), r("End"), [(month_start(r("Start"), k), r(f"_LeaveCol{k}")) for k in range(LEAVE_MONTHS)])})')),
+                     f'-{team_leave_hours("spr_LeaveGrid", r("No"))})')),
         Col("Utilisation", width=10, fmt="0%",
             formula=f'IF(OR({has},N({r("Capacity")})=0),"",{r("Planned Work")}/{r("Capacity")})'),
         Col("Status", width=12, center=True,

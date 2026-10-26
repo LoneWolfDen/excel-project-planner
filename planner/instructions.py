@@ -53,6 +53,10 @@ def text(sizes):
         ("12. Agile Report", "Story points: scope, done, remaining, velocity (last 3 closed sprints) and the sprint it "
                              "forecasts finishing in; the current sprint's backlog and daily burndown; release burndown "
                              "and committed vs done charts."),
+        ("Leave", "Leave sheet: one row per person, one column per month (Jan-26 ... Dec-28; add a month by typing e.g. "
+                  "Jan-29 in the next header cell). Type the days off: '16, 17(0.5)' under Nov-26 = all of 16 November "
+                  "and half of the 17th. Weekends and holidays are ignored. Leave lowers capacity on the Resource "
+                  "Report and Sprints and can make a task Over-allocated; it does not move task dates."),
         ("13. RAID", "Risks, assumptions, issues and dependencies: owner, due date, probability and impact (1-5). Score "
                      "= probability x impact (issues count as probability 5); Rating from Settings > RAIDHighScore / "
                      "RAIDMediumScore; Overdue when not closed past its due date. Link a task by UID. The Status Report "

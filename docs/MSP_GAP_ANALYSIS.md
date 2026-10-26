@@ -1,6 +1,9 @@
 # How close is the planner to Microsoft Project?
 
-Assessment of `Project_Planner.xlsx` as built in commit `b7830cf`, compared against Microsoft Project desktop
+> **Update (v1.1):** frozen baseline, stable UIDs for links, invalid-link detection, deadlines, the full variance set,
+> a blank template and CI are now in. Rows below are updated; struck-through gaps are closed.
+
+Assessment of `Project_Planner.xlsx` as first built in commit `b7830cf`, compared against Microsoft Project desktop
 (Standard / Professional) for a **single project**. Percentages are judgement estimates of feature coverage,
 not measurements.
 
@@ -18,10 +21,10 @@ the schedule, a tracking-style Gantt, resources with rates, and an import path i
 
 The biggest gaps against MS Project are:
 
-1. **No frozen baseline.** "Planned" dates are recalculated from durations and links, so editing a duration
+1. ~~**No frozen baseline.**~~ *Done in v1.1.* "Planned" dates are recalculated from durations and links, so editing a duration
    changes the plan too. MS Project's Baseline is a snapshot that never moves.
 2. **No critical path or slack.** MS Project's backward pass (late start / late finish / total slack) is missing.
-3. **Links break when rows are inserted.** Predecessors refer to the row-sequence ID; MS Project re-points
+3. ~~**Links break when rows are inserted.**~~ *Done in v1.1 (UID).* Predecessors refer to the row-sequence ID; MS Project re-points
    links automatically.
 4. **One resource per task, at most two predecessors per task.**
 5. **Import is via the Excel Import Wizard only.** No Microsoft Project XML (MSPDI) export, so calendars,
@@ -59,10 +62,10 @@ Legend: ✅ equivalent · 🟡 partial / simplified · ❌ missing · ⛔ not pr
 | Link types FS / SS / FF / SF with lag and lead | ✅ | Lag in working days. |
 | Unlimited predecessors | 🟡 | Two per task. |
 | Lag as % or elapsed days (`ed`) | ❌ | |
-| Links survive row insert / delete (Unique ID) | ❌ | Biggest usability risk. |
+| Links survive row insert / delete (Unique ID) | ✅ | v1.1: predecessors reference a permanent UID. |
 | Constraints: ASAP, SNET | ✅ | |
 | Constraints: ALAP, SNLT, FNET, FNLT, MSO, MFO | ❌ | MSO ≈ Manual mode. ALAP needs a backward pass. |
-| Deadlines | ❌ | |
+| Deadlines | ✅ | v1.1: Deadline column, Deadline Check, ▼ on Gantt, exported to MSP. |
 | Critical path, total / free slack | ❌ | Needs a backward pass. |
 | Task types (Fixed Units / Work / Duration), effort-driven | ❌ | Work = Duration × Hours/day × Units only. |
 | Duration units (minutes, hours, weeks, months, elapsed, estimated `?`) | ❌ | Working days only. |
@@ -80,9 +83,9 @@ Legend: ✅ equivalent · 🟡 partial / simplified · ❌ missing · ⛔ not pr
 | % complete, roll-up to summaries | ✅ | Duration-weighted. |
 | Actual / remaining duration, % work complete, physical % complete | ❌ | |
 | Actual work, actual cost entry | ❌ | Cost is plan-only. |
-| Baseline (frozen) and Baseline 1–10 | ❌ | Planned dates are live formulas. |
+| Baseline (frozen) and Baseline 1–10 | 🟡 | v1.1: one frozen baseline (start, finish, duration, work, cost) set by copy → paste values. No Baseline 1–10. |
 | Variance: finish | ✅ | Working days. |
-| Variance: start, duration, work, cost | ❌ | |
+| Variance: start, duration, work, cost | ✅ | v1.1. |
 | Earned value (PV, EV, AC, SPI, CPI, EAC) | ❌ | Inputs mostly exist; needs actual cost. |
 | Tracking Gantt | ✅ | |
 | Progress lines | ❌ | |
@@ -155,10 +158,10 @@ These are defects or rough edges in what exists, not missing features.
 1. **Untested in Excel and MS Project.** Specifically: whether `WORKDAY.INTL` / `NETWORKDAYS.INTL` written without
    the `_xlfn.` prefix open cleanly in Excel, whether the OFFSET look-ups raise circular-reference warnings in Excel,
    and whether the Import Wizard maps the `MSP_Tasks` columns as expected.
-2. **Planned dates move** when durations, links or the project start change (gap 1).
-3. **Inserting a row renumbers IDs** without updating predecessor IDs.
-4. **Linking a task to its own summary, a summary to its child, or a task to itself** creates a circular reference
-   with no friendly message.
+2. ~~**Planned dates move**~~ – fixed once a baseline is set (v1.1).
+3. ~~**Inserting a row renumbers IDs**~~ – links use UIDs (v1.1). Insert with *Insert Copied Cells* so the new row has formulas.
+4. ~~**Bad links cause circular references**~~ – self, own-summary, empty-row and missing-UID links are ignored and explained (v1.1).
+   A loop through several tasks (A → B → A) is still circular.
 5. **Sprint and resource hours are prorated by calendar day,** so weekend days carry load.
 6. **Material and Cost resources** produce hours and count toward cost as if they were people.
 7. **Dashboard "planned progress"** only counts tasks whose planned finish has passed (no partial credit).

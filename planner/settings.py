@@ -25,13 +25,15 @@ def settings_rows(blank, max_sprints):
          "Shown on every sheet title."),
         ("ProjectManager", "Project manager", None if blank else "Priya Sharma", "@", True, ""),
         ("ProjectStartDate", "Project start date", None if blank else dt.date(2026, 9, 7), DATE, True,
-         "Tasks without predecessors start here (moved to the next working day if needed). Set this before entering tasks."),
-        ("ProjectStart", "Project start (in use)", "=IF(N(ProjectStartDate)=0,TODAY(),ProjectStartDate)", DATE, False,
-         "Today until a start date is entered above."),
-        ("StatusDateOverride", "Status date override", None, DATE, True,
-         "Leave blank to use TODAY(). Type a date to report progress 'as of' that day."),
-        ("StatusDate", "Status date (in use)", '=IF(StatusDateOverride="",TODAY(),StatusDateOverride)', DATE, False,
-         "Drives Status, the red status-date column on the Gantt and rescheduling of late work."),
+         "Required. Tasks without predecessors start here (moved to the next working day if needed)."),
+        ("ProjectStart", "Project start (in use)", "=MAX(1,N(ProjectStartDate))", DATE, False,
+         "Copy of the date above (dates show as 1900 until it is entered)."),
+        ("StatusDateInput", "Status date", None if blank else dt.date(2026, 10, 25), DATE, True,
+         "The date progress is reported as of. Type it, or press Ctrl+; for today. It is a typed date rather than "
+         "TODAY() on purpose: TODAY() would make Excel recalculate the whole schedule after every edit."),
+        ("StatusDate", "Status date (in use)", "=IF(N(StatusDateInput)>0,StatusDateInput,ProjectStart)", DATE, False,
+         "The project start until a status date is entered. Drives Status, the red status-date line on the Gantt "
+         "and rescheduling of late work."),
         ("StatusWorkday", "First working day on/after status date", "=WORKDAY.INTL(StatusDate-1,1,WorkWeek,Holidays)",
          DATE, False, ""),
         ("RescheduleAfterStatus", "Reschedule incomplete work after status date?", "Yes", "@", True,
@@ -99,8 +101,9 @@ def build_settings(wb, blank, max_sprints):
     sprints = DataValidation(type="whole", operator="between", formula1="1", formula2=str(max_sprints))
     st.add_data_validation(sprints)
     sprints.add(f"C{rows['SprintCount']}")
-    start = f"C{rows['ProjectStartDate']}"
-    st.conditional_formatting.add(start, FormulaRule(formula=[f"N({start})=0"], fill=fill("FFFF00")))
+    for n in ("ProjectStartDate", "StatusDateInput"):
+        cell = f"C{rows[n]}"
+        st.conditional_formatting.add(cell, FormulaRule(formula=[f"N({cell})=0"], fill=fill("FFFF00")))
     return st
 
 

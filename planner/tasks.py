@@ -1,12 +1,15 @@
 """Tasks sheet: the Excel Table "Tasks", where all scheduling happens.
 
-Every formula below is a calculated column: the same text in every row, written with structured references
+Every formula below is a calculated column: one formula per column, written with structured references
 (R("Duration") is this row's Duration, shown by Excel as [@Duration]). Rows inserted inside the table get the
-formulas automatically, and nothing refers to a fixed row or column.
+formulas automatically.
 
-Scheduling uses OFFSET from a header cell to read another row's dates (predecessors) or a block of rows
-(summary roll-ups). OFFSET keeps Excel from seeing a circular reference, because the only fixed precedent is the
-header cell; the cost is that OFFSET is volatile. docs/ARCHITECTURE.md explains the trade-off and the budget.
+No volatile functions. Two rules make that possible without circular references (docs/ARCHITECTURE.md):
+  * a predecessor must sit ABOVE its successor, and must be a detail task. Look-ups then read the rows above
+    this one (A("..."), the header-to-previous-row range), which can never include the row itself;
+  * detail-task values live in _Leaf... helper columns. Summary rows roll those up over the rows below them with
+    INDEX(col, first):INDEX(col, last), and the leaf columns never read the summary columns.
+Excel then recalculates only what a change can affect, instead of the whole schedule after every edit.
 """
 from openpyxl.formatting.rule import FormulaRule
 from openpyxl.styles import Font
@@ -34,10 +37,15 @@ N = {
     "SrcC": "BL Source Cost", "BS": "Baseline Start", "BF": "Baseline Finish", "BD": "Baseline Duration",
     "BW": "Baseline Work", "BC": "Baseline Cost", "DVar": "Duration Var", "WVar": "Work Var", "CVar": "Cost Var",
     # helper columns (hidden)
-    "Lvl": "_Level", "Idx": "_Row", "Parent": "_ParentRow", "Desc": "_Descendants", "IsSum": "_IsSummary",
-    "IsLeaf": "_IsLeaf", "NextLvl": "_NextLevel", "R1": "_Pred1Row", "R2": "_Pred2Row", "CPS": "_CalcStart", "CPF": "_CalcFinish", "M1": "_Pred1Problem", "M2": "_Pred2Problem",
+    "Lvl": "_Level", "Idx": "_Row", "Parent": "_ParentRow", "NextLvl": "_NextLevel", "IsSum": "_IsSummary",
+    "Desc": "_Descendants", "IsLeaf": "_IsLeaf", "R1": "_Pred1Pos", "R2": "_Pred2Pos",
+    "M1": "_Pred1Problem", "M2": "_Pred2Problem",
     "D1P": "_Pred1PlanDriver", "D2P": "_Pred2PlanDriver", "D1F": "_Pred1FcstDriver", "D2F": "_Pred2FcstDriver",
-    "SN": "_StartNum", "FN": "_FinishNum", "WPD": "_WorkPerDay", "WtDur": "_WeightDur", "WtDone": "_WeightDone",
+    "LCS": "_LeafCalcStart", "LCF": "_LeafCalcFinish", "LFS": "_LeafFcstStart", "LFF": "_LeafFcstFinish",
+    "LProg": "_LeafProgress", "LWork": "_LeafWork", "LCost": "_LeafCost",
+    "CPS": "_CalcStart", "CPF": "_CalcFinish",
+    "SWD": "_StartWorkday", "FWD": "_FinishWorkday", "WPD": "_WorkPerWorkday", "WBefore": "_WorkBeforeStart",
+    "WtDur": "_WeightDur", "WtDone": "_WeightDone",
     "T1x": "_Pred1IDText", "T2x": "_Pred2IDText", "U1x": "_Pred1UIDText", "U2x": "_Pred2UIDText",
     "UPredTxt": "_UIDPredecessors", "MKey": "_MilestoneKey",
 }
@@ -54,7 +62,8 @@ NAMES = {
     "BD": "tsk_BaseDuration", "BW": "tsk_BaseWork", "BC": "tsk_BaseCost", "SrcD": "tsk_SourceDuration",
     "DVar": "tsk_DurationVariance", "WVar": "tsk_WorkVariance", "CVar": "tsk_CostVariance",
     "IsSum": "tsk_IsSummary", "IsLeaf": "tsk_IsLeaf", "CPS": "tsk_CalcStart", "CPF": "tsk_CalcFinish",
-    "SN": "tsk_StartN", "FN": "tsk_FinishN", "WPD": "tsk_WorkPerDay", "WtDur": "tsk_WtDur", "WtDone": "tsk_WtDone",
+    "LWork": "tsk_LeafWork", "SWD": "tsk_StartWD", "FWD": "tsk_FinishWD", "WPD": "tsk_WorkPerWD",
+    "WBefore": "tsk_WorkBeforeStart", "WtDur": "tsk_WtDur", "WtDone": "tsk_WtDone",
     "UPredTxt": "tsk_UIDPredecessors", "MKey": "tsk_MilestoneKey",
 }
 
@@ -70,13 +79,18 @@ def C(key):
 
 
 def H(key):
-    """The column's header cell: an anchor for OFFSET and ROW."""
+    """The column's header cell: an anchor for ROW."""
     return T.head(N[key])
 
 
+def A(key):
+    """Header cell down to the row above this one, in one column (position 1 = header, 2 = first task)."""
+    return T.above(N[key])
+
+
 def block(key):
-    """This summary row's descendants (the rows directly below it) in one column."""
-    return f"OFFSET({H(key)},{R('Idx')}+1,0,{R('Desc')},1)"
+    """A summary row's descendants (the rows directly below it) in one column. INDEX:INDEX is not volatile."""
+    return f"INDEX({C(key)},{R('Idx')}+1):INDEX({C(key)},{R('Idx')}+{R('Desc')})"
 
 
 def wdiff(a, b):
@@ -84,30 +98,31 @@ def wdiff(a, b):
     return f"IF({b}>={a},NETWORKDAYS.INTL({a},{b},{WD})-1,1-NETWORKDAYS.INTL({b},{a},{WD}))"
 
 
-def pred_row(p):
-    """Position of the predecessor in the table (0 = no predecessor, -1 = UID not found). Looked up once per link,
-    so the columns below don't each repeat a linear MATCH."""
-    return f'IF(N({R(p)})=0,0,IFERROR(MATCH({R(p)},{C("UID")},0),-1))'
+def pred_pos(p):
+    """Where the predecessor sits among the rows above (position in A(...); 0 = no predecessor, -1 = not above).
+    Looked up once per link, so the columns that need the predecessor don't each repeat a MATCH."""
+    return f'IF(N({R(p)})=0,0,IFERROR(MATCH({R(p)},{A("UID")},0),-1))'
 
 
-def link_problem(p, row):
-    """Why a predecessor link can't be used ("" = fine). Uses no dates, so it can never be circular."""
-    pred, at = R(p), R(row)
-    pred_wbs = f"INDEX({C('WBS')},{at})"
-    return (f'IF(OR({at}=0,{R("Name")}=""),"",IF({R("IsSum")},"ignored: summary tasks roll up",'
-            f'IF({at}<0,"UID "&{pred}&" not found",IF({pred}={R("UID")},"links to itself",'
-            f'IF(INDEX({C("Name")},{at})="","UID "&{pred}&" is an empty row",'
-            f'IF(LEFT({R("WBS")},LEN({pred_wbs})+1)={pred_wbs}&".","UID "&{pred}&" is its own summary",""))))))')
+def link_problem(p, pos):
+    """Why a predecessor link can't be used ("" = fine). Reads no dates, so it can never be circular."""
+    pred, at = R(p), R(pos)
+    return (f'IF(OR(N({pred})=0,{R("Name")}=""),"",IF({R("IsSum")},"ignored: summary tasks roll up",'
+            f'IF({pred}={R("UID")},"links to itself",'
+            f'IF({at}<0,IF(ISNUMBER(MATCH({pred},{C("UID")},0)),"UID "&{pred}&" is below this task: move it above",'
+            f'"UID "&{pred}&" not found"),'
+            f'IF(INDEX({A("Name")},{at})="","UID "&{pred}&" is an empty row",'
+            f'IF(INDEX({A("IsSum")},{at}),"UID "&{pred}&" is a summary: link to one of its tasks",""))))))')
 
 
 def driver(p, t, lag, problem, start_key, finish_key):
     """Earliest start imposed by one predecessor link (FS/SS/FF/SF + lag); 0 if there is no usable link."""
-    match = R("R1" if p == "P1" else "R2")
-    pred_finish = f"OFFSET({H(finish_key)},{match},0)"
-    pred_start = f"OFFSET({H(start_key)},{match},0)"
+    pos = R("R1" if p == "P1" else "R2")
+    pred_finish = f"INDEX({A(finish_key)},{pos})"
+    pred_start = f"INDEX({A(start_key)},{pos})"
     lag, dur = f"N({R(lag)})", R("Dur")
     back = f"-MAX(0,N({dur})-1)"
-    return (f'IF(OR(N({R(p)})=0,{R(problem)}<>"",{R("IsSum")},{R("Name")}=""),0,'
+    return (f'IF(OR({pos}<=0,{R(problem)}<>"",{R("IsSum")},{R("Name")}=""),0,'
             f'IFERROR(CHOOSE(MATCH(IF({R(t)}="","FS",{R(t)}),{{"FS","SS","FF","SF"}},0),'
             f'WORKDAY.INTL({pred_finish},IF(N({dur})=0,0,1)+{lag},{WD}),'
             f'WORKDAY.INTL({pred_start},{lag},{WD}),'
@@ -118,64 +133,74 @@ def driver(p, t, lag, problem, start_key, finish_key):
 def pred_text(p, t, lag, problem, by_id):
     """One link in MS Project notation: 12, 6SS+3d, 17FF+1d."""
     typ, lg = f'IF({R(t)}="","FS",{R(t)})', f"N({R(lag)})"
-    ref = f"INDEX({C('ID')},{R('R1' if p == 'P1' else 'R2')})" if by_id else R(p)
+    ref = f"INDEX({A('ID')},{R('R1' if p == 'P1' else 'R2')})" if by_id else R(p)
     return (f'IF(OR(N({R(p)})=0,{R(problem)}<>""),"",{ref}&IF(AND({typ}="FS",{lg}=0),"",'
             f'{typ}&IF({lg}=0,"",IF({lg}>0,"+","")&{lg}&"d")))')
 
 
 def formulas():
-    nm, s = R("Name"), R("IsSum")
+    nm, s, leaf = R("Name"), R("IsSum"), f'{R("IsLeaf")}=1'
     blank = f'{nm}=""'
     manual = f'IF(N({R("Cons")})>0,{R("Cons")},ProjectStart)'
     f = {}
+    # outline
     f["ID"] = f'IF({blank},"",COUNTA({T.upto(N["Name"])})-1)'
     f["Lvl"] = f'IF({blank},"",MAX(1,N({R("Level")})))'
     f["Idx"] = f"ROW()-ROW({H('ID')})"
     f["Parent"] = (f'IF(OR({blank},{R("Lvl")}<=1),0,IFERROR(LOOKUP(2,1/({T.upto(N["Lvl"])}={R("Lvl")}-1),'
                    f'ROW({T.upto(N["Lvl"])})),0))')
+    parent_pos = f'{R("Parent")}-ROW({H("WBS")})+1'
     f["WBS"] = (f'IF({blank},"",IF({R("Lvl")}=1,COUNTIF({T.upto(N["Lvl"])},1)&"",IF({R("Parent")}=0,"?",'
-                f'OFFSET({H("WBS")},{R("Parent")}-ROW({H("WBS")}),0)&"."&'
+                f'INDEX({A("WBS")},{parent_pos})&"."&'
                 f'COUNTIF(INDEX({C("Lvl")},{R("Parent")}-ROW({H("Lvl")})+1):{R("Lvl")},{R("Lvl")}))))')
-    # a row is a summary when the next row is one level deeper; only summaries need the (costlier) descendant count
+    # a row is a summary when the next row is one level deeper; only summaries need the descendant count
     f["NextLvl"] = f'IFERROR(N(INDEX({C("Lvl")},{R("Idx")}+1)),0)'
     f["IsSum"] = f'AND({nm}<>"",{R("NextLvl")}>{R("Lvl")})'
-    f["Desc"] = f'IF({R("IsSum")},COUNTIF({C("WBS")},{R("WBS")}&".*"),0)'
-    f["R1"] = pred_row("P1")
-    f["R2"] = pred_row("P2")
+    f["Desc"] = f'IF({s},COUNTIF({C("WBS")},{R("WBS")}&".*"),0)'
     f["IsLeaf"] = f'IF(AND({nm}<>"",NOT({s})),1,0)'
+    # links
+    f["R1"] = pred_pos("P1")
+    f["R2"] = pred_pos("P2")
     f["M1"] = link_problem("P1", "R1")
     f["M2"] = link_problem("P2", "R2")
     f["LinkChk"] = (f'IF({blank},"",TRIM(IF({R("M1")}<>"","Pred 1: "&{R("M1")}&". ","")&'
                     f'IF({R("M2")}<>"","Pred 2: "&{R("M2")}&".","")))')
-    f["D1P"] = driver("P1", "T1", "L1", "M1", "CPS", "CPF")
-    f["D2P"] = driver("P2", "T2", "L2", "M2", "CPS", "CPF")
-    f["D1F"] = driver("P1", "T1", "L1", "M1", "FS", "FF")
-    f["D2F"] = driver("P2", "T2", "L2", "M2", "FS", "FF")
-    f["CPS"] = (f'IF({blank},"",IF({s},MIN({block("CPS")}),IF({R("Mode")}="Manual",{manual},'
-                f'WORKDAY.INTL(MAX(ProjectStart,N({R("Cons")}),{R("D1P")},{R("D2P")})-1,1,{WD}))))')
-    f["CPF"] = (f'IF({blank},"",IF({s},MAX({block("CPF")}),IF(N({R("Dur")})<=0,{R("CPS")},'
-                f'WORKDAY.INTL({R("CPS")},{R("Dur")}-1,{WD}))))')
+    f["D1P"] = driver("P1", "T1", "L1", "M1", "LCS", "LCF")
+    f["D2P"] = driver("P2", "T2", "L2", "M2", "LCS", "LCF")
+    f["D1F"] = driver("P1", "T1", "L1", "M1", "LFS", "LFF")
+    f["D2F"] = driver("P2", "T2", "L2", "M2", "LFS", "LFF")
+    # detail-task dates (summaries leave these blank)
+    f["LCS"] = (f'IF(NOT({leaf}),"",IF({R("Mode")}="Manual",{manual},'
+                f'WORKDAY.INTL(MAX(ProjectStart,N({R("Cons")}),{R("D1P")},{R("D2P")})-1,1,{WD})))')
+    f["LCF"] = f'IF(NOT({leaf}),"",IF(N({R("Dur")})<=0,{R("LCS")},WORKDAY.INTL({R("LCS")},{R("Dur")}-1,{WD})))'
+    f["LFS"] = (f'IF(NOT({leaf}),"",IF(N({R("AS")})>0,{R("AS")},IF({R("Mode")}="Manual",{manual},'
+                f'WORKDAY.INTL(MAX(ProjectStart,N({R("Cons")}),{R("D1F")},{R("D2F")},'
+                f'IF(RescheduleAfterStatus="Yes",StatusDate,0))-1,1,{WD}))))')
+    natural = f'WORKDAY.INTL({R("LFS")},{R("Dur")}-1,{WD})'
+    remaining = f'WORKDAY.INTL(StatusWorkday,MAX(0,ROUNDUP({R("Dur")}*(1-MIN(1,N({R("Pct")}))),0)-1),{WD})'
+    f["LFF"] = (f'IF(NOT({leaf}),"",IF(N({R("AF")})>0,{R("AF")},IF(N({R("Dur")})<=0,{R("LFS")},'
+                f'IF(AND(N({R("AS")})>0,RescheduleAfterStatus="Yes"),MAX({natural},{remaining}),{natural}))))')
+    f["LProg"] = f'IF(NOT({leaf}),0,IF(N({R("AF")})>0,1,MIN(1,N({R("Pct")}))))'
+    f["LWork"] = (f'IF(OR(NOT({leaf}),{R("Res")}=""),0,'
+                  f'N({R("Dur")})*HoursPerDay*IF({R("Units")}="",DefaultUnits,{R("Units")}))')
+    f["LCost"] = f'IF({R("LWork")}=0,0,{R("LWork")}*IFERROR(INDEX(res_Rate,MATCH({R("Res")},res_Name,0)),0))'
+    # every row: detail value, or the roll-up of the detail tasks below a summary
+    rollup = lambda fn, leaf_key: f'IF({blank},"",IF({s},{fn}({block(leaf_key)}),{R(leaf_key)}))'
+    f["CPS"] = rollup("MIN", "LCS")
+    f["CPF"] = rollup("MAX", "LCF")
+    f["FS"] = rollup("MIN", "LFS")
+    f["FF"] = rollup("MAX", "LFF")
+    f["Work"] = rollup("SUM", "LWork")
+    f["Cost"] = rollup("SUM", "LCost")
+    f["Prog"] = (f'IF({blank},"",IF({s},IFERROR(SUM({block("WtDone")})/SUM({block("WtDur")}),0),{R("LProg")}))')
     f["PS"] = f'IF({blank},"",IF(N({R("BS")})>0,{R("BS")},{R("CPS")}))'
     f["PF"] = f'IF({blank},"",IF(N({R("BF")})>0,{R("BF")},{R("CPF")}))'
-    f["FS"] = (f'IF({blank},"",IF({s},MIN({block("FS")}),IF(N({R("AS")})>0,{R("AS")},IF({R("Mode")}="Manual",{manual},'
-               f'WORKDAY.INTL(MAX(ProjectStart,N({R("Cons")}),{R("D1F")},{R("D2F")},'
-               f'IF(RescheduleAfterStatus="Yes",StatusDate,0))-1,1,{WD})))))')
-    natural = f'WORKDAY.INTL({R("FS")},{R("Dur")}-1,{WD})'
-    remaining = (f'WORKDAY.INTL(StatusWorkday,MAX(0,ROUNDUP({R("Dur")}*(1-MIN(1,N({R("Pct")}))),0)-1),{WD})')
-    f["FF"] = (f'IF({blank},"",IF({s},MAX({block("FF")}),IF(N({R("AF")})>0,{R("AF")},IF(N({R("Dur")})<=0,{R("FS")},'
-               f'IF(AND(N({R("AS")})>0,RescheduleAfterStatus="Yes"),MAX({natural},{remaining}),{natural})))))')
     f["SVar"] = f'IF({blank},"",{wdiff(R("PS"), R("FS"))})'
     f["Var"] = f'IF({blank},"",{wdiff(R("PF"), R("FF"))})'
     f["DLChk"] = (f'IF(OR({blank},N({R("DL")})=0),"",IF({R("FF")}>{R("DL")},'
                   f'"Late by "&({wdiff(R("DL"), R("FF"))})&"d","OK"))')
-    f["Prog"] = (f'IF({blank},"",IF({s},IFERROR(SUM({block("WtDone")})/SUM({block("WtDur")}),0),'
-                 f'IF(N({R("AF")})>0,1,MIN(1,N({R("Pct")})))))')
     f["Status"] = (f'IF({blank},"",IF({R("Prog")}>=1,"Complete",IF(OR(N({R("AS")})>0,{R("Prog")}>0),'
                    f'IF({R("Var")}>0,"Behind","In Progress"),IF({R("PS")}<StatusDate,"Late Start","Not Started"))))')
-    f["Work"] = (f'IF({blank},"",IF({s},SUMPRODUCT({block("Work")},{block("IsLeaf")}),'
-                 f'IF({R("Res")}="",0,N({R("Dur")})*HoursPerDay*IF({R("Units")}="",DefaultUnits,{R("Units")}))))')
-    f["Cost"] = (f'IF({blank},"",IF({s},SUMPRODUCT({block("Cost")},{block("IsLeaf")}),'
-                 f'{R("Work")}*IFERROR(INDEX(res_Rate,MATCH({R("Res")},res_Name,0)),0)))')
     f["Sprint"] = (f'IF(OR({blank},{s}),"",IF(OR({R("FS")}<Sprint1Start,{R("FS")}>SprintLastEnd),"Backlog",'
                    f'INDEX(spr_Name,MATCH({R("FS")},spr_Start,1))))')
     f["T1x"] = pred_text("P1", "T1", "L1", "M1", True)
@@ -194,12 +219,17 @@ def formulas():
     f["DVar"] = variance("SrcD", "BD")
     f["WVar"] = variance("Work", "BW")
     f["CVar"] = variance("Cost", "BC")
-    f["SN"] = f'IF({R("IsLeaf")}=1,{R("FS")},0)'
-    f["FN"] = f'IF({R("IsLeaf")}=1,{R("FF")},0)'
-    f["WPD"] = f'IF(AND({R("IsLeaf")}=1,N({R("Work")})>0),{R("Work")}/({R("FN")}-{R("SN")}+1),0)'
-    f["WtDur"] = f'IF({R("IsLeaf")}=1,MAX(N({R("Dur")}),0.1),0)'
-    f["WtDone"] = f'IF({R("IsLeaf")}=1,{R("WtDur")}*{R("Prog")},0)'
-    f["MKey"] = f'IF(AND({R("IsLeaf")}=1,N({R("Dur")})=0,{R("Prog")}<1),{R("FF")}+{R("Idx")}/100000,"")'
+    # time-phased work, in working days counted from the project start (used by Sprints with SUMIFS):
+    # work up to working day D = SUMIFS(work, finish < D) + D x SUMIFS(work/day, running on D) - SUMIFS(work before start)
+    has_work = f'AND({leaf},{R("LWork")}>0)'
+    f["SWD"] = f'IF({has_work},NETWORKDAYS.INTL(ProjectStart,{R("LFS")},{WD}),0)'
+    f["FWD"] = f'IF({has_work},MAX({R("SWD")},NETWORKDAYS.INTL(ProjectStart,{R("LFF")},{WD})),0)'
+    f["WPD"] = f'IF({has_work},{R("LWork")}/({R("FWD")}-{R("SWD")}+1),0)'
+    f["WBefore"] = f'{R("WPD")}*({R("SWD")}-1)'
+    # progress roll-up and the milestone list
+    f["WtDur"] = f'IF({leaf},MAX(N({R("Dur")}),0.1),0)'
+    f["WtDone"] = f'{R("WtDur")}*{R("LProg")}'
+    f["MKey"] = f'IF(AND({leaf},N({R("Dur")})=0,{R("LProg")}<1),{R("LFF")}+{R("Idx")}/100000,"")'
     return f
 
 
@@ -253,9 +283,11 @@ LAYOUT = [
     ("DVar", "calc", 9, None, True, "Duration minus Baseline Duration (working days)."),
     ("WVar", "calc", 9, "#,##0.0", False, "Work minus Baseline Work (hours)."),
     ("CVar", "calc", 11, "#,##0.00", False, "Cost minus Baseline Cost."),
-] + [(k, "help", 11, DATE if k in ("CPS", "CPF", "D1P", "D2P", "D1F", "D2F", "SN", "FN") else None, False, None)
-     for k in ("Lvl", "Idx", "Parent", "NextLvl", "IsSum", "Desc", "IsLeaf", "R1", "R2", "CPS", "CPF", "M1", "M2", "D1P", "D2P", "D1F",
-               "D2F", "SN", "FN", "WPD", "WtDur", "WtDone", "T1x", "T2x", "U1x", "U2x", "UPredTxt", "MKey")]
+] + [(k, "help", 11, DATE if k in ("CPS", "CPF", "LCS", "LCF", "LFS", "LFF", "D1P", "D2P", "D1F", "D2F")
+                          else None, False, None)
+     for k in ("Lvl", "Idx", "Parent", "NextLvl", "IsSum", "Desc", "IsLeaf", "R1", "R2", "LCS", "LCF", "LFS", "LFF",
+               "LProg", "LWork", "LCost", "CPS", "CPF", "M1", "M2", "D1P", "D2P", "D1F",
+               "D2F", "SWD", "FWD", "WPD", "WBefore", "WtDur", "WtDone", "T1x", "T2x", "U1x", "U2x", "UPredTxt", "MKey")]
 
 GROUPS = [("ID", "IDENTITY"), ("Mode", "SCHEDULING INPUTS"), ("PS", "PLAN / ACTUAL / FORECAST"), ("SVar", "CHECKS"),
           ("Pct", "PROGRESS"), ("Res", "RESOURCES & SPRINT"),

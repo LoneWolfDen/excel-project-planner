@@ -6,6 +6,7 @@ Every formula the planner writes refers to cells through Excel Tables (structure
 Conditional formatting, data validation and charts are the only places that use A1 ranges, because Excel does
 not accept structured references there; Excel shifts those ranges itself when rows or columns are inserted.
 """
+import re
 from dataclasses import dataclass, field
 
 from openpyxl.comments import Comment
@@ -103,17 +104,33 @@ class Tab:
     def upto(self, col):      # header cell down to this row (an expanding range that never includes later rows)
         return f"{self.head(col)}:{self.row(col)}"
 
+    @staticmethod
+    def above(col):
+        """Header cell down to the row ABOVE this one. Excel has no structured reference for that, so add_table writes
+        it as a relative A1 range ($X$5:X9 in row 10), which Excel keeps correct when rows are inserted or deleted.
+        It is the only A1 pattern allowed in formulas (see docs/ARCHITECTURE.md); it lets a row look up earlier rows
+        without a volatile OFFSET and without a circular reference."""
+        return "{above:" + col + "}"
+
+
+ABOVE = re.compile(r"\{above:([^}]+)\}")
+
 
 def add_table(ws, table_name, header_row, first_col, cols, n_rows, style="TableStyleLight1", autofilter=True):
     """Write a styled Excel Table with calculated columns. Returns {column name: column letter}."""
     letters = {}
     last_row = header_row + n_rows
     for i, c in enumerate(cols):
-        col = first_col + i
-        letter = get_column_letter(col)
-        letters[c.name] = letter
+        letters[c.name] = get_column_letter(first_col + i)
         if c.key:
-            letters[c.key] = letter
+            letters[c.key] = letters[c.name]
+
+    def resolve(formula, r):
+        return ABOVE.sub(lambda m: f"${letters[m.group(1)]}${header_row}:{letters[m.group(1)]}{r - 1}", formula)
+
+    for i, c in enumerate(cols):
+        col = first_col + i
+        letter = letters[c.name]
         header_cell(ws.cell(header_row, col), c.name, c.kind)
         if c.note:
             ws.cell(header_row, col).comment = Comment(c.note, "Planner")
@@ -131,7 +148,7 @@ def add_table(ws, table_name, header_row, first_col, cols, n_rows, style="TableS
                 cell.fill = CALC_FILL
                 k = r - header_row - 1
                 if c.formula:
-                    cell.value = f"={c.formula}"
+                    cell.value = f"={resolve(c.formula, r)}"
                 elif k < len(c.values):        # per-row content (labels or formulas), not a calculated column
                     cell.value = c.values[k]
             if c.fmt:
@@ -145,7 +162,7 @@ def add_table(ws, table_name, header_row, first_col, cols, n_rows, style="TableS
         table.autoFilter = AutoFilter(ref=ref)
     table.tableColumns = [
         TableColumn(id=i + 1, name=c.name,
-                    calculatedColumnFormula=TableFormula(attr_text=c.formula) if c.formula else None)
+                    calculatedColumnFormula=TableFormula(attr_text=resolve(c.formula, header_row + 1)) if c.formula else None)
         for i, c in enumerate(cols)
     ]
     ws.add_table(table)

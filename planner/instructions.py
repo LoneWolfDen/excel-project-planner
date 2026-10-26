@@ -7,8 +7,9 @@ from .core import CALC_FILL, HEADER_FILLS, HEADER_FONT, INPUT_FONT, font
 def text(n_tasks):
     return [
         ("HOW IT WORKS", None),
-        ("1. Settings", "Set project start, working week (Mon-Sun Yes/No), hours/day, status date, Gantt scale and sprint "
-                        "calendar. Add holidays on 'Holidays'."),
+        ("1. Settings", "Set project start and status date (both typed dates; Ctrl+; enters today), working week "
+                        "(Mon-Sun Yes/No), hours/day, Gantt scale and sprint calendar. Add holidays on 'Holidays'. "
+                        "Update the status date whenever you report progress."),
         ("2. Resources", "List people/roles with Max Units and hourly rate. They appear in the Resource dropdown on Tasks and "
                          "in sprint capacity."),
         ("3. Tasks", "One row per task. Enter Level (1 = phase/summary, 2 = task, 3 = sub-task...), Task Name, Duration in "
@@ -42,19 +43,20 @@ def text(n_tasks):
                             "the table). Every formula fills in automatically. Set the new task's UID to Settings > NextFreeUID "
                             "(also shown at the top of Tasks)."),
         ("Outline levels", "Each row's Level may be at most 1 higher than the row above. A '?' in WBS (red) means a level jump."),
-        ("Predecessors", "Enter the predecessor's UID. Links to the task itself, to its own summary, to an empty row or to a "
-                         "missing UID are ignored and explained in the Link Check column (red). Summary rows ignore Duration / "
-                         "Predecessors / Actuals - they roll up. A loop through several tasks (A > B > A) still causes a "
-                         "circular reference."),
+        ("Predecessors", "Enter the predecessor's UID. A predecessor must be a detail task listed ABOVE its successor "
+                         "(order tasks roughly by date). Links that break this, or point to an empty row or a missing UID, are "
+                         "ignored and explained in the Link Check column (red). Summary rows ignore Duration / Predecessors / "
+                         "Actuals - they roll up. This rule is what keeps the workbook fast: nothing recalculates more than "
+                         "it has to, and there can be no circular references."),
         ("Mode", "Auto = scheduled from predecessors, project start and 'Start No Earlier Than'. Manual = pinned to the date in "
                  "'Start No Earlier Than'."),
         ("Rescheduling", "Settings > RescheduleAfterStatus = Yes moves incomplete work to after the status date (like MS "
                          "Project 'Update Project'), so late tasks push successors."),
         ("Capacity", f"Tables grow when you add rows: Tasks starts with {n_tasks} rows, Resources 50, Sprints 26, Holidays 100. "
                      f"The Gantt and MSP_Tasks sheets show the first {n_tasks} tasks (the Gantt says so when there are more)."),
-        ("Speed", "A typical edit recalculates in a fraction of a second. Each change to the build is timed in CI; see "
-                  "docs/ARCHITECTURE.md in the repository. For large plans: enter a Status date instead of leaving it on "
-                  "TODAY, and keep the Gantt to the period you need."),
+        ("Speed", "No volatile functions: an edit recalculates only what it can affect (a note: nothing; a duration: the "
+                  "tasks below it, summaries and reports). Each change to the build is timed in CI; see docs/ARCHITECTURE.md "
+                  "in the repository."),
         ("MOVING TO MICROSOFT PROJECT", None),
         ("One-time setting", "MS Project > File > Options > Trust Center > Trust Center Settings > Legacy Formats > 'Allow "
                              "loading files with legacy or non-default file formats'."),
@@ -82,10 +84,10 @@ def text(n_tasks):
         ("Resources / Sprints", "res_Name, res_MaxUnits, res_Rate, ...  spr_Name, spr_Start, spr_End, spr_WorkDays, spr_Capacity, "
                                 "spr_Work"),
         ("Key formulas", "Calculated start = WORKDAY.INTL(MAX(ProjectStart, [@Start No Earlier Than], predecessor drivers) - 1, "
-                         "1, WorkWeek, Holidays).  Predecessor driver (FS) = WORKDAY.INTL(OFFSET(Tasks[[#Headers],[_CalcFinish]], "
-                         "MATCH([@Pred1 UID], Tasks[UID], 0), 0), 1 + Lag, WorkWeek, Holidays).  Planned Start = Baseline Start "
-                         "if set, else calculated.  Summary start = MIN of the rows below it, OFFSET(header, [@_Row]+1, 0, "
-                         "[@_Descendants], 1), where _Descendants = COUNTIF(Tasks[WBS], [@WBS] & \".*\")."),
+                         "1, WorkWeek, Holidays).  Predecessor driver (FS) = WORKDAY.INTL(INDEX(<_LeafCalcFinish from the header "
+                         "to the row above>, [@_Pred1Pos]), 1 + Lag, WorkWeek, Holidays).  Planned Start = Baseline Start if set, "
+                         "else calculated.  Summary start = MIN(INDEX(Tasks[_LeafCalcStart], [@_Row]+1):INDEX(Tasks[_LeafCalcStart], "
+                         "[@_Row]+[@_Descendants])), where _Descendants = COUNTIF(Tasks[WBS], [@WBS] & \".*\")."),
     ]
 
 

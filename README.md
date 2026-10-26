@@ -41,9 +41,10 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 4. Map `Predecessors` (by ID) for a new project. `Unique ID` and `Unique ID Predecessors` are there for merging into an existing project.
 
 ## Limits
-- 200 task rows, 50 resources, 26 sprints, 100 holidays (extend rows and named ranges in Name Manager).
+- Tables start with 200 task rows, 50 resources, 26 sprints and 100 holidays, and grow when you add rows. The Gantt and MSP_Tasks sheets show the first 200 tasks (rebuild with `--tasks N` for more).
 - Insert tasks with right-click → Insert → Table Rows Above (formulas fill in), then give the row `NextFreeUID`.
-- Links to the task itself, its own summary, an empty row or a missing UID are ignored and explained in Link Check; a loop through several tasks (A → B → A) is still a circular reference.
+- **A predecessor must be a detail task listed above its successor.** That rule is what lets the workbook run with no volatile functions and no circular references. Links that break it (or point to the task itself, an empty row or a missing UID) are ignored and explained in Link Check. Plans imported from MS Project may need reordering.
+- The status date is a typed date (Ctrl+; for today), not `TODAY()`, so it doesn't force a full recalculation after every edit. Update it when you report progress.
 
 ## Tests
 ```

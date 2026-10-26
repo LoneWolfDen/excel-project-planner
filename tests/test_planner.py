@@ -56,7 +56,7 @@ def recalc(src, outdir, edit=None, status_date=True):
     """Optionally edit inputs (edit(wb) with formulas loaded), then let LibreOffice recalculate a copy."""
     wb = openpyxl.load_workbook(src)
     if status_date:
-        named_cell(wb, "StatusDateOverride").value = STATUS_DATE   # deterministic results
+        named_cell(wb, "StatusDateInput").value = STATUS_DATE   # deterministic results
     if edit:
         edit(wb)
     stage = Path(tempfile.mkdtemp(dir=outdir))
@@ -153,11 +153,21 @@ class StructureTest(Tmp):
         self.assertEqual(perf_check.a1_references("=SUM(A1:B2)+Settings!$C$5+ProjectStart", names), ["A1:B2", "Settings!$C$5"])
         self.assertEqual(perf_check.a1_references("=Tasks[[#This Row],[Duration]]*2", names), [])
 
-    def test_volatile_functions_only_where_allowed(self):
+    def test_no_volatile_functions(self):
+        # OFFSET, TODAY, INDIRECT ... make Excel recalculate them and everything downstream after every edit
+        self.assertEqual(perf_check.static_report(self.path)["volatile"], {})
+
+    def test_only_rows_above_ranges_in_tasks(self):
         report = perf_check.static_report(self.path)
-        self.assertEqual(set(report["volatile"]), {"Tasks", "Settings"})
-        self.assertEqual(set(report["volatile"]["Tasks"]), {"OFFSET"})
-        self.assertEqual(report["volatile"]["Settings"], {"TODAY": 2})
+        self.assertEqual(report["a1_references"], [])
+        self.assertGreater(report["rows_above_ranges"], 0)
+        # and the lint rejects the same shape when it doesn't end at the row above
+        wb = openpyxl.load_workbook(self.path)
+        cell = wb["Tasks"]["A10"]
+        self.assertTrue(perf_check.is_rows_above("$B$5:B9", cell, 5))
+        self.assertFalse(perf_check.is_rows_above("$B$5:B10", cell, 5))   # includes its own row
+        self.assertFalse(perf_check.is_rows_above("$B$6:B9", cell, 5))    # not anchored at the header
+        self.assertFalse(perf_check.is_rows_above("$B$5:C9", cell, 5))
 
     def test_gantt_timeline_has_no_formulas(self):
         ws = self.wb["Gantt"]
@@ -172,11 +182,16 @@ class StructureTest(Tmp):
         drivers = [ws.cell(7, c).value for c in range(1, ws.max_column + 1)
                    if isinstance(ws.cell(7, c).value, str) and "CHOOSE(" in ws.cell(7, c).value]
         self.assertTrue(drivers)
-        for token in ("Tasks[[#Headers],[_CalcFinish]]", "Tasks[[#This Row],[_Pred1Row]]", "WorkWeek", "Holidays"):
+        for token in ("Tasks[[#This Row],[_Pred1Pos]]", "WorkWeek", "Holidays"):
             self.assertIn(token, drivers[0])
-        # every row of a calculated column carries the same text: nothing points at a particular row
-        col = columns(ws)["Forecast Start"]
-        self.assertEqual(len({ws.cell(r, col).value for r in range(FIRST, FIRST + 200)}), 1)
+        self.assertNotIn("OFFSET", drivers[0])
+        # every row of a calculated column carries the same formula: nothing points at a particular row. The only
+        # row-dependent text is the rows-above range, which is the same formula in R1C1 terms.
+        above = __import__("re").compile(r"\$([A-Z]+)\$5:([A-Z]+)(\d+)")
+        for name in ("Forecast Start", "_Pred1PlanDriver", "WBS"):
+            col = columns(ws)[name]
+            texts = {above.sub(lambda m: f"{m.group(1)}:ABOVE", ws.cell(r, col).value) for r in range(FIRST, FIRST + 200)}
+            self.assertEqual(len(texts), 1, name)
 
     def test_uids_prefilled(self):
         ws = self.wb["Tasks"]
@@ -402,20 +417,27 @@ class LinkCheckTest(Tmp):
             set_input(wb, 7, "P1", 7)      # itself
             set_input(wb, 13, "P2", 11)    # its own summary (Backend)
             set_input(wb, 14, "P1", 999)   # missing
-            set_input(wb, 6, "P2", 150)    # empty row
+            set_input(wb, 6, "P2", 150)    # empty row (below, too)
+            set_input(wb, 8, "P2", 21)     # a task further down: predecessors must be above
+            set_input(wb, 21, "P2", 15)    # another phase's summary (Frontend)
 
         wb = recalc(self.path, self.dir, edit)
         self.assertEqual(errors_in(wb), [])
         t = Tasks(wb)
         self.assertEqual(t.get(7, "Link"), "Pred 1: links to itself.")
-        self.assertEqual(t.get(13, "Link"), "Pred 2: UID 11 is its own summary.")
+        self.assertEqual(t.get(13, "Link"), "Pred 2: UID 11 is a summary: link to one of its tasks.")
         self.assertEqual(t.get(14, "Link"), "Pred 1: UID 999 not found.")
-        self.assertEqual(t.get(6, "Link"), "Pred 2: UID 150 is an empty row.")
+        self.assertEqual(t.get(6, "Link"), "Pred 2: UID 150 is below this task: move it above.")
+        self.assertEqual(t.get(8, "Link"), "Pred 2: UID 21 is below this task: move it above.")
+        self.assertEqual(t.get(21, "Link"), "Pred 2: UID 15 is a summary: link to one of its tasks.")
+        self.assertEqual(t.get(8, "PS"), dt.date(2026, 9, 24))     # the valid link still applies
+        # task 14 lost its link (UID 999), so the build milestone moves to 29-Oct (task 18) and testing follows it
+        self.assertEqual(t.get(21, "PS"), dt.date(2026, 10, 30))
         self.assertEqual(t.get(7, "PS"), dt.date(2026, 9, 7))      # bad link ignored -> project start
         self.assertEqual(t.get(13, "PS"), dt.date(2026, 10, 9))    # good link still applies
         self.assertIn(t.get(7, "Pred"), (None, ""))
         dash = {wb["Dashboard"].cell(r, 2).value: wb["Dashboard"].cell(r, 3).value for r in range(5, 20)}
-        self.assertEqual(dash["Link problems (see Tasks > Link Check)"], 4)
+        self.assertEqual(dash["Link problems (see Tasks > Link Check)"], 6)
 
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")
@@ -494,7 +516,8 @@ class BlankTemplateTest(unittest.TestCase):
             self.assertTrue(all(t.ws.cell(r, t.col[H["Name"]]).value is None for r in range(FIRST, FIRST + 200)))
             self.assertIsNone(wb["Resources"]["B6"].value)
             self.assertIsNone(wb["Holidays"]["B5"].value)
-            self.assertEqual(d(named_cell(wb, "ProjectStart").value), dt.date.today())
+            self.assertIsNone(named_cell(wb, "ProjectStartDate").value)      # required input, highlighted yellow
+            self.assertIsNone(named_cell(wb, "StatusDateInput").value)
             dash = {wb["Dashboard"].cell(r, 2).value: wb["Dashboard"].cell(r, 3).value for r in range(5, 20)}
             self.assertEqual(dash["Detail tasks"], 0)
 

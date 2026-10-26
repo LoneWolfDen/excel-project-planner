@@ -8,7 +8,9 @@ Static checks (openpyxl only):
   * volatile functions (OFFSET, INDIRECT, TODAY, NOW, RAND, ...): every use must be on the allow-list in
     perf_budget.json, because a volatile cell makes Excel recalculate it, and everything that depends on it,
     after every edit
-  * A1 references inside formulas: there must be none; formulas use structured references and defined names
+  * A1 references inside formulas: there must be none; formulas use structured references and defined names.
+    One pattern is allowed, inside an Excel Table only: a range from the table's header cell down to the row
+    above ($X$5:X9 in row 10), which Excel has no structured reference for (see docs/ARCHITECTURE.md)
 Timing (LibreOffice via python3-uno, with --timing):
   * full recalculation and a single-edit recalculation, median of three runs
 
@@ -30,6 +32,7 @@ from openpyxl.formula import Tokenizer
 
 ROOT = Path(__file__).resolve().parents[1]
 VOLATILE = ("OFFSET", "INDIRECT", "TODAY", "NOW", "RAND", "RANDBETWEEN", "CELL", "INFO")
+ABOVE = re.compile(r"^\$([A-Z]{1,3})\$(\d+):([A-Z]{1,3})(\d+)$")
 A1 = re.compile(r"^(?:'?[^!']+'?!)?\$?(?:[A-Z]{1,3}\$?\d+(?::\$?[A-Z]{1,3}\$?\d+)?|[A-Z]{1,3}:\$?[A-Z]{1,3}|\d+:\$?\d+)$")
 
 
@@ -38,7 +41,26 @@ def formulas(wb):
         for row in ws.iter_rows():
             for c in row:
                 if isinstance(c.value, str) and c.value.startswith("="):
-                    yield ws.title, c.coordinate, c.value
+                    yield ws.title, c, c.value
+
+
+def table_header(ws, cell):
+    """Header row of the Excel Table containing cell, or None."""
+    for t in ws.tables.values():
+        lo, hi = t.ref.split(":")
+        c1, r1 = openpyxl.utils.cell.coordinate_from_string(lo)
+        c2, r2 = openpyxl.utils.cell.coordinate_from_string(hi)
+        cols = range(openpyxl.utils.column_index_from_string(c1), openpyxl.utils.column_index_from_string(c2) + 1)
+        if r1 < cell.row <= r2 and cell.column in cols:
+            return r1
+    return None
+
+
+def is_rows_above(ref, cell, header_row):
+    """$X$<header>:X<row-1> in a table: the one allowed A1 pattern."""
+    m = ABOVE.match(ref)
+    return bool(m and header_row and m.group(1) == m.group(3) and int(m.group(2)) == header_row
+                and int(m.group(4)) == cell.row - 1)
 
 
 def a1_references(formula, names):
@@ -60,7 +82,9 @@ def static_report(path):
     per_sheet = Counter()
     volatile = defaultdict(Counter)          # sheet -> function -> cells
     a1 = []
-    for sheet, coord, f in formulas(wb):
+    above = 0
+    for sheet, cell, f in formulas(wb):
+        coord = cell.coordinate
         per_sheet[sheet] += 1
         upper = f.upper()
         for fn in VOLATILE:
@@ -68,14 +92,22 @@ def static_report(path):
                 volatile[sheet][fn] += 1
         refs = a1_references(f, names)
         if refs:
-            a1.append(f"{sheet}!{coord}: {', '.join(refs)}")
+            header = table_header(wb[sheet], cell)
+            rest = [r for r in refs if not is_rows_above(r, cell, header)]
+            above += len(refs) - len(rest)
+            if rest:
+                a1.append(f"{sheet}!{coord}: {', '.join(rest)}")
     return {"formulas": dict(per_sheet), "formulas_total": sum(per_sheet.values()),
             "volatile": {s: dict(c) for s, c in volatile.items()},
-            "volatile_cells": sum(sum(c.values()) for c in volatile.values()), "a1_references": a1}
+            "volatile_cells": sum(sum(c.values()) for c in volatile.values()), "a1_references": a1,
+            "rows_above_ranges": above}
 
 
-def time_recalc(path, edit_sheet="Tasks", edit_header="Duration", runs=3):
-    """Median seconds for a full recalculation and for one edit followed by an incremental recalculation."""
+def time_recalc(path, runs=3):
+    """Median seconds for a full recalculation and for single edits followed by an incremental recalculation.
+
+    Edits: a duration near the top of the plan (worst case: every task below may move), the last task's duration,
+    and a note (should recalculate almost nothing)."""
     import uno                                            # python3-uno, part of LibreOffice
     from com.sun.star.beans import PropertyValue
 
@@ -85,16 +117,22 @@ def time_recalc(path, edit_sheet="Tasks", edit_header="Duration", runs=3):
         return p
 
     wb = openpyxl.load_workbook(path, read_only=True)
-    ws = wb[edit_sheet]
-    header_row = next(r for r in range(1, 20) if any(c.value == edit_header for c in ws[r]))
-    col = next(c.column_letter for c in ws[header_row] if c.value == edit_header)
-    cell = f"{col}{header_row + 2}"                       # second task: an ordinary detail task in the sample
+    ws = wb["Tasks"]
+    header_row = next(r for r in range(1, 20) if any(c.value == "Duration" for c in ws[r]))
+    head = {c.value: c.column_letter for c in ws[header_row] if c.value}
+    rows = [r for r, (v,) in enumerate(ws.iter_rows(min_row=header_row + 1, min_col=1, max_col=1, values_only=True),
+                                       start=header_row + 1) if v not in (None, "")]
     wb.close()
+    named = [r for r in rows]
+    edits = {"edit_recalc_s": f"{head['Duration']}{header_row + 2}",        # second task: a detail task near the top
+             "edit_last_task_s": f"{head['Duration']}{named[-1] if named else header_row + 2}",
+             "edit_note_s": f"{head['Notes']}{header_row + 2}"}
 
     port = 2084
     proc = subprocess.Popen(["soffice", "--headless", "--invisible", "--norestore", "--nologo",
                              f"--accept=socket,host=localhost,port={port};urp;"],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    out = {}
     try:
         ctx = uno.getComponentContext()
         resolver = ctx.ServiceManager.createInstanceWithContext("com.sun.star.bridge.UnoUrlResolver", ctx)
@@ -114,14 +152,22 @@ def time_recalc(path, edit_sheet="Tasks", edit_header="Duration", runs=3):
             t = time.perf_counter()
             doc.calculateAll()
             full.append(time.perf_counter() - t)
-        target = doc.Sheets.getByName(edit_sheet).getCellRangeByName(cell)
-        original = target.getValue()
-        edit = []
-        for i in range(runs):
-            target.setValue(original + 1 + i)
-            t = time.perf_counter()
-            doc.calculate()
-            edit.append(time.perf_counter() - t)
+        out["full_recalc_s"] = statistics.median(full)
+        sheet = doc.Sheets.getByName("Tasks")
+        for key, cell in edits.items():
+            target = sheet.getCellRangeByName(cell)
+            numeric = key != "edit_note_s"
+            original = target.getValue() if numeric else target.getString()
+            times = []
+            for i in range(runs):
+                if numeric:
+                    target.setValue(original + 1 + i)
+                else:
+                    target.setString(f"{original} edit {i}")
+                t = time.perf_counter()
+                doc.calculate()
+                times.append(time.perf_counter() - t)
+            out[key] = statistics.median(times)
         doc.close(True)
         try:
             desktop.terminate()
@@ -132,7 +178,7 @@ def time_recalc(path, edit_sheet="Tasks", edit_header="Duration", runs=3):
             proc.wait(timeout=30)
         except subprocess.TimeoutExpired:
             proc.kill()
-    return {"full_recalc_s": statistics.median(full), "edit_recalc_s": statistics.median(edit), "edited": cell}
+    return out
 
 
 def check(report, budget):
@@ -159,10 +205,14 @@ def markdown(path, profile, report, budget, problems):
              "| Metric | Value | Budget |", "|---|---|---|",
              f"| Formulas | {report['formulas_total']:,} | {budget['formulas_max']:,} |",
              f"| Volatile formula cells | {report['volatile_cells']:,} | allow-listed per sheet |",
-             f"| Formulas with A1 references | {len(report['a1_references'])} | 0 |"]
-    for k, label in (("full_recalc_s", "Full recalculation (LibreOffice)"), ("edit_recalc_s", "One edit, then recalculate")):
+             f"| Formulas with A1 references | {len(report['a1_references'])} | 0 |",
+             f"| Rows-above ranges (allowed A1 pattern) | {report['rows_above_ranges']:,} | in tables only |"]
+    for k, label in (("full_recalc_s", "Full recalculation (LibreOffice)"),
+                     ("edit_recalc_s", "Edit a duration near the top, then recalculate"),
+                     ("edit_last_task_s", "Edit the last task's duration"), ("edit_note_s", "Edit a note")):
         if k in report:
-            lines.append(f"| {label} | {report[k]:.3f} s | {budget[k + '_max']} s |")
+            limit = budget.get(k + "_max")
+            lines.append(f"| {label} | {report[k]:.3f} s | {f'{limit} s' if limit else '-'} |")
     lines += ["", "Formulas by sheet: " + ", ".join(f"{s} {n:,}" for s, n in sorted(report["formulas"].items())), ""]
     vol = "; ".join(f"{s}: " + ", ".join(f"{fn} {n}" for fn, n in fns.items()) for s, fns in report["volatile"].items())
     lines += [f"Volatile functions: {vol or 'none'}", ""]

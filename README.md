@@ -55,6 +55,13 @@ file carries the calendar (working week, hours per day, holidays), tasks and out
 Start No Earlier Than constraints, manual tasks, deadlines, actuals and actual cost, the baseline, resources with
 rates, assignments with units, and Sprint / Story Points in the custom fields Text1 / Number1.
 
+**From Microsoft Project to the planner.** In MS Project: File → Save As → XML. Then choose that file on the same
+page ([`docs/export.html`](docs/export.html)), or run `python scripts/import_mspdi.py project.xml Planner.xlsx`. You
+get a new planner workbook with every sheet and report: tasks, outline, links, constraints, deadlines, actuals,
+baseline, resources and assignments, calendar, holidays, and resource-calendar days off on the Leave sheet. Anything
+the planner can't hold (a third predecessor, a second resource, constraints other than Start No Earlier Than ...) is
+listed and noted on the task.
+
 **Alternative: the Import Wizard** (carries less: no calendar or holidays):
 1. File → Options → Trust Center → Legacy Formats → allow loading legacy/non-default formats.
 2. File → Open → this workbook → Import Wizard → new map → tick Tasks and Resources, using the `MSP_Tasks` and `MSP_Resources` sheets.

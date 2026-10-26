@@ -7,7 +7,7 @@
         --gantt-columns 365 --weeks 52                                         # a bigger template
 """
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
 import shutil
 import subprocess
@@ -66,20 +66,35 @@ class Sizes:
             raise SystemExit("--grid-resources can't be more than --resources")
 
 
-def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None):
+@dataclass
+class ProjectData:
+    """A project to load into a new workbook instead of the sample (planner.mspdi_import builds one from MS Project).
+    Tasks are dicts keyed by the Tasks input keys (UID, Level, Name, Dur, P1, T1, L1, ..., BS, BF, BD, BW, BC)."""
+    settings: dict = field(default_factory=dict)       # {setting name: value}, e.g. {"ProjectStartDate": date}
+    tasks: list = field(default_factory=list)
+    resources: list = field(default_factory=list)      # (name, initials, group, max units, rate, email, type)
+    holidays: list = field(default_factory=list)       # (date, description)
+    leave: dict = field(default_factory=dict)          # {person: {"Nov-26": "16, 17(0.5)"}}
+    leave_months: list = None                          # month headers for the Leave sheet
+
+
+def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None):
+    """The planner workbook: the sample project, a blank template (blank=True), or a given project (data)."""
     sizes = sizes or Sizes(tasks=n_tasks)
     sizes.check()
     n_tasks = sizes.tasks
+    if data is not None:
+        blank = True                                   # no sample RAID, decisions, history ...
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
-    rows = sample.tasks(blank, stress)
+    rows = data.tasks if data is not None else sample.tasks(blank, stress)
     if len(rows) > n_tasks:
-        raise SystemExit(f"{len(rows)} sample tasks do not fit in {n_tasks} rows; raise --tasks")
+        raise SystemExit(f"{len(rows)} tasks do not fit in {n_tasks} rows; raise --tasks")
     build_lists(wb)
-    build_settings(wb, blank, sizes.sprints)
-    build_holidays(wb, blank)
-    build_leave(wb, blank, sizes.resources)
-    build_resources(wb, blank, sizes.resources)
+    build_settings(wb, blank, sizes.sprints, data.settings if data else None)
+    build_holidays(wb, blank, holidays=data.holidays if data else None)
+    build_leave(wb, blank, sizes.resources, data.leave_months if data else None, data.leave if data else None)
+    build_resources(wb, blank, sizes.resources, data.resources if data else None)
     build_tasks(wb, rows, n_tasks)
     sprints_ws, sprint_letters = build_sprints(wb, blank, sizes.sprints, sizes.grid_resources)
     build_gantt(wb, n_tasks, sizes.gantt_columns)

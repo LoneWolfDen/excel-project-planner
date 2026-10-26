@@ -43,7 +43,18 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 | Holidays | Non-working dates used by every date formula |
 | MSP_Tasks / MSP_Resources | Columns named with MS Project field names for the Import Wizard |
 
-## Importing into Microsoft Project
+## Moving to Microsoft Project
+**Recommended: Microsoft Project XML.** Save the workbook, then convert it:
+- in a browser with [`docs/export.html`](docs/export.html): choose the .xlsx, download the .xml. Nothing to install,
+  it works on a phone, and the workbook never leaves your device (the page runs the converter with Pyodide);
+- or on the command line: `python scripts/export_mspdi.py Project_Planner.xlsx project.xml`.
+
+Both run the same code (`planner/mspdi.py`). In MS Project: File → Open → the .xml → "Open as a new project". The
+file carries the calendar (working week, hours per day, holidays), tasks and outline, links by UID with type and lag,
+Start No Earlier Than constraints, manual tasks, deadlines, actuals and actual cost, the baseline, resources with
+rates, assignments with units, and Sprint / Story Points in the custom fields Text1 / Number1.
+
+**Alternative: the Import Wizard** (carries less: no calendar or holidays):
 1. File → Options → Trust Center → Legacy Formats → allow loading legacy/non-default formats.
 2. File → Open → this workbook → Import Wizard → new map → tick Tasks and Resources, using the `MSP_Tasks` and `MSP_Resources` sheets.
 3. For auto-scheduled tasks leave Start/Finish unmapped (otherwise MS Project adds date constraints); map Baseline, Actual and % Complete fields.

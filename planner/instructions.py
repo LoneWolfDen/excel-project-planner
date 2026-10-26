@@ -6,6 +6,8 @@ from .core import CALC_FILL, HEADER_FILLS, HEADER_FONT, INPUT_FONT, font
 
 def text(n_tasks):
     return [
+        ("REQUIREMENTS", None),
+        ("Excel version", "Excel 2019 or Microsoft 365 (Windows or Mac), or Excel for the web. No macros needed."),
         ("HOW IT WORKS", None),
         ("1. Settings", "Set project start and status date (both typed dates; Ctrl+; enters today), working week "
                         "(Mon-Sun Yes/No), hours/day, Gantt scale and sprint calendar. Add holidays on 'Holidays'. "
@@ -23,8 +25,12 @@ def text(n_tasks):
                                 "repeat; to clear it, delete the 5 Baseline columns' contents."),
         ("5. Track progress", "Enter Actual Start, Actual Finish and % Complete. Forecast Start/Finish then use actuals and push "
                               "every dependent task. Start / Finish / Duration / Work / Cost Var and Status flag slippage."),
-        ("6. Gantt", "Read-only view: dark outline = planned dates, green = done, blue = remaining on track, orange = remaining "
-                     "but late vs plan, dark grey = summary, purple = milestone, red cell = deadline, red border = status date. "
+        ("Critical path", "Late Start / Late Finish come from a backward pass from the forecast project finish (and any "
+                          "deadline). Total Slack = how far a task can slip before it delays the project or a deadline; Free "
+                          "Slack = before it delays a successor. Critical = slack <= Settings > CriticalSlackDays on an "
+                          "unfinished task. A missed deadline gives negative slack to the task and the chain feeding it."),
+        ("6. Gantt", "Read-only view: dark outline = planned dates, green = done, blue = remaining on track, red = remaining "
+                     "on the critical path, orange = remaining but late vs plan, dark grey = summary, purple = milestone, red cell = deadline, red border = status date. "
                      "Change GanttStart / GanttPeriod (1 = days, 7 = weeks) on Settings to scroll or zoom."),
         ("7. Sprints", "Sprint calendar from Settings. Each task is tagged with the sprint its forecast start falls in. Work "
                        "hours are prorated across sprints per resource, compared against capacity (Max Units x Hours/day x "

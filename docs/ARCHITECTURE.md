@@ -84,6 +84,34 @@ Check explains a link that breaks it, and the link is ignored rather than causin
 
 Excel on Windows is usually several times faster than LibreOffice and calculates on all cores.
 
+## Critical path (backward pass)
+
+Each successor row works out, for each of its two links, the latest its predecessor may finish:
+FS `WORKDAY(LateStart, -(1 + lag))` (no +1 into a milestone), FF `WORKDAY(LateFinish, -lag)`, and SS / SF the latest
+start converted to a finish with the predecessor's duration (an input, so no circularity). These mirror the forward
+pass exactly.
+
+The predecessor takes the earliest of those limits, its deadline and `ProjectFinish` (the latest forecast finish).
+Successors sit below their predecessors, so it looks only at the rows from the one below down to
+`_LastSuccessorRow`. That helper reads only input columns, so it isn't volatile, and it keeps each look-up short.
+Limits are stored as keys (`31-Dec-9999 - date`, `100000 - slack`) so that one `MAXIFS` per link answers both
+"is there a successor" and "what is its tightest limit".
+
+Total Slack = working days from forecast finish to late finish; Free Slack = the smallest slack on any outgoing
+link (capped at total slack); Critical = an unfinished detail task with total slack <= `CriticalSlackDays`. A missed
+deadline gives negative slack to the task and the chain feeding it, as in MS Project.
+
+| LibreOffice, one edit then recalculate | Before the critical path | With it |
+|---|---|---|
+| Sample (200 rows) | 0.04 s | 0.05 s |
+| 1,000 tasks | 0.42 s | ~0.5 s |
+
+## Excel version
+
+**Excel 2019 or Microsoft 365** (Windows or Mac). The only post-2010 functions are `MINIFS` and `MAXIFS`, stored with
+the `_xlfn.` prefix Excel uses. Microsoft 365-only functions (`XLOOKUP`, `FILTER`, `LET`, `LAMBDA`, ...) are not used: a
+unit test enforces this, and LibreOffice, which runs the tests, couldn't check them.
+
 ## Guardrails
 
 Run on every PR by `.github/workflows/ci.yml`:

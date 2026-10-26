@@ -13,7 +13,7 @@ from .core import (HEADER_FILLS, NOTE_FONT, SHORT_DATE, Col, Tab, add_table, fil
 TABLE = "GanttView"
 HEADER_ROW = 5
 WD = "WorkWeek,Holidays"
-COLOURS = {"summary": "404040", "done": "70AD47", "remaining": "9DC3E6", "late": "F4B183", "milestone": "7030A0",
+COLOURS = {"critical": "E06666", "summary": "404040", "done": "70AD47", "remaining": "9DC3E6", "late": "F4B183", "milestone": "7030A0",
            "deadline": "C00000", "planned": "1F3864", "status": "FF0000", "nonworking": "EDEDED"}
 
 
@@ -61,13 +61,14 @@ def build_gantt(wb, n_rows, n_days):
         Col("_RemTo", "help", 8, "dd-mmm;;-", formula=f"IF({g.row('_RemFrom')}=0,0,{ff})"),
         Col("_Late", "help", 5, formula=f"IF({blank},FALSE(),N({task('tsk_Variance')})>0)"),
         Col("_Deadline", "help", 8, "dd-mmm;;-", formula=f"IF({blank},0,N({task('tsk_Deadline')}))"),
+        Col("_Critical", "help", 5, formula=f'IF({blank},FALSE(),{task("tsk_Critical")}="Yes")'),
     ]
     L = add_table(ws, TABLE, HEADER_ROW, 1, cols, n_rows, autofilter=False)
     for c in cols:
         for r in range(HEADER_ROW + 1, HEADER_ROW + n_rows + 1):
             ws[f"{L[c.name]}{r}"].font = font(size=9)
     ws.row_dimensions[HEADER_ROW].height = 30
-    ws.column_dimensions.group(L["_Row"], L["_Deadline"], hidden=True, outline_level=1)
+    ws.column_dimensions.group(L["_Row"], L["_Critical"], hidden=True, outline_level=1)
 
     origin_col = len(cols) + 1                       # narrow spacer column; the timeline starts after it
     ws.column_dimensions[get_column_letter(origin_col)].width = 1
@@ -108,6 +109,7 @@ def _timeline_rules(ws, L, first, last, n_rows):
                     fill=fill(COLOURS["summary"])),
         FormulaRule(formula=[f"AND({at('_IsMilestone')},{in_period(at('Forecast Start'))})"], fill=fill(COLOURS["milestone"])),
         FormulaRule(formula=[overlaps(at("_DoneFrom"), at("_DoneTo"))], fill=fill(COLOURS["done"])),
+        FormulaRule(formula=[f"AND({at('_Critical')},{overlaps(at('_RemFrom'), at('_RemTo'))})"], fill=fill(COLOURS["critical"])),
         FormulaRule(formula=[f"AND({at('_Late')},{overlaps(at('_RemFrom'), at('_RemTo'))})"], fill=fill(COLOURS["late"])),
         FormulaRule(formula=[overlaps(at("_RemFrom"), at("_RemTo"))], fill=fill(COLOURS["remaining"])),
         FormulaRule(formula=[f"AND(ISNUMBER({at('Planned Start')}),{overlaps(at('Planned Start'), at('Planned Finish'))})"],
@@ -132,12 +134,13 @@ def _legend(ws, first):
     planned = Side(style="thin", color=COLOURS["planned"])
     items = [("Planned (outline)", None, Border(top=planned, bottom=planned)),
              ("Done (% complete)", COLOURS["done"], None), ("Remaining - on track", COLOURS["remaining"], None),
-             ("Remaining - late vs plan", COLOURS["late"], None), ("Summary (forecast)", COLOURS["summary"], None),
+             ("Remaining - late vs plan", COLOURS["late"], None), ("Remaining - critical", COLOURS["critical"], None),
+             ("Summary (forecast)", COLOURS["summary"], None),
              ("Milestone (forecast)", COLOURS["milestone"], None), ("Deadline", COLOURS["deadline"], None),
              ("Status date", None, Border(left=Side(style="medium", color=COLOURS["status"]))),
              ("Non-working day", COLOURS["nonworking"], None)]
     for i, (text, colour, border) in enumerate(items):
-        row, col = 1 + i // 5, first + (i % 5) * 11
+        row, col = 1 + i // 5, first + (i % 5) * 12
         swatch = ws.cell(row, col)
         if colour:
             swatch.fill = fill(colour)

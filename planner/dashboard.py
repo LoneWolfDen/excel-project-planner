@@ -23,6 +23,7 @@ KPIS = [
     ("Current sprint", 'IF(OR(StatusDate<Sprint1Start,StatusDate>SprintLastEnd),"(outside sprint range)",'
                        'INDEX(spr_Name,MATCH(StatusDate,spr_Start,1)))', "@"),
     ("Baseline", 'IF(COUNT(tsk_BaseStart)=0,"Not set (planned = calculated)","Set on "&COUNT(tsk_BaseStart)&" tasks")', "@"),
+    ("Open critical tasks", 'COUNTIFS(tsk_Critical,"Yes",tsk_IsLeaf,1)', "0"),
     ("Missed deadlines", 'COUNTIF(tsk_DeadlineCheck,"Late*")', "0"),
     ("Link problems (see Tasks > Link Check)", 'COUNTIF(tsk_LinkCheck,"?*")', "0"),
 ]

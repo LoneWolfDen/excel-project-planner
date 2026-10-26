@@ -7,6 +7,8 @@ Built on Excel Tables: formulas use structured references (`[@Duration]`) and na
 table rows get their formulas automatically. Recalculation cost is measured on every PR. See
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+**Requires Excel 2019 or Microsoft 365** (Windows or Mac; Excel for the web works too).
+
 ## Files
 - `Project_Planner.xlsx` – the template, loaded with a 30-task sample project.
 - `Project_Planner_Blank.xlsx` – the same template with no sample data, for a new project.
@@ -27,8 +29,8 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 | Instructions | How to use it, colour key, MS Project import steps, named ranges |
 | Dashboard | Planned vs forecast finish, slip, progress, hours, cost, next milestones, charts |
 | Settings | Project start, status date, working week, hours/day, Gantt scale, sprint calendar |
-| Tasks | Entry table: UID, Level, Name, Mode, Duration, 2 predecessors by UID (FS/SS/FF/SF + lag), deadline, actuals, % complete, resource; frozen baseline with start / finish / duration / work / cost variance; Link Check and Deadline Check columns |
-| Gantt | Planned outline, done / remaining / late bars, summaries, milestones, deadlines, status-date line (conditional formatting only, no formulas) |
+| Tasks | Entry table: UID, Level, Name, Mode, Duration, 2 predecessors by UID (FS/SS/FF/SF + lag), deadline, actuals, % complete, resource; frozen baseline with start / finish / duration / work / cost variance; critical path (late start/finish, total and free slack, Critical); Link Check and Deadline Check columns |
+| Gantt | Planned outline, done / remaining / critical / late bars, summaries, milestones, deadlines, status-date line (conditional formatting only, no formulas) |
 | Resources | Resource sheet with max units and rates; assigned hours and cost |
 | Sprints | Sprint calendar, capacity vs planned hours, per-person load with over-allocation flags |
 | Holidays | Non-working dates used by every date formula |

@@ -63,6 +63,10 @@ def settings_rows(blank, max_sprints):
          "Tasks outside the sprint range are labelled 'Backlog'."),
         ("SprintPrefix", "Sprint name prefix", "Sprint ", "@", True, "Sprint names = prefix & number."),
         ("SprintLastEnd", "Last sprint end (calculated)", "=INDEX(spr_End,SprintCount)", DATE, False, ""),
+        ("CriticalSlackDays", "Critical when total slack is at most (days)", 0, "0", True,
+         "0 = only tasks with no slack (or negative slack from a missed deadline) are critical, like MS Project."),
+        ("ProjectFinish", "Forecast project finish (calculated)", "=MAX(tsk_FcFinish)", DATE, False,
+         "The critical path's backward pass starts here."),
         ("NextFreeUID", "Next free task UID (calculated)", "=MAX(tsk_UID)+1", "0", False,
          "Give a newly inserted task row this UID (see Instructions > Inserting tasks)."),
     ]

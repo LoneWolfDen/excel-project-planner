@@ -44,6 +44,8 @@ How the workbook is put together, and the rules every change follows. These rule
 | Dashboard | `KPIs`, `StatusSummary`, `NextMilestones` | Project KPIs |
 | Status Report | `OverallStatus`, `StatusRAG`, `EarnedValue`, `StatusNotes` | RAG by area, earned value (`evm_*` names) |
 | Schedule Report | `PhaseSummary`, `MilestoneReport`, `LateTasks`, `StartingSoon`, `DueSoon`, `CriticalTasks` | Ranked lists |
+| Resource Report | `ResourceSummary` + 2 week grids | Weekly hours (`rw_Load`) and utilisation (`rw_Util`) per resource |
+| Agile Report | `AgileKPIs`, `SprintBacklog`, `SprintBurndown` | Velocity forecast (`agl_*` names), current sprint |
 | Lists | `List*` | Dropdown values (`L_DepType`, `L_Mode`, ...) |
 
 Code: `planner/core.py` (styles, `add_table`, structured-reference helpers), one module per sheet, `planner/build.py`
@@ -128,10 +130,18 @@ Earned value at the status date: Budget = Baseline Cost (or Cost before a baseli
 before the status date / planned working days; PV = Budget x planned %; EV = Budget x Progress; AC = Actual Cost, or
 Cost x Progress when blank; EAC = AC + (BAC - EV) / CPI.
 
-| LibreOffice, one edit then recalculate | Before the reports | With them |
-|---|---|---|
-| Sample (200 rows) | 0.05 s | 0.06 s |
-| 1,000 tasks | 0.54 s | 0.57-0.61 s |
+Weekly resource hours use the same SUMIFS spreading as the sprint load (`sprints.work_between`), anchored on
+`rw_LoadOrigin`; story points are done on a task's Actual Finish (`_DoneDate`), and per-sprint points are columns
+of `SprintTable`, so the release burndown is one formula per column.
+
+| LibreOffice, one edit then recalculate | Before the reports | Status + Schedule | + Resource + Agile |
+|---|---|---|---|
+| Sample (200 rows) | 0.05 s | 0.06 s | 0.08-0.10 s |
+| 1,000 tasks | 0.54 s | 0.57-0.61 s | 0.68-0.79 s |
+
+The weekly resource grids first cost 0.25 s per edit at 1,000 tasks (six SUMIFS per cell). A hidden grid of
+cumulative hours at each week boundary (three SUMIFS, none outside the project's dates) brought that to about
+0.05 s; each week is then the difference of two neighbours.
 
 ## Excel version
 

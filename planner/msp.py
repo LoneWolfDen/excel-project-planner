@@ -44,6 +44,10 @@ def build_msp_tasks(wb, n_rows):
             f'IF({blank},"",IF(OR({t("tsk_IsSummary")},{t("tsk_Mode")}="Manual"),"",IF(N({t("tsk_Constraint")})=0,"",'
             f'{t("tsk_Constraint")})))')),
         Col("Deadline", width=12, fmt=SHORT_DATE, formula=date("tsk_Deadline")),
+        Col("Text1", width=10, formula=not_summary(f'{t("tsk_Sprint")}&""'),
+            note="Sprint, in MS Project's custom field Text1 (rename it Sprint in MS Project)."),
+        Col("Number1", width=8, formula=not_summary(f'IF(N({t("tsk_StoryPoints")})=0,"",{t("tsk_StoryPoints")})'),
+            note="Story points, in MS Project's custom field Number1."),
         Col("Notes", width=40, formula=f'IF({blank},"",{t("tsk_Notes")}&"")'),
     ]
     add_table(ws, "MSPTasks", 1, 1, cols, n_rows)

@@ -35,7 +35,9 @@ def text(n_tasks):
                      "Change GanttStart / GanttPeriod (1 = days, 7 = weeks) on Settings to scroll or zoom."),
         ("7. Sprints", "Sprint calendar from Settings. Each task is tagged with the sprint its forecast start falls in. Work "
                        "hours are prorated across sprints per resource, compared against capacity (Max Units x Hours/day x "
-                       "working days); over-allocations turn red."),
+                       "working days); over-allocations turn red. Optional agile columns: Story Points and Planned "
+                       "Sprint on Tasks (Planned Sprint wins over the automatic sprint), Points Capacity on Sprints; "
+                       "the table then shows committed and done points, velocity and the release burndown."),
         ("8. Dashboard", "KPIs (including overall RAG, SPI, CPI, missed deadlines, link problems), status counts, upcoming "
                          "milestones and sprint load vs capacity."),
         ("9. Status Report", "For steering meetings: overall RAG and RAG by area (schedule, SPI, CPI, deadlines, critical "
@@ -45,6 +47,12 @@ def text(n_tasks):
         ("10. Schedule Report", "Phase summary with RAG, all milestones, late tasks, tasks starting and due in the "
                                 "look-ahead window (Settings > LookaheadDays) and open critical tasks. Lists update with "
                                 "every edit; drag a list's bottom corner down to show more rows."),
+        ("11. Resource Report", "Per resource: work, done, remaining, cost, actual cost, late and critical tasks, peak "
+                                "week and weeks over capacity. Weekly hours and utilisation grids for 26 weeks from "
+                                "Settings > ResourceWeekStart (red = over capacity), and a team hours vs capacity chart."),
+        ("12. Agile Report", "Story points: scope, done, remaining, velocity (last 3 closed sprints) and the sprint it "
+                             "forecasts finishing in; the current sprint's backlog and daily burndown; release burndown "
+                             "and committed vs done charts."),
         ("Earned value", "Set a baseline first: without one, Budget = current Cost and PV follows the current plan, so "
                          "SPI and CPI only show progress against the latest plan. PV = budget of work planned before the "
                          "status date; EV = Budget x Progress; AC = Actual Cost. SPI = EV/PV, CPI = EV/AC, "
@@ -93,11 +101,13 @@ def text(n_tasks):
         ("NAMES AND TABLES (Formulas > Name Manager)", None),
         ("Tables", "Tasks, ResourceTable, SprintTable, HolidayTable, GanttView, MSPTasks, MSPResources, KPIs, StatusSummary, "
                    "NextMilestones, OverallStatus, StatusRAG, EarnedValue, StatusNotes, PhaseSummary, MilestoneReport, "
-                   "LateTasks, StartingSoon, DueSoon, CriticalTasks and the List* dropdown tables. Inside a table, formulas read [@Column] (this row)."),
+                   "LateTasks, StartingSoon, DueSoon, CriticalTasks, ResourceSummary, AgileKPIs, SprintBacklog, SprintBurndown and "
+                   "the List* dropdown tables. Inside a table, formulas read [@Column] (this row)."),
         ("Settings", "ProjectStart, StatusDate, StatusWorkday, WorkWeek, Holidays, HoursPerDay, DefaultUnits, "
                      "RescheduleAfterStatus, GanttStart, GanttPeriod, Sprint1Start, SprintLength, SprintCount, SprintPrefix, "
                      "SprintLastEnd, CriticalSlackDays, ProjectFinish, PlannedFinish, FinishVarianceDays, LookaheadDays, "
-                     "RAGAmberSlipDays, RAGRedSlipDays, RAGAmberIndex, RAGRedIndex, NextFreeUID. Report values: ProjectRAG, "
+                     "RAGAmberSlipDays, RAGRedSlipDays, RAGAmberIndex, RAGRedIndex, ResourceWeekStart, CurrentSprint, TotalPoints, "
+                     "NextFreeUID. Report values: ProjectRAG, "
                      "evm_BAC, evm_PV, evm_EV, evm_AC, evm_SPI, evm_CPI, evm_EAC ..."),
         ("Task columns", "tsk_ID, tsk_UID, tsk_WBS, tsk_Name, tsk_Duration, tsk_PlanStart, tsk_FcFinish, tsk_Status, tsk_Resource, "
                          "tsk_Work, tsk_Cost ... each is Tasks[Column], so it grows with the table. Other sheets read Tasks "

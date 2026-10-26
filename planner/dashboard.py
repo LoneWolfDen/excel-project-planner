@@ -18,8 +18,7 @@ KPIS = [
     ("Milestones", 'SUMPRODUCT(tsk_IsLeaf*(tsk_Duration=0)*(tsk_Name<>""))', "0"),
     ("Total work (hrs)", "SUMPRODUCT(tsk_Work,tsk_IsLeaf)", "#,##0"),
     ("Total cost", "SUMPRODUCT(tsk_Cost,tsk_IsLeaf)", "#,##0.00"),
-    ("Current sprint", 'IF(OR(StatusDate<Sprint1Start,StatusDate>SprintLastEnd),"(outside sprint range)",'
-                       'INDEX(spr_Name,MATCH(StatusDate,spr_Start,1)))', "@"),
+    ("Current sprint", 'IF(CurrentSprint="","(outside sprint range)",CurrentSprint)', "@"),
     ("Baseline", 'IF(COUNT(tsk_BaseStart)=0,"Not set (planned = calculated)","Set on "&COUNT(tsk_BaseStart)&" tasks")', "@"),
     ("Open critical tasks", 'COUNTIFS(tsk_Critical,"Yes",tsk_IsLeaf,1)', "0"),
     ("Missed deadlines", 'COUNTIF(tsk_DeadlineCheck,"Late*")', "0"),
@@ -28,6 +27,7 @@ KPIS = [
     ("Schedule performance (SPI)", 'IF(evm_SPI="","-",evm_SPI)', "0.00"),
     ("Cost performance (CPI)", 'IF(evm_CPI="","-",evm_CPI)', "0.00"),
     ("Forecast cost at completion (EAC)", "evm_EAC", "#,##0.00"),
+    ("Story points done / total", 'IF(TotalPoints=0,"-",agl_Done&" / "&TotalPoints)', "@"),
 ]
 ALERT_IF_POSITIVE = {"Finish variance (work days)", "Missed deadlines", "Link problems (see Tasks > Link Check)"}
 

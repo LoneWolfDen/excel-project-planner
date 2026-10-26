@@ -37,7 +37,8 @@ N = {
     "FS": "Forecast Start", "FF": "Forecast Finish", "SVar": "Start Var", "Var": "Finish Var",
     "LS": "Late Start", "LF": "Late Finish", "TS": "Total Slack", "FSl": "Free Slack", "Crit": "Critical",
     "DLChk": "Deadline Check", "LinkChk": "Link Check", "Pct": "% Complete", "Prog": "Progress", "Status": "Status",
-    "Res": "Resource", "Units": "Units", "Work": "Work", "Cost": "Cost", "ACin": "Actual Cost", "Sprint": "Sprint",
+    "Res": "Resource", "Units": "Units", "Work": "Work", "Cost": "Cost", "ACin": "Actual Cost", "SprIn": "Planned Sprint",
+    "Sprint": "Sprint", "SP": "Story Points",
     "PredTxt": "Predecessors", "Notes": "Notes",
     "SrcS": "BL Source Start", "SrcF": "BL Source Finish", "SrcD": "BL Source Duration", "SrcW": "BL Source Work",
     "SrcC": "BL Source Cost", "BS": "Baseline Start", "BF": "Baseline Finish", "BD": "Baseline Duration",
@@ -62,6 +63,8 @@ N = {
     "PlanPct": "_PlannedPct", "LBud": "_LeafBudget", "LPV": "_LeafPV", "LEV": "_LeafEV", "LAC": "_LeafAC",
     "Phase": "_Phase", "PhaseKey": "_PhaseKey", "MsKey": "_MilestoneOrder", "LateKey": "_LateKey", "StartKey": "_StartSoonKey",
     "DueKey": "_DueSoonKey", "CritKey": "_CriticalKey",
+    # resource and agile reports
+    "LWDone": "_LeafWorkDone", "DoneDate": "_DoneDate", "LPts": "_LeafPoints", "CurKey": "_CurrentSprintKey",
 }
 
 # defined names used by every other sheet (tsk_Duration = Tasks[Duration], ...)
@@ -84,6 +87,8 @@ NAMES = {
     "PlanPct": "tsk_PlannedPct", "LBud": "tsk_LeafBudget", "LPV": "tsk_LeafPV", "LEV": "tsk_LeafEV",
     "LAC": "tsk_LeafAC", "Phase": "tsk_Phase", "PhaseKey": "tsk_PhaseKey", "MsKey": "tsk_MilestoneOrder", "LateKey": "tsk_LateKey",
     "StartKey": "tsk_StartSoonKey", "DueKey": "tsk_DueSoonKey", "CritKey": "tsk_CriticalKey",
+    "SP": "tsk_StoryPoints", "SprIn": "tsk_PlannedSprint", "LWDone": "tsk_LeafWorkDone", "DoneDate": "tsk_DoneDate",
+    "LPts": "tsk_LeafPoints", "CurKey": "tsk_CurrentSprintKey",
 }
 
 
@@ -268,8 +273,9 @@ def formulas():
                   f'"Late by "&({wdiff(R("DL"), R("FF"))})&"d","OK"))')
     f["Status"] = (f'IF({blank},"",IF({R("Prog")}>=1,"Complete",IF(OR(N({R("AS")})>0,{R("Prog")}>0),'
                    f'IF({R("Var")}>0,"Behind","In Progress"),IF({R("PS")}<StatusDate,"Late Start","Not Started"))))')
-    f["Sprint"] = (f'IF(OR({blank},{s}),"",IF(OR({R("FS")}<Sprint1Start,{R("FS")}>SprintLastEnd),"Backlog",'
-                   f'INDEX(spr_Name,MATCH({R("FS")},spr_Start,1))))')
+    f["Sprint"] = (f'IF(OR({blank},{s}),"",IF({R("SprIn")}<>"",{R("SprIn")},'
+                   f'IF(OR({R("FS")}<Sprint1Start,{R("FS")}>SprintLastEnd),"Backlog",'
+                   f'INDEX(spr_Name,MATCH({R("FS")},spr_Start,1)))))')
     f["T1x"] = pred_text("P1", "T1", "L1", "M1", True)
     f["T2x"] = pred_text("P2", "T2", "L2", "M2", True)
     f["U1x"] = pred_text("P1", "T1", "L1", "M1", False)
@@ -324,6 +330,12 @@ def formulas():
     f["DueKey"] = (f'IF(AND({leaf},{R("LProg")}<1,{R("LFF")}>=StatusDate,{R("LFF")}<=LookaheadEnd),'
                    f'{R("LFF")}+{tie},"")')
     f["CritKey"] = f'IF({R("LCrit")},{R("LFS")}+{tie},"")'
+    # resource and agile reports. A task is done on its Actual Finish (or its forecast finish when it is marked
+    # 100% without one); story points count on detail tasks only.
+    f["LWDone"] = f'{R("LWork")}*{R("LProg")}'
+    f["DoneDate"] = f'IF(AND({leaf},{R("LProg")}>=1),IF(N({R("AF")})>0,{R("AF")},{R("LFF")}),"")'
+    f["LPts"] = f'IF({leaf},N({R("SP")}),0)'
+    f["CurKey"] = f'IF(AND({leaf},CurrentSprint<>"",{R("Sprint")}=CurrentSprint),{R("Idx")},"")'
     return f
 
 
@@ -368,7 +380,10 @@ LAYOUT = [
     ("Cost", "calc", 11, "#,##0.00", False, None),
     ("ACin", "in", 11, "#,##0.00", False, "Cost to date of a detail task. Blank = Cost x Progress (as MS Project "
                                           "calculates it). Summaries roll up in the AC column."),
-    ("Sprint", "calc", 10, None, True, "Sprint containing the forecast start."),
+    ("SprIn", "in", 11, None, True, "Optional: the sprint this task is planned in (dropdown). Blank = the sprint "
+                                      "containing its forecast start."),
+    ("Sprint", "calc", 10, None, True, "Planned Sprint if entered, otherwise the sprint containing the forecast start."),
+    ("SP", "in", 8, "0.#", True, "Story points (optional estimate for agile reporting). Detail tasks only."),
     ("PredTxt", "calc", 14, None, False, "Predecessors in MS Project notation, by ID."),
     ("Notes", "in", 40, None, False, None),
     ("SrcS", "calc", 15, DATE, False, "Copy the 5 BL Source columns, then Paste Special > Values onto the 5 Baseline columns."),
@@ -389,13 +404,14 @@ LAYOUT = [
     ("EV", "calc", 11, "#,##0.00", False, "Earned value: Budget x Progress."),
     ("ACt", "calc", 11, "#,##0.00", False, "Actual cost to date: Actual Cost, or Cost x Progress when it is blank."),
 ] + [(k, "help", 11, DATE if k in ("CPS", "CPF", "LCS", "LCF", "LFS", "LFF", "D1P", "D2P", "D1F", "D2F", "SuccLF",
-                                       "LLF", "LLS")
+                                       "LLF", "LLS", "DoneDate")
                           else None, False, None)
      for k in ("Lvl", "Idx", "Parent", "NextLvl", "IsSum", "Desc", "IsLeaf", "R1", "R2", "LCS", "LCF", "LFS", "LFF",
                "LProg", "LWork", "LCost", "F1", "F2", "K1", "K2", "LastSucc", "SuccLF", "LLF", "LLS",
                "LTS", "LCrit", "CPS", "CPF", "M1", "M2", "D1P", "D2P", "D1F",
                "D2F", "SWD", "FWD", "WPD", "WBefore", "WtDur", "WtDone", "T1x", "T2x", "U1x", "U2x", "UPredTxt", "MKey",
-               "PlanPct", "LBud", "LPV", "LEV", "LAC", "Phase", "PhaseKey", "MsKey", "LateKey", "StartKey", "DueKey", "CritKey")]
+               "PlanPct", "LBud", "LPV", "LEV", "LAC", "Phase", "PhaseKey", "MsKey", "LateKey", "StartKey", "DueKey", "CritKey",
+               "LWDone", "DoneDate", "LPts", "CurKey")]
 
 GROUPS = [("ID", "IDENTITY"), ("Mode", "SCHEDULING INPUTS"), ("PS", "PLAN / ACTUAL / FORECAST"), ("SVar", "VARIANCE"),
           ("LS", "CRITICAL PATH"), ("DLChk", "CHECKS"),
@@ -434,7 +450,7 @@ def build_tasks(wb, rows, n_rows):
     for key, defined in NAMES.items():
         name(wb, defined, C(key))
     ws.freeze_panes = f"{L['Mode']}{HEADER_ROW + 1}"
-    ws.column_dimensions.group(L["Lvl"], L["CritKey"], hidden=True, outline_level=1)
+    ws.column_dimensions.group(L["Lvl"], L["CurKey"], hidden=True, outline_level=1)
     _validation_and_formatting(ws, L, n_rows)
     ws.sheet_view.zoomScale = 90
     return ws
@@ -467,11 +483,12 @@ def _validation_and_formatting(ws, L, n_rows):
                       error="Enter 0% - 100%."), "Pct")
     dv(DataValidation(type="list", formula1="=res_Name"), "Res")
     dv(DataValidation(type="decimal", operator="between", formula1="0", formula2="10"), "Units")
-    dv(DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0"), "ACin")
+    dv(DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0"), "ACin", "SP")
+    dv(DataValidation(type="list", formula1="=spr_Name"), "SprIn")
 
     cf = ws.conditional_formatting
     cf.add(f"A{first}:{L['ACt']}{last}", FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(bold=True), fill=fill("DDEBF7")))
-    for k in ("Dur", "P1", "T1", "L1", "P2", "T2", "L2", "Cons", "AS", "AF", "Pct", "Res", "Units", "ACin"):
+    for k in ("Dur", "P1", "T1", "L1", "P2", "T2", "L2", "Cons", "AS", "AF", "Pct", "Res", "Units", "ACin", "SprIn", "SP"):
         cf.add(rng(k), FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(color="A6A6A6", italic=True, bold=True)))
     for status, colour in STATUS_COLOURS.items():
         cf.add(rng("Status"), FormulaRule(formula=[f'{at("Status")}="{status}"'], font=Font(color=colour, bold=True)))

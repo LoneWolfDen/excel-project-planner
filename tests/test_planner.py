@@ -97,8 +97,17 @@ def set_input(wb, task_id, key, value):
 
 
 def errors_in(wb):
+    """Error values anywhere, except #N/A in _Chart... table columns (it is how a chart leaves a point out)."""
+    chart_cells = set()
+    for ws in wb.worksheets:
+        for table in ws.tables.values():
+            cells = list(ws[table.ref])
+            for i, head in enumerate(cells[0]):
+                if str(head.value).startswith("_Chart"):
+                    chart_cells.update((ws.title, row[i].coordinate) for row in cells[1:])
     return [f"{ws.title}!{c.coordinate}={c.value}" for ws in wb.worksheets for r in ws.iter_rows() for c in r
-            if isinstance(c.value, str) and c.value.startswith(ERRORS)]
+            if isinstance(c.value, str) and c.value.startswith(ERRORS)
+            and not (c.value == "#N/A" and (ws.title, c.coordinate) in chart_cells)]
 
 
 class Tmp(unittest.TestCase):
@@ -121,9 +130,9 @@ class StructureTest(Tmp):
         cls.wb = openpyxl.load_workbook(cls.path)
 
     def test_sheets(self):
-        self.assertEqual(self.wb.sheetnames, ["Instructions", "Dashboard", "Status Report", "Schedule Report", "Settings",
-                                              "Tasks", "Gantt", "Resources", "Sprints", "Holidays", "MSP_Tasks",
-                                              "MSP_Resources", "Lists"])
+        self.assertEqual(self.wb.sheetnames, ["Instructions", "Dashboard", "Status Report", "Schedule Report",
+                                              "Resource Report", "Agile Report", "Settings", "Tasks", "Gantt",
+                                              "Resources", "Sprints", "Holidays", "MSP_Tasks", "MSP_Resources", "Lists"])
 
     def test_named_ranges(self):
         names = set(self.wb.defined_names)
@@ -198,7 +207,7 @@ class StructureTest(Tmp):
 
     def test_views_read_tasks_by_name_not_row(self):
         # Gantt and MSP_Tasks use INDEX(tsk_..., n), so rows inserted on Tasks still show up
-        for sheet in ("Gantt", "MSP_Tasks", "Status Report", "Schedule Report"):
+        for sheet in ("Gantt", "MSP_Tasks", "Status Report", "Schedule Report", "Resource Report", "Agile Report"):
             for row in self.wb[sheet].iter_rows(max_row=120, max_col=25):
                 for c in row:
                     if isinstance(c.value, str) and c.value.startswith("="):
@@ -375,6 +384,8 @@ class ScheduleTest(Tmp):
         self.assertEqual(mx.cell(row(22), col["Constraint Type"]).value, "Start No Earlier Than")
         self.assertEqual(mx.cell(row(19), col["Unique ID Predecessors"]).value, "14,18")
         self.assertEqual(d(mx.cell(row(19), col["Deadline"]).value), dt.date(2026, 11, 6))
+        self.assertEqual((mx.cell(row(17), col["Text1"]).value, mx.cell(row(17), col["Number1"]).value), ("Sprint 4", 8))
+        self.assertIn(mx.cell(row(1), col["Text1"]).value, (None, ""))          # summaries carry no sprint
 
     def dashboard(self, label):
         ws = self.wb["Dashboard"]
@@ -575,6 +586,146 @@ class ReportTest(Tmp):
         self.assertEqual(late_rows[0]["Resource"], "Jordan Lee")
         self.assertIn(late_rows[4]["Resource"], (None, ""))          # a milestone has no resource: blank, not 0
         self.assertIn(late_rows[-1]["Task"], (None, ""))
+
+
+def serial(value):
+    """A date read back from LibreOffice, whether stored as a date or as a serial number."""
+    return d(value) if not isinstance(value, (int, float)) else dt.date(1899, 12, 30) + dt.timedelta(days=value)
+
+
+@unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+class AgileTest(Tmp):
+    """Story points, velocity and burndown, against values worked out in Python from the Tasks sheet."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.wb = recalc(cls.path, cls.dir)
+
+    def sprints(self, wb):
+        return [r for r in table_rows(wb, "Sprints", "SprintTable") if r["Sprint"]]
+
+    def kpi(self, wb, n):
+        return named_cell(wb, f"agl_{n}").value
+
+    def test_no_formula_errors(self):
+        self.assertEqual(errors_in(self.wb), [])
+
+    def test_velocity_and_release_burndown(self):
+        tasks = [r for r in table_rows(self.wb, "Tasks", "Tasks") if r["_IsLeaf"] == 1]
+        total = sum(t["Story Points"] or 0 for t in tasks)
+        self.assertEqual(total, 82)
+        sprints = self.sprints(self.wb)
+        done = []
+        for s in sprints:
+            if s["Status"] == "Future":
+                break
+            done.append(sum(t["Story Points"] or 0 for t in tasks
+                            if t["Actual Finish"] and s["Start"] <= t["Actual Finish"] <= s["End"]))
+        self.assertEqual(done, [5, 13, 15, 0])
+        self.assertEqual([s["Done Points"] for s in sprints[:4]], done)
+        self.assertEqual([s["Velocity"] for s in sprints[:3]], [5, 9, 11])     # rolling average of up to 3 sprints
+        self.assertIn(sprints[3]["Velocity"], (None, ""))                       # the active sprint isn't closed yet
+        self.assertEqual([s["Remaining Points"] for s in sprints[:4]], [77, 64, 49, 49])
+        committed = {s["Sprint"]: s["Committed Points"] for s in sprints}
+        for name, points in committed.items():
+            self.assertEqual(points, sum(t["Story Points"] or 0 for t in tasks if t["Sprint"] == name), name)
+        self.assertEqual((self.kpi(self.wb, "Remaining"), self.kpi(self.wb, "Velocity")), (49, 11))
+        self.assertEqual((self.kpi(self.wb, "SprintsLeft"), self.kpi(self.wb, "FinishSprint")), (5, "Sprint 8"))
+        self.assertEqual(serial(self.kpi(self.wb, "FinishDate")), dt.date(2026, 12, 27))
+
+    def test_current_sprint_backlog_and_burndown(self):
+        backlog = [r["Task"] for r in table_rows(self.wb, "Agile Report", "SprintBacklog") if r["_Task"] not in (None, "")]
+        self.assertEqual(backlog, ["Feature screens"])
+        days = [r for r in table_rows(self.wb, "Agile Report", "SprintBurndown") if r["Day"]]
+        self.assertEqual((serial(days[0]["Day"]), serial(days[-1]["Day"]), len(days)),
+                         (dt.date(2026, 10, 19), dt.date(2026, 11, 1), 14))
+        self.assertEqual(days[6]["Remaining"], 8)                               # 25-Oct, the status date
+        self.assertIn(days[7]["Remaining"], (None, ""))                         # nothing after the status date
+        self.assertAlmostEqual(days[0]["Ideal"], 8 * 9 / 10)                    # 1 of 10 working days gone
+        self.assertEqual(days[11]["Ideal"], 0)                                  # last working day (Fri 30-Oct)
+
+    def test_planned_sprint_override_and_unestimated_tasks(self):
+        def edit(wb):
+            set_input(wb, 14, "Planned Sprint", "Sprint 4")    # payment gateway pulled into the current sprint
+            set_input(wb, 21, "Story Points", None)            # system testing not estimated yet
+        wb = recalc(self.path, self.dir, edit)
+        self.assertEqual(errors_in(wb), [])
+        t = Tasks(wb)
+        self.assertEqual(t.get(14, "Sprint"), "Sprint 4")
+        committed = {s["Sprint"]: s["Committed Points"] for s in self.sprints(wb)}
+        self.assertEqual(committed["Sprint 4"], 13)
+        self.assertEqual((self.kpi(wb, "Total"), self.kpi(wb, "Unestimated")), (74, 1))
+        backlog = [r["Task"] for r in table_rows(wb, "Agile Report", "SprintBacklog") if r["_Task"] not in (None, "")]
+        self.assertEqual(backlog, ["Payment gateway integration", "Feature screens"])
+
+
+@unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+class ResourceReportTest(Tmp):
+    """Weekly hours: each task's work spread evenly over its forecast working days, recomputed in Python."""
+
+    START = dt.date(2026, 9, 7)        # first grid week = the project start, so 26 weeks cover the whole plan
+
+    def grid(self, wb, kind):
+        ws = wb["Resource Report"]
+        origin = named_cell(wb, f"rw_{kind}Origin")
+        names = [ws.cell(origin.row + 2 + i, origin.column).value for i in range(25)]
+        return {n: [ws.cell(origin.row + 2 + i, origin.column + 2 + w).value for w in range(26)]
+                for i, n in enumerate(names) if n}
+
+    def expected(self, wb):
+        holidays = {d(r["Date"]) for r in table_rows(wb, "Holidays", "HolidayTable") if r["Date"]}
+        hours = {}
+        for t in table_rows(wb, "Tasks", "Tasks"):
+            if t["_IsLeaf"] != 1 or not t["Resource"] or not t["Work"]:
+                continue
+            days, day = [], t["Forecast Start"]
+            while day <= max(t["Forecast Finish"], t["Forecast Start"]):
+                if day.weekday() < 5 and day not in holidays:
+                    days.append(day)
+                day += dt.timedelta(days=1)
+            row = hours.setdefault(t["Resource"], [0] * 26)
+            for day in days:
+                week = (day - self.START).days // 7
+                if 0 <= week < 26:
+                    row[week] += t["Work"] / len(days)
+        return hours
+
+    def check(self, wb):
+        self.assertEqual(errors_in(wb), [])
+        load, want = self.grid(wb, "Load"), self.expected(wb)
+        resources = {r["Resource Name"]: r for r in table_rows(wb, "Resources", "ResourceTable") if r["Resource Name"]}
+        for name, row in load.items():
+            got = [v or 0 for v in row]
+            for w, (a, b) in enumerate(zip(got, want.get(name, [0] * 26))):
+                self.assertAlmostEqual(a, b, places=6, msg=f"{name} week {w + 1}")
+            self.assertAlmostEqual(sum(got), resources[name]["Work"] or 0, places=6, msg=name)   # whole plan in view
+        return load
+
+    def test_weekly_hours_and_summary(self):
+        wb = recalc(self.path, self.dir, lambda wb: setattr(named_cell(wb, "ResourceWeekStart"), "value", self.START))
+        self.check(wb)
+        summary = {r["Resource"]: r for r in table_rows(wb, "Resource Report", "ResourceSummary") if r["Resource"]}
+        jordan = summary["Jordan Lee"]
+        self.assertEqual((jordan["Work"], jordan["Work Done"], jordan["Remaining"]), (208, 80, 128))
+        self.assertEqual((jordan["Late Tasks"], jordan["Open Critical"], jordan["Weeks Over"]), (2, 3, 0))
+        self.assertEqual(sum(r["Actual Cost"] for r in summary.values()), named_cell(wb, "evm_AC").value)
+
+    def test_over_allocation(self):
+        def edit(wb):
+            named_cell(wb, "ResourceWeekStart").value = self.START
+            set_input(wb, 14, "Units", 2)          # payment gateway at 200%: Jordan is double-booked those weeks
+        wb = recalc(self.path, self.dir, edit)
+        load = self.check(wb)
+        util = self.grid(wb, "Util")
+        ws = wb["Resource Report"]
+        origin = named_cell(wb, "rw_LoadOrigin")
+        week_days = [ws.cell(origin.row + 1, origin.column + 2 + w).value for w in range(26)]
+        over = sum(1 for h, n in zip(load["Jordan Lee"], week_days) if (h or 0) > 8 * n)
+        self.assertGreater(over, 0)
+        summary = {r["Resource"]: r for r in table_rows(wb, "Resource Report", "ResourceSummary") if r["Resource"]}
+        self.assertEqual(summary["Jordan Lee"]["Weeks Over"], over)
+        self.assertAlmostEqual(summary["Jordan Lee"]["Peak Use"], max(u or 0 for u in util["Jordan Lee"]))
 
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")

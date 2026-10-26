@@ -35,6 +35,7 @@ N = {
     "Cons": "Start No Earlier Than", "DL": "Deadline",
     "PS": "Planned Start", "PF": "Planned Finish", "AS": "Actual Start", "AF": "Actual Finish",
     "FS": "Forecast Start", "FF": "Forecast Finish", "SVar": "Start Var", "Var": "Finish Var",
+    "LS": "Late Start", "LF": "Late Finish", "TS": "Total Slack", "FSl": "Free Slack", "Crit": "Critical",
     "DLChk": "Deadline Check", "LinkChk": "Link Check", "Pct": "% Complete", "Prog": "Progress", "Status": "Status",
     "Res": "Resource", "Units": "Units", "Work": "Work", "Cost": "Cost", "Sprint": "Sprint",
     "PredTxt": "Predecessors", "Notes": "Notes",
@@ -48,6 +49,9 @@ N = {
     "D1P": "_Pred1PlanDriver", "D2P": "_Pred2PlanDriver", "D1F": "_Pred1FcstDriver", "D2F": "_Pred2FcstDriver",
     "LCS": "_LeafCalcStart", "LCF": "_LeafCalcFinish", "LFS": "_LeafFcstStart", "LFF": "_LeafFcstFinish",
     "LProg": "_LeafProgress", "LWork": "_LeafWork", "LCost": "_LeafCost",
+    "F1": "_Pred1FinishKey", "F2": "_Pred2FinishKey", "K1": "_Pred1SlackKey", "K2": "_Pred2SlackKey",
+    "SuccLF": "_SuccessorFinishLimit", "LastSucc": "_LastSuccessorRow",
+    "LLF": "_LeafLateFinish", "LLS": "_LeafLateStart", "LTS": "_LeafTotalSlack", "LCrit": "_LeafCritical",
     "CPS": "_CalcStart", "CPF": "_CalcFinish",
     "SWD": "_StartWorkday", "FWD": "_FinishWorkday", "WPD": "_WorkPerWorkday", "WBefore": "_WorkBeforeStart",
     "WtDur": "_WeightDur", "WtDone": "_WeightDone",
@@ -60,7 +64,8 @@ NAMES = {
     "ID": "tsk_ID", "UID": "tsk_UID", "WBS": "tsk_WBS", "Lvl": "tsk_Level", "Name": "tsk_Name", "Mode": "tsk_Mode",
     "Dur": "tsk_Duration", "Cons": "tsk_Constraint", "DL": "tsk_Deadline", "PS": "tsk_PlanStart",
     "PF": "tsk_PlanFinish", "AS": "tsk_ActStart", "AF": "tsk_ActFinish", "FS": "tsk_FcStart", "FF": "tsk_FcFinish",
-    "SVar": "tsk_StartVariance", "Var": "tsk_Variance", "DLChk": "tsk_DeadlineCheck", "LinkChk": "tsk_LinkCheck",
+    "SVar": "tsk_StartVariance", "Var": "tsk_Variance", "LS": "tsk_LateStart", "LF": "tsk_LateFinish",
+    "TS": "tsk_TotalSlack", "FSl": "tsk_FreeSlack", "Crit": "tsk_Critical", "DLChk": "tsk_DeadlineCheck", "LinkChk": "tsk_LinkCheck",
     "Pct": "tsk_PctInput", "Prog": "tsk_Progress", "Status": "tsk_Status", "Res": "tsk_Resource",
     "Units": "tsk_Units", "Work": "tsk_Work", "Cost": "tsk_Cost", "Sprint": "tsk_Sprint",
     "PredTxt": "tsk_Predecessors", "Notes": "tsk_Notes", "BS": "tsk_BaseStart", "BF": "tsk_BaseFinish",
@@ -96,6 +101,26 @@ def other_row(key, pos):
 def block(key):
     """A summary row's descendants (the rows directly below it) in one column. INDEX:INDEX is not volatile."""
     return f"INDEX({C(key)},{R('Idx')}+1):INDEX({C(key)},{R('Idx')}+{R('Desc')})"
+
+
+NO_LIMIT = 2958465          # 31-Dec-9999: "no successor constrains this"
+
+
+def below(key):
+    """The rows from the one below this down to the last successor, in one column (successors sit below their
+    predecessors). OFFSET from the header so it stays correct when rows are inserted or deleted; stopping at
+    _LastSuccessorRow keeps each look-up short."""
+    return f"OFFSET({H(key)},{R('Idx')}+1,0,MAX(1,{R('LastSucc')}-{R('Idx')}),1)"
+
+
+SLACK_OFFSET = 100000       # link slack is stored as SLACK_OFFSET - slack (always positive)
+
+
+def successor_max(key, pred_key):
+    """Largest key among the rows below that name this task in pred_key; 0 when no row does.
+    Keys are stored so that the largest key is the earliest date / smallest slack, and every real key is > 0:
+    one MAXIFS then answers "is there a successor, and what is its tightest limit" (no COUNTIFS needed)."""
+    return f'IF({R("LastSucc")}<={R("Idx")},0,_xlfn.MAXIFS({below(key)},{below(pred_key)},{R("UID")}))'
 
 
 def wdiff(a, b):
@@ -187,6 +212,36 @@ def formulas():
     f["LWork"] = (f'IF(OR(NOT({leaf}),{R("Res")}=""),0,'
                   f'N({R("Dur")})*HoursPerDay*IF({R("Units")}="",DefaultUnits,{R("Units")}))')
     f["LCost"] = f'IF({R("LWork")}=0,0,{R("LWork")}*IFERROR(INDEX(res_Rate,MATCH({R("Res")},res_Name,0)),0))'
+    # critical path: backward pass. Each successor row works out, per link, the latest its predecessor may finish
+    # (FS / FF directly; SS / SF via the predecessor's duration, an input) and stores it as a key; the predecessor
+    # then takes one MAXIFS over the rows below. A task's late finish is the earliest of those limits, its deadline
+    # and the project's forecast finish.
+    for k in ("1", "2"):
+        p, t, lag, m, d = f"P{k}", f"T{k}", f"L{k}", f"M{k}", f"D{k}F"
+        valid = f'AND({leaf},{R("R" + k)}>0,{R(m)}="")'
+        typ, lg = f'IF({R(t)}="","FS",{R(t)})', f"N({R(lag)})"
+        pred_dur = f"N(INDEX({C('Dur')},{R('R' + k)}))"
+        start_limit = f'WORKDAY.INTL(IF({typ}="SS",{R("LLS")},{R("LLF")}),-{lg},{WD})'
+        finish_limit = (f'IF({typ}="FS",WORKDAY.INTL({R("LLS")},-(IF(N({R("Dur")})=0,0,1)+{lg}),{WD}),'
+                        f'IF({typ}="FF",WORKDAY.INTL({R("LLF")},-{lg},{WD}),'
+                        f'IF({pred_dur}<=0,{start_limit},WORKDAY.INTL({start_limit},{pred_dur}-1,{WD}))))')
+        f[f"F{k}"] = f'IF({valid},{NO_LIMIT}-{finish_limit},"")'
+        f[f"K{k}"] = f'IF({valid},{SLACK_OFFSET}-{wdiff(R(d), R("LFS"))},"")'
+    # where the last successor sits: reads only input columns, so it isn't recalculated after every edit
+    f["LastSucc"] = (f'IF(NOT({leaf}),0,MAX(_xlfn.MAXIFS({C("Idx")},{C("P1")},{R("UID")}),'
+                     f'_xlfn.MAXIFS({C("Idx")},{C("P2")},{R("UID")})))')
+    succ = f'MAX({successor_max("F1", "P1")},{successor_max("F2", "P2")})'
+    f["SuccLF"] = f'IF(NOT({leaf}),"",{NO_LIMIT}-{succ})'
+    f["LLF"] = (f'IF(NOT({leaf}),"",MIN(ProjectFinish,IF(N({R("DL")})>0,{R("DL")},{NO_LIMIT}),{R("SuccLF")}))')
+    f["LLS"] = f'IF(NOT({leaf}),"",IF(N({R("Dur")})<=0,{R("LLF")},WORKDAY.INTL({R("LLF")},-({R("Dur")}-1),{WD})))'
+    f["LTS"] = f'IF(NOT({leaf}),"",{wdiff(R("LFF"), R("LLF"))})'
+    f["LCrit"] = f'AND({leaf},{R("LProg")}<1,N({R("LTS")})<=CriticalSlackDays)'
+    slack = f'MAX({successor_max("K1", "P1")},{successor_max("K2", "P2")})'
+    f["FSl"] = f'IF(NOT({leaf}),"",IF({slack}=0,{R("LTS")},MIN({R("LTS")},{SLACK_OFFSET}-{slack})))'
+    f["LS"] = f'IF({blank},"",IF({s},MIN({block("LLS")}),{R("LLS")}))'
+    f["LF"] = f'IF({blank},"",IF({s},MAX({block("LLF")}),{R("LLF")}))'
+    f["TS"] = f'IF({blank},"",IF({s},MIN({block("LTS")}),{R("LTS")}))'
+    f["Crit"] = (f'IF({blank},"",IF(IF({s},COUNTIF({block("LCrit")},TRUE())>0,{R("LCrit")}),"Yes",""))')
     # every row: detail value, or the roll-up of the detail tasks below a summary
     rollup = lambda fn, leaf_key: f'IF({blank},"",IF({s},{fn}({block(leaf_key)}),{R(leaf_key)}))'
     f["CPS"] = rollup("MIN", "LCS")
@@ -261,6 +316,11 @@ LAYOUT = [
     ("FF", "calc", 15, DATE, False, "Current schedule finish."),
     ("SVar", "calc", 8, None, True, "Forecast Start minus Planned Start, in working days."),
     ("Var", "calc", 8, None, True, "Forecast Finish minus Planned Finish, in working days."),
+    ("LS", "calc", 15, DATE, False, "Latest start that doesn't delay the project finish or a deadline (critical path backward pass)."),
+    ("LF", "calc", 15, DATE, False, "Latest finish that doesn't delay the project finish or a deadline."),
+    ("TS", "calc", 8, None, True, "Total slack: working days this task can slip before it delays the project or a deadline."),
+    ("FSl", "calc", 8, None, True, "Free slack: working days it can slip before it delays any successor."),
+    ("Crit", "calc", 8, None, True, "Yes when Total Slack <= CriticalSlackDays (Settings) and the task isn't complete."),
     ("DLChk", "calc", 12, None, True, None),
     ("LinkChk", "calc", 24, None, False, "Explains predecessor links that are ignored."),
     ("Pct", "in", 9, "0%", False, "Enter 0-100%. An Actual Finish counts as 100%."),
@@ -286,13 +346,16 @@ LAYOUT = [
     ("DVar", "calc", 9, None, True, "Duration minus Baseline Duration (working days)."),
     ("WVar", "calc", 9, "#,##0.0", False, "Work minus Baseline Work (hours)."),
     ("CVar", "calc", 11, "#,##0.00", False, "Cost minus Baseline Cost."),
-] + [(k, "help", 11, DATE if k in ("CPS", "CPF", "LCS", "LCF", "LFS", "LFF", "D1P", "D2P", "D1F", "D2F")
+] + [(k, "help", 11, DATE if k in ("CPS", "CPF", "LCS", "LCF", "LFS", "LFF", "D1P", "D2P", "D1F", "D2F", "SuccLF",
+                                       "LLF", "LLS")
                           else None, False, None)
      for k in ("Lvl", "Idx", "Parent", "NextLvl", "IsSum", "Desc", "IsLeaf", "R1", "R2", "LCS", "LCF", "LFS", "LFF",
-               "LProg", "LWork", "LCost", "CPS", "CPF", "M1", "M2", "D1P", "D2P", "D1F",
+               "LProg", "LWork", "LCost", "F1", "F2", "K1", "K2", "LastSucc", "SuccLF", "LLF", "LLS",
+               "LTS", "LCrit", "CPS", "CPF", "M1", "M2", "D1P", "D2P", "D1F",
                "D2F", "SWD", "FWD", "WPD", "WBefore", "WtDur", "WtDone", "T1x", "T2x", "U1x", "U2x", "UPredTxt", "MKey")]
 
-GROUPS = [("ID", "IDENTITY"), ("Mode", "SCHEDULING INPUTS"), ("PS", "PLAN / ACTUAL / FORECAST"), ("SVar", "CHECKS"),
+GROUPS = [("ID", "IDENTITY"), ("Mode", "SCHEDULING INPUTS"), ("PS", "PLAN / ACTUAL / FORECAST"), ("SVar", "VARIANCE"),
+          ("LS", "CRITICAL PATH"), ("DLChk", "CHECKS"),
           ("Pct", "PROGRESS"), ("Res", "RESOURCES & SPRINT"),
           ("SrcS", "SET BASELINE: copy these 5 columns, then Paste Special > Values onto the 5 Baseline columns"),
           ("DVar", "VARIANCE vs BASELINE"), ("Lvl", "HELPER COLUMNS (hidden - click + above to show)")]
@@ -378,4 +441,7 @@ def _validation_and_formatting(ws, L, n_rows):
         fill=fill("FFC7CE"), font=Font(color="9C0006", bold=True)))
     cf.add(rng("LinkChk"), FormulaRule(formula=[f'{at("LinkChk")}<>""'], fill=fill("FFC7CE"), font=Font(color="9C0006")))
     cf.add(rng("DLChk"), FormulaRule(formula=[f'LEFT({at("DLChk")},4)="Late"'], font=Font(color="C00000", bold=True)))
+    cf.add(rng("Crit"), FormulaRule(formula=[f'{at("Crit")}="Yes"'], font=Font(color="FFFFFF", bold=True), fill=fill("C00000")))
+    for k in ("TS", "FSl"):
+        cf.add(rng(k), FormulaRule(formula=[f"AND(ISNUMBER({at(k)}),{at(k)}<0)"], font=Font(color="C00000", bold=True)))
     cf.add(rng("DLChk"), FormulaRule(formula=[f'{at("DLChk")}="OK"'], font=Font(color="548235", bold=True)))

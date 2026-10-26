@@ -163,11 +163,12 @@ class StructureTest(Tmp):
     def test_volatile_functions_only_where_allowed(self):
         # OFFSET only in Tasks, for the few columns that read another row's calculated value; no TODAY, INDIRECT ...
         volatile = perf_check.static_report(self.path)["volatile"]
-        self.assertEqual(volatile, {"Tasks": {"OFFSET": 1000}})
+        self.assertEqual(volatile, {"Tasks": {"OFFSET": 1400}})
         ws = self.wb["Tasks"]
         offset_cols = {ws.cell(5, c).value for c in range(1, ws.max_column + 1)
                        if "OFFSET(" in str(ws.cell(FIRST, c).value)}
-        self.assertEqual(offset_cols, {"WBS", "_Pred1PlanDriver", "_Pred2PlanDriver", "_Pred1FcstDriver", "_Pred2FcstDriver"})
+        self.assertEqual(offset_cols, {"WBS", "_Pred1PlanDriver", "_Pred2PlanDriver", "_Pred1FcstDriver", "_Pred2FcstDriver",
+                                       "_SuccessorFinishLimit", "Free Slack"})
 
     def test_gantt_timeline_has_no_formulas(self):
         ws = self.wb["Gantt"]
@@ -209,14 +210,19 @@ class StructureTest(Tmp):
                   "Baseline Duration", "Baseline Work", "Baseline Cost", "Deadline"):
             self.assertIn(h, headers)
 
-    def test_no_post_2010_functions(self):
-        banned = ("XLOOKUP", "FILTER(", "SEQUENCE(", "UNIQUE(", "LET(", "_xlfn.")
+    def test_functions_need_at_most_excel_2019(self):
+        # Excel 2019 / Microsoft 365 is the stated requirement. Only MINIFS/MAXIFS from Excel 2019 are used (stored
+        # with the _xlfn. prefix); Microsoft 365-only functions are banned, and LibreOffice couldn't check them anyway.
+        allowed = {"_xlfn.MINIFS(", "_xlfn.MAXIFS("}
+        banned = ("XLOOKUP", "XMATCH", "FILTER(", "SEQUENCE(", "UNIQUE(", "SORT(", "LET(", "LAMBDA(")
         for ws in self.wb.worksheets:
             for r in ws.iter_rows(max_row=12):
                 for c in r:
                     if isinstance(c.value, str) and c.value.startswith("="):
                         for b in banned:
                             self.assertNotIn(b, c.value, f"{ws.title}!{c.coordinate}")
+                        for fn in __import__("re").findall(r"_xlfn\.[A-Z.]+\(", c.value):
+                            self.assertIn(fn, allowed, f"{ws.title}!{c.coordinate}")
 
 
 class CommittedWorkbooksTest(unittest.TestCase):
@@ -325,6 +331,27 @@ class ScheduleTest(Tmp):
         gantt = self.wb["Gantt"]
         col = {c.value: c.column for c in gantt[5] if c.value}
         self.assertEqual(d(gantt.cell(self.t.row_of(19), col["_Deadline"]).value), dt.date(2026, 11, 6))
+
+    def test_critical_path(self):
+        # hand-worked: UAT's Start No Earlier Than (07-Dec) drives the finish; everything after it is critical
+        for task in (22, 24, 25, 26, 29, 30):
+            self.assertEqual(self.val(task, "Total Slack"), 0, task)
+            self.assertEqual(self.val(task, "Critical"), "Yes", task)
+        self.assertEqual(self.val(21, "Late Finish"), dt.date(2026, 12, 4))   # day before UAT's latest start
+        self.assertEqual(self.val(21, "Total Slack"), 11)
+        self.assertEqual(self.val(23, "Total Slack"), 18)                      # training, feeding the readiness review
+        self.assertEqual(self.val(28, "Total Slack"), 33)                      # no successors: slack to project finish
+        self.assertIsNone(self.val(28, "Critical"))
+        # Build complete's 06-Nov deadline is missed by a day: -1 slack back up the chain feeding it
+        for task in (13, 14, 19):
+            self.assertEqual(self.val(task, "Total Slack"), -1, task)
+        self.assertEqual(self.val(17, "Late Finish"), dt.date(2026, 11, 5))   # FF+1 into accessibility review
+        self.assertEqual(self.val(18, "Total Slack"), 0)
+        # free slack: solution architecture can slip 7 days before the sign-off milestone needs it
+        self.assertEqual(self.val(7, "Total Slack"), 9)
+        self.assertEqual(self.val(7, "Free Slack"), 7)
+        self.assertEqual(self.val(10, "Critical"), "Yes")                       # summary: a child is critical
+        self.assertEqual(self.dashboard("Open critical tasks"), 11)
 
     def test_no_link_problems_in_sample(self):
         self.assertEqual(self.dashboard("Link problems (see Tasks > Link Check)"), 0)

@@ -1,20 +1,20 @@
 {
-  "_comment": "Budgets checked by scripts/perf_check.py on every PR. Timings are LibreOffice on a CI runner, with roughly 3x headroom over local runs. edit_recalc_s is a duration edit near the top of the plan. OFFSET is allowed only in Tasks, for reading another row's calculated value (see docs/ARCHITECTURE.md). Raise a budget only with a reason in the PR; never to hide a regression.",
+  "_comment": "Budgets checked by scripts/perf_check.py on every PR. Timings are LibreOffice on a CI runner, with roughly 3x headroom over local runs. edit_recalc_s is a duration edit near the top of the plan. OFFSET is allowed only in Tasks, for reading another row's calculated value (predecessor drivers, parent WBS, and the critical path's successor look-ups) (see docs/ARCHITECTURE.md). Raise a budget only with a reason in the PR; never to hide a regression.",
   "sample": {
-    "formulas_max": 25000,
+    "formulas_max": 30000,
     "volatile_allowed": {
       "Tasks": {
-        "OFFSET": 1000
+        "OFFSET": 1400
       }
     },
     "full_recalc_s_max": 0.5,
     "edit_recalc_s_max": 0.5
   },
   "stress": {
-    "formulas_max": 110000,
+    "formulas_max": 125000,
     "volatile_allowed": {
       "Tasks": {
-        "OFFSET": 5000
+        "OFFSET": 7000
       }
     },
     "full_recalc_s_max": 2.5,

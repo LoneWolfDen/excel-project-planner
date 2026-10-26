@@ -23,7 +23,7 @@ The biggest gaps against MS Project are:
 
 1. ~~**No frozen baseline.**~~ *Done in v1.1.* "Planned" dates are recalculated from durations and links, so editing a duration
    changes the plan too. MS Project's Baseline is a snapshot that never moves.
-2. **No critical path or slack.** MS Project's backward pass (late start / late finish / total slack) is missing.
+2. ~~**No critical path or slack.**~~ *Done in v1.2.*
 3. ~~**Links break when rows are inserted.**~~ *Done in v1.1 (UID).* Predecessors refer to the row-sequence ID; MS Project re-points
    links automatically.
 4. **One resource per task, at most two predecessors per task.**
@@ -66,7 +66,7 @@ Legend: ✅ equivalent · 🟡 partial / simplified · ❌ missing · ⛔ not pr
 | Constraints: ASAP, SNET | ✅ | |
 | Constraints: ALAP, SNLT, FNET, FNLT, MSO, MFO | ❌ | MSO ≈ Manual mode. ALAP needs a backward pass. |
 | Deadlines | ✅ | v1.1: Deadline column, Deadline Check, ▼ on Gantt, exported to MSP. |
-| Critical path, total / free slack | ❌ | Needs a backward pass. |
+| Critical path, total / free slack | ✅ | Backward pass with deadlines; critical bars on the Gantt. |
 | Task types (Fixed Units / Work / Duration), effort-driven | ❌ | Work = Duration × Hours/day × Units only. |
 | Duration units (minutes, hours, weeks, months, elapsed, estimated `?`) | ❌ | Working days only. |
 | Project calendar with exceptions | ✅ | Working week mask + holiday list. |

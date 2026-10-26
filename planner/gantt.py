@@ -1,0 +1,147 @@
+"""Gantt sheet: a task panel (Excel Table "GanttView") and a timeline drawn purely with conditional formatting.
+
+The timeline cells hold no formulas at all: bars, the planned outline, milestones, deadlines, the status date and
+non-working days are conditional-format rules, which Excel only evaluates for the cells on screen. That keeps the
+calculation chain small (see docs/ARCHITECTURE.md).
+"""
+from openpyxl.formatting.rule import FormulaRule
+from openpyxl.styles import Alignment, Border, Font, Side
+from openpyxl.utils import get_column_letter
+
+from .core import (HEADER_FILLS, NOTE_FONT, SHORT_DATE, Col, Tab, add_table, fill, font, name)
+
+TABLE = "GanttView"
+HEADER_ROW = 5
+WD = "WorkWeek,Holidays"
+COLOURS = {"summary": "404040", "done": "70AD47", "remaining": "9DC3E6", "late": "F4B183", "milestone": "7030A0",
+           "deadline": "C00000", "planned": "1F3864", "status": "FF0000", "nonworking": "EDEDED"}
+
+
+def build_gantt(wb, n_rows, n_days):
+    ws = wb.create_sheet("Gantt")
+    ws["A1"] = '=ProjectName&"  -  Gantt Chart"'
+    ws["A1"].font = font(size=16, bold=True, color="1F4E78")
+    ws["A2"] = ('="Status date: "&TEXT(StatusDate,"ddd dd-mmm-yyyy")&"   |   Forecast finish: "&TEXT(MAX(tsk_FcFinish),'
+                '"dd-mmm-yyyy")&"   |   Planned finish: "&TEXT(MAX(tsk_PlanFinish),"dd-mmm-yyyy")&IF(COUNTA(tsk_Name)>ROWS('
+                'GanttView[ID]),"   |   Showing the first "&ROWS(GanttView[ID])&" tasks","")')
+    ws["A2"].font = font(bold=True, color="404040")
+
+    g = Tab(TABLE)
+    n = g.row("_Row")
+    blank = f'IFERROR(INDEX(tsk_Name,{n})="",TRUE())'          # also true past the end of the Tasks table
+    task = lambda col: f"INDEX({col},{n})"
+    show = lambda col: f'IF({blank},"",{task(col)})'
+    pct = g.row("%")
+    fs, ff = g.row("Forecast Start"), g.row("Forecast Finish")
+    cols = [
+        Col("ID", width=5, formula=show("tsk_ID"), center=True),
+        Col("WBS", width=7, formula=show("tsk_WBS"), center=True),
+        Col("Task", width=34, formula=f'IF({blank},"",REPT("    ",{task("tsk_Level")}-1)&{task("tsk_Name")})'),
+        Col("Dur", width=5, center=True, formula=(
+            f'IF({blank},"",IF({task("tsk_IsSummary")},NETWORKDAYS.INTL({task("tsk_FcStart")},{task("tsk_FcFinish")},{WD}),'
+            f'N({task("tsk_Duration")})))')),
+        Col("Planned Start", width=10, fmt=SHORT_DATE, formula=show("tsk_PlanStart")),
+        Col("Planned Finish", width=10, fmt=SHORT_DATE, formula=show("tsk_PlanFinish")),
+        Col("Forecast Start", width=10, fmt=SHORT_DATE, formula=show("tsk_FcStart")),
+        Col("Forecast Finish", width=10, fmt=SHORT_DATE, formula=show("tsk_FcFinish")),
+        Col("%", width=6, fmt="0%", center=True, formula=show("tsk_Progress")),
+        Col("Resource", width=13, formula=f'IF({blank},"",{task("tsk_Resource")}&"")'),
+        Col("Status", width=11, center=True, formula=show("tsk_Status")),
+        # helpers read by the timeline's conditional formatting
+        Col("_Row", "help", 5, formula=f"ROW()-ROW({g.head('ID')})"),
+        Col("_IsSummary", "help", 5, formula=f"IF({blank},FALSE(),{task('tsk_IsSummary')})"),
+        Col("_IsMilestone", "help", 5, formula=f"IF({blank},FALSE(),AND({task('tsk_IsLeaf')}=1,N({task('tsk_Duration')})=0))"),
+        Col("_DoneFrom", "help", 8, "dd-mmm;;-", formula=(
+            f"IF({blank},0,IF(AND({task('tsk_IsLeaf')}=1,NOT({g.row('_IsMilestone')}),N({pct})>0),{fs},0))")),
+        Col("_DoneTo", "help", 8, "dd-mmm;;-", formula=(
+            f"IF({g.row('_DoneFrom')}=0,0,IF({pct}>=1,{ff},MAX({g.row('_DoneFrom')},{fs}+ROUND(({ff}-{fs}+1)*{pct},0)-1)))")),
+        Col("_RemFrom", "help", 8, "dd-mmm;;-", formula=(
+            f"IF({blank},0,IF(OR({task('tsk_IsLeaf')}<>1,{g.row('_IsMilestone')},N({pct})>=1),0,"
+            f"IF({g.row('_DoneTo')}>0,{g.row('_DoneTo')}+1,{fs})))")),
+        Col("_RemTo", "help", 8, "dd-mmm;;-", formula=f"IF({g.row('_RemFrom')}=0,0,{ff})"),
+        Col("_Late", "help", 5, formula=f"IF({blank},FALSE(),N({task('tsk_Variance')})>0)"),
+        Col("_Deadline", "help", 8, "dd-mmm;;-", formula=f"IF({blank},0,N({task('tsk_Deadline')}))"),
+    ]
+    L = add_table(ws, TABLE, HEADER_ROW, 1, cols, n_rows, autofilter=False)
+    for c in cols:
+        for r in range(HEADER_ROW + 1, HEADER_ROW + n_rows + 1):
+            ws[f"{L[c.name]}{r}"].font = font(size=9)
+    ws.row_dimensions[HEADER_ROW].height = 30
+    ws.column_dimensions.group(L["_Row"], L["_Deadline"], hidden=True, outline_level=1)
+
+    origin_col = len(cols) + 1                       # narrow spacer column; the timeline starts after it
+    ws.column_dimensions[get_column_letter(origin_col)].width = 1
+    name(wb, "gantt_Origin", f"Gantt!${get_column_letter(origin_col)}${HEADER_ROW}")
+    first, last = origin_col + 1, origin_col + n_days
+    day = "GanttStart+(COLUMN()-COLUMN(gantt_Origin)-1)*GanttPeriod"
+    for col in range(first, last + 1):
+        letter = get_column_letter(col)
+        ws.column_dimensions[letter].width = 2.9
+        ws.cell(HEADER_ROW, col, f"={day}").number_format = "d"
+        ws.cell(4, col, f'=IF(OR(COLUMN()-COLUMN(gantt_Origin)=1,DAY({day})<=GanttPeriod),TEXT({day},"mmm yy"),"")')
+        ws.cell(3, col, f'=IF(GanttPeriod=1,LEFT(TEXT({day},"ddd"),1),"")')
+        for r, size, colour in ((3, 8, "404040"), (4, 8, "404040"), (5, 8, "FFFFFF")):
+            c = ws.cell(r, col)
+            c.font = font(size=size, bold=(r == 4), color=colour)
+            c.alignment = Alignment(horizontal="left" if r == 4 else "center", vertical="center")
+        ws.cell(HEADER_ROW, col).fill = HEADER_FILLS["calc"]
+
+    _timeline_rules(ws, L, first, last, n_rows)
+    _legend(ws, first)
+    ws.freeze_panes = f"{get_column_letter(first)}{HEADER_ROW + 1}"
+    ws.sheet_view.zoomScale = 90
+    return ws
+
+
+def _timeline_rules(ws, L, first, last, n_rows):
+    top, bottom = HEADER_ROW + 1, HEADER_ROW + n_rows
+    g1 = get_column_letter(first)
+    grid = f"{g1}{top}:{get_column_letter(last)}{bottom}"
+    d = f"{g1}${HEADER_ROW}"                                   # this column's date (header row)
+    at = lambda col: f"${L[col]}{top}"                         # this row's helper cell
+    in_period = lambda x: f"AND({x}>0,{x}>={d},{x}<{d}+GanttPeriod)"
+    overlaps = lambda a, b: f"AND({a}>0,{d}<={b},{d}+GanttPeriod-1>={a})"
+    thin = lambda colour: Side(style="thin", color=colour)
+    rules = [
+        FormulaRule(formula=[in_period(at("_Deadline"))], fill=fill(COLOURS["deadline"])),
+        FormulaRule(formula=[f"AND({at('_IsSummary')},{overlaps(at('Forecast Start'), at('Forecast Finish'))})"],
+                    fill=fill(COLOURS["summary"])),
+        FormulaRule(formula=[f"AND({at('_IsMilestone')},{in_period(at('Forecast Start'))})"], fill=fill(COLOURS["milestone"])),
+        FormulaRule(formula=[overlaps(at("_DoneFrom"), at("_DoneTo"))], fill=fill(COLOURS["done"])),
+        FormulaRule(formula=[f"AND({at('_Late')},{overlaps(at('_RemFrom'), at('_RemTo'))})"], fill=fill(COLOURS["late"])),
+        FormulaRule(formula=[overlaps(at("_RemFrom"), at("_RemTo"))], fill=fill(COLOURS["remaining"])),
+        FormulaRule(formula=[f"AND(ISNUMBER({at('Planned Start')}),{overlaps(at('Planned Start'), at('Planned Finish'))})"],
+                    border=Border(top=thin(COLOURS["planned"]), bottom=thin(COLOURS["planned"]))),
+        FormulaRule(formula=[in_period("StatusDate")],
+                    border=Border(left=thin(COLOURS["status"]), right=thin(COLOURS["status"]))),
+        FormulaRule(formula=[f"AND(GanttPeriod=1,NETWORKDAYS.INTL({d},{d},{WD})=0)"], fill=fill(COLOURS["nonworking"])),
+    ]
+    for rule in rules:
+        ws.conditional_formatting.add(grid, rule)
+    ws.conditional_formatting.add(f"{g1}{HEADER_ROW}:{get_column_letter(last)}{HEADER_ROW}",
+                                  FormulaRule(formula=[in_period("StatusDate")], fill=fill("C00000")))
+    panel = f"A{top}:{L['Status']}{bottom}"
+    ws.conditional_formatting.add(panel, FormulaRule(formula=[at("_IsSummary")], font=Font(bold=True), fill=fill("DDEBF7")))
+    from .tasks import STATUS_COLOURS
+    for status, colour in STATUS_COLOURS.items():
+        ws.conditional_formatting.add(f"{L['Status']}{top}:{L['Status']}{bottom}",
+                                      FormulaRule(formula=[f'{at("Status")}="{status}"'], font=Font(color=colour, bold=True)))
+
+
+def _legend(ws, first):
+    planned = Side(style="thin", color=COLOURS["planned"])
+    items = [("Planned (outline)", None, Border(top=planned, bottom=planned)),
+             ("Done (% complete)", COLOURS["done"], None), ("Remaining - on track", COLOURS["remaining"], None),
+             ("Remaining - late vs plan", COLOURS["late"], None), ("Summary (forecast)", COLOURS["summary"], None),
+             ("Milestone (forecast)", COLOURS["milestone"], None), ("Deadline", COLOURS["deadline"], None),
+             ("Status date", None, Border(left=Side(style="medium", color=COLOURS["status"]))),
+             ("Non-working day", COLOURS["nonworking"], None)]
+    for i, (text, colour, border) in enumerate(items):
+        row, col = 1 + i // 5, first + (i % 5) * 11
+        swatch = ws.cell(row, col)
+        if colour:
+            swatch.fill = fill(colour)
+        if border:
+            swatch.border = border
+        ws.cell(row, col + 1, text).font = font(size=9)
+    ws.cell(3, 1, "Timeline: conditional formatting only (no formulas), so it costs no recalculation.").font = NOTE_FONT

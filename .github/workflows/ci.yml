@@ -10,28 +10,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install openpyxl
-        run: pip install openpyxl
-
-      - name: Install LibreOffice (recalculates the workbook in tests)
+      # System Python, because the timing check drives LibreOffice through python3-uno.
+      - name: Install LibreOffice and Python packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libreoffice-calc
+          sudo apt-get install -y --no-install-recommends libreoffice-calc python3-uno python3-pip
+          python3 -m pip install --break-system-packages -r requirements-dev.txt
 
       - name: Run tests
-        run: python -m unittest discover -s tests -v
+        run: python3 -m unittest discover -s tests -v
 
       - name: Build workbooks
         run: |
           mkdir -p dist
-          python scripts/build_planner.py dist/Project_Planner.xlsx --recalc
-          python scripts/build_planner.py dist/Project_Planner_Blank.xlsx --blank --recalc
+          python3 scripts/build_planner.py dist/Project_Planner.xlsx --recalc
+          python3 scripts/build_planner.py dist/Project_Planner_Blank.xlsx --blank --recalc
+          python3 scripts/build_planner.py dist/Stress_1000_tasks.xlsx --tasks 1000 --stress 33
+
+      - name: Performance check (sample)
+        run: python3 scripts/perf_check.py dist/Project_Planner.xlsx --profile sample --timing
+
+      - name: Performance check (1,000-task stress workbook)
+        run: python3 scripts/perf_check.py dist/Stress_1000_tasks.xlsx --profile stress --timing
 
       - uses: actions/upload-artifact@v4
         with:
           name: workbooks
-          path: dist/*.xlsx
+          path: |
+            dist/Project_Planner.xlsx
+            dist/Project_Planner_Blank.xlsx

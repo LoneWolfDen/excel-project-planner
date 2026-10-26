@@ -6,6 +6,7 @@ Formulas use named ranges (`ProjectStart`, `tsk_PlanStart`, `res_Rate`, ...) ins
 
 ## Files
 - `Project_Planner.xlsx` – the template, loaded with a 30-task sample project.
+- `docs/` – [MS Project gap analysis](docs/MSP_GAP_ANALYSIS.md), [backlog](docs/BACKLOG.md), [testing on iPhone](docs/TESTING_ON_IPHONE.md).
 - `scripts/build_planner.py` – regenerates the workbook: `python scripts/build_planner.py Project_Planner.xlsx` (needs `openpyxl`).
 
 ## Sheets

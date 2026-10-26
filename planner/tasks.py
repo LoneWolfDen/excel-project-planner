@@ -21,7 +21,6 @@ from openpyxl.styles import Font
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from .core import (DATE, LABEL_FONT, NOTE_FONT, Col, Tab, add_table, col_range, fill, name, title)
-from .sample import COLUMNS as SAMPLE_COLUMNS
 
 TABLE = "Tasks"
 HEADER_ROW = 5
@@ -448,9 +447,12 @@ def build_tasks(wb, rows, n_rows):
     for key, kind, width, fmt, center, note in LAYOUT:
         values = []
         if key == "UID":
-            values = list(range(1, n_rows + 1))           # stable IDs: links keep working when rows move
-        elif key in SAMPLE_COLUMNS:
-            values = [r[key] for r in rows]
+            # stable IDs: links keep working when rows move. Imported rows keep their own; the rest follow on.
+            given = [r.get("UID") for r in rows]
+            spare = iter(range(max([u for u in given if u] or [0]) + 1, 10 ** 9))
+            values = [u if u else next(spare) for u in given] + [next(spare) for _ in range(n_rows - len(rows))]
+        elif kind == "in" and any(key in r for r in rows):
+            values = [r.get(key) for r in rows]
         cols.append(Col(N[key], kind, width, fmt, None if kind == "in" else f[key], center, note, key, values))
     L = add_table(ws, TABLE, HEADER_ROW, 1, cols, n_rows)
     ws.row_dimensions[HEADER_ROW].height = 42

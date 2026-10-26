@@ -15,19 +15,20 @@ NAMES = {"Resource Name": "res_Name", "Initials": "res_Initials", "Group": "res_
          "Max Units": "res_MaxUnits", "Std Rate": "res_Rate", "Email": "res_Email"}
 
 
-def build_resources(wb, blank, n_rows=50):
+def build_resources(wb, blank, n_rows=50, resources=None):
+    """resources: (name, initials, group, max units, rate, email[, type]) rows replacing the sample (an import)."""
     ws = wb.create_sheet("Resources")
     title(ws, "Resource Sheet", "Like MS Project's Resource Sheet. Names here feed the Resource dropdown on Tasks. "
                                 "Add rows to the table for more people.")
     ws.column_dimensions["A"].width = 3
-    data = [] if blank else RESOURCES
+    data = resources if resources is not None else [] if blank else RESOURCES
     t = Tab("ResourceTable")
     nm = t.row("Resource Name")
     letters = add_table(ws, "ResourceTable", 5, 2, [
         Col("Resource Name", "in", 22, values=[d[0] for d in data]),
         Col("Initials", "in", 9, values=[d[1] for d in data]),
         Col("Group", "in", 20, values=[d[2] for d in data]),
-        Col("Type", "in", 10, values=["Work"] * len(data), note="Work, Material or Cost (MS Project resource types)."),
+        Col("Type", "in", 10, values=[d[6] if len(d) > 6 else "Work" for d in data], note="Work, Material or Cost (MS Project resource types)."),
         Col("Max Units", "in", 10, "0%", values=[d[3] for d in data], note="Availability: 100% = full time."),
         Col("Std Rate", "in", 12, "#,##0.00", values=[d[4] for d in data], note="Standard rate per hour."),
         Col("Email", "in", 26, values=[d[5] for d in data]),

@@ -108,7 +108,8 @@ def settings_rows(blank, max_sprints):
     ]
 
 
-def build_settings(wb, blank, max_sprints):
+def build_settings(wb, blank, max_sprints, values=None):
+    """values: {setting name: value} replacing the defaults (an import sets the project's own)."""
     st = wb.create_sheet("Settings")
     title(st, "Project Settings",
           "Blue = edit me. Grey = calculated. Column D shows the defined name every formula uses for that setting.")
@@ -118,6 +119,8 @@ def build_settings(wb, blank, max_sprints):
     st.column_dimensions["A"].width = 3
     rows = {}
     for i, (n, label, value, fmt, is_input, note) in enumerate(settings_rows(blank, max_sprints)):
+        if values and n in values:
+            value = values[n]
         r = 5 + i
         rows[n] = r
         st.cell(r, 2, label).font = font()
@@ -165,11 +168,13 @@ HOLIDAYS = [(dt.date(2026, 12, 24), "Christmas Eve (example - replace with your 
             (dt.date(2027, 1, 1), "New Year's Day (example)")]
 
 
-def build_holidays(wb, blank, n_rows=100):
+def build_holidays(wb, blank, n_rows=100, holidays=None):
+    """holidays: (date, description) rows replacing the sample (an import)."""
     ws = wb.create_sheet("Holidays")
     title(ws, "Holidays & Non-Working Days",
           "Every date in this table is skipped by all scheduling formulas (named range: Holidays). Add rows to the table as needed.")
-    data = [] if blank else HOLIDAYS
+    data = holidays if holidays is not None else [] if blank else HOLIDAYS
+    n_rows = max(n_rows, len(data) + 20)
     add_table(ws, "HolidayTable", 4, 2, [
         Col("Date", "in", 18, DATE, values=[d for d, _ in data]),
         Col("Description", "in", 50, values=[t for _, t in data]),

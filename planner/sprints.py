@@ -15,21 +15,23 @@ GOALS = ["Charter & kickoff", "Requirements", "Design & architecture", "Foundati
          "Release & hypercare", "Hypercare", "Close-out"]
 
 
-def work_between(start, end, resource=None):
-    """Hours of task work scheduled from date start to date end (inclusive), counting working days only.
+def work_upto(d, resource=None):
+    """Hours of task work scheduled up to and including working day d (counted from the project start).
 
-    Uses the cumulative form W(D) = SUMIFS(work, finish < D) + D * SUMIFS(work per day, running on D)
-    - SUMIFS(work before start, running on D), with D in working days since the project start. Six SUMIFS per cell
-    are far cheaper than a SUMPRODUCT over every task, and SUMIFS needs no array formulas."""
+    W(D) = SUMIFS(work, finish < D) + D * SUMIFS(work per day, running on D) - SUMIFS(work before start, running on D).
+    Three SUMIFS are far cheaper than a SUMPRODUCT over every task, and SUMIFS needs no array formulas."""
     res = f',tsk_Resource,{resource}' if resource else ""
+    running = f'tsk_StartWD,"<="&{d},tsk_FinishWD,">="&{d}{res}'
+    return (f'(SUMIFS(tsk_LeafWork,tsk_FinishWD,"<"&{d},tsk_FinishWD,">0"{res})'
+            f'+{d}*SUMIFS(tsk_WorkPerWD,{running})-SUMIFS(tsk_WorkBeforeStart,{running}))')
 
-    def upto(d):
-        running = f'tsk_StartWD,"<="&{d},tsk_FinishWD,">="&{d}{res}'
-        return (f'(SUMIFS(tsk_LeafWork,tsk_FinishWD,"<"&{d},tsk_FinishWD,">0"{res})'
-                f'+{d}*SUMIFS(tsk_WorkPerWD,{running})-SUMIFS(tsk_WorkBeforeStart,{running}))')
+
+def work_between(start, end, resource=None):
+    """Hours of task work scheduled from date start to date end (inclusive), counting working days only:
+    the difference of two cumulative totals (work_upto)."""
     first = f"NETWORKDAYS.INTL(ProjectStart,{start},{WD})"
     last = f"NETWORKDAYS.INTL(ProjectStart,{end},{WD})"
-    return f"({upto(last)}-{upto(f'({first}-1)')})"
+    return f"({work_upto(last, resource)}-{work_upto(f'({first}-1)', resource)})"
 
 
 def build_sprints(wb, blank, n_sprints, n_resources):
@@ -58,18 +60,53 @@ def build_sprints(wb, blank, n_sprints, n_resources):
             formula=f'IF(OR({has},N({r("Capacity")})=0),"",{r("Planned Work")}/{r("Capacity")})'),
         Col("Status", width=12, center=True,
             formula=f'IF({has},"",IF(StatusDate>{r("End")},"Closed",IF(StatusDate>={r("Start")},"Active","Future")))'),
+        # agile: story points. Done = detail tasks finished in the sprint; remaining = scope minus everything done by
+        # the sprint end (or the status date), so the columns are a release burndown
+        Col("Points Capacity", "in", 9, "0.#", center=True,
+            note="Optional: story points the team can take on in the sprint. Committed Points turn red above it."),
+        Col("Committed Points", width=10, fmt="0.#", center=True,
+            formula=f'IF({has},"",SUMIFS(tsk_LeafPoints,tsk_Sprint,{r("Sprint")}))',
+            note="Story points of the tasks in this sprint (Tasks > Sprint)."),
+        Col("Done Points", width=9, fmt="0.#", center=True,
+            formula=(f'IF(OR({has},{r("Status")}="Future"),"",SUMIFS(tsk_LeafPoints,tsk_DoneDate,">="&{r("Start")},'
+                     f'tsk_DoneDate,"<="&{r("End")}))'),
+            note="Story points of tasks finished during the sprint (by Actual Finish)."),
+        Col("Velocity", width=9, fmt="0.0", center=True,
+            formula=(f'IF(OR({has},{r("Status")}<>"Closed"),"",AVERAGE(INDEX({s.col("Done Points")},MAX(1,{r("No")}-2))'
+                     f':INDEX({s.col("Done Points")},{r("No")})))'),
+            note="Average Done Points of this and the two previous sprints (closed sprints only)."),
+        Col("Remaining Points", width=10, fmt="0.#", center=True,
+            formula=(f'IF(OR({has},{r("Status")}="Future"),"",TotalPoints-SUMIFS(tsk_LeafPoints,tsk_DoneDate,'
+                     f'"<="&MIN({r("End")},StatusDate)))'),
+            note="Release burndown: story points not yet done at the sprint end (or the status date)."),
+        Col("Forecast Remaining", width=10, fmt="0.#", center=True,
+            formula=f'IF({has},"",TotalPoints-SUMIFS(tsk_LeafPoints,tsk_FcFinish,"<="&{r("End")}))',
+            note="Points still open at the sprint end if tasks finish on their forecast dates."),
+        Col("Ideal Remaining", width=10, fmt="0.#", center=True,
+            formula=f'IF({has},"",TotalPoints*MAX(0,1-{r("No")}/SprintCount))',
+            note="Straight line from the total scope to zero at the last sprint."),
+        # charts plot "" as zero; #N/A leaves a gap, so the burndown chart reads this copy (hidden)
+        Col("_ChartRemaining", "help", 8, formula=f'IF({r("Remaining Points")}="",NA(),{r("Remaining Points")})'),
     ]
     L = add_table(ws, "SprintTable", 5, 1, cols, n_sprints, autofilter=False)
     for column, defined in {"Sprint": "spr_Name", "Start": "spr_Start", "End": "spr_End", "Working Days": "spr_WorkDays",
-                            "Planned Work": "spr_Work", "Capacity": "spr_Capacity"}.items():
+                            "Planned Work": "spr_Work", "Capacity": "spr_Capacity", "Status": "spr_Status",
+                            "Committed Points": "spr_Committed", "Done Points": "spr_Done", "Velocity": "spr_Velocity",
+                            "Remaining Points": "spr_Remaining"}.items():
         name(wb, defined, f"SprintTable[{column}]")
     first, last = 6, 5 + n_sprints
     cf = ws.conditional_formatting
-    cf.add(f"A{first}:K{last}", FormulaRule(formula=[f'${L["Sprint"]}{first}=""'], font=Font(color="D9D9D9")))
-    cf.add(f"A{first}:K{last}", FormulaRule(formula=[f'${L["Status"]}{first}="Active"'], fill=fill("FFF2CC"), font=Font(bold=True)))
+    end = L["Ideal Remaining"]
+    ws.column_dimensions[L["_ChartRemaining"]].hidden = True
+    cf.add(f"A{first}:{end}{last}", FormulaRule(formula=[f'${L["Sprint"]}{first}=""'], font=Font(color="D9D9D9")))
+    cf.add(f"A{first}:{end}{last}", FormulaRule(formula=[f'${L["Status"]}{first}="Active"'], fill=fill("FFF2CC"), font=Font(bold=True)))
     cf.add(f"{L['Utilisation']}{first}:{L['Utilisation']}{last}",
            FormulaRule(formula=[f"AND(ISNUMBER(${L['Utilisation']}{first}),${L['Utilisation']}{first}>1)"],
                        font=Font(color="C00000", bold=True), fill=fill("FFC7CE")))
+    pc, cp = L["Points Capacity"], L["Committed Points"]
+    cf.add(f"{cp}{first}:{cp}{last}", FormulaRule(
+        formula=[f"AND(N(${pc}{first})>0,N(${cp}{first})>${pc}{first})"], font=Font(color="C00000", bold=True),
+        fill=fill("FFC7CE")))
 
     load_top = last + 3
     util_top = load_top + n_resources + 5

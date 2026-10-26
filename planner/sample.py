@@ -4,9 +4,10 @@ import datetime as dt
 D = dt.date
 
 # Level, Task Name, Mode, Duration, Pred1 UID, Type, Lag, Pred2 UID, Type, Lag, Start No Earlier Than, Deadline,
-# Actual Start, Actual Finish, % Complete, Resource, Units, Notes. Actual Cost (ACin) comes from ACTUAL_COST.
+# Actual Start, Actual Finish, % Complete, Resource, Units, Notes. Actual Cost (ACin) and Story Points (SP) come
+# from ACTUAL_COST and STORY_POINTS.
 COLUMNS = ["Level", "Name", "Mode", "Dur", "P1", "T1", "L1", "P2", "T2", "L2", "Cons", "DL", "AS", "AF", "Pct", "Res",
-           "Units", "Notes", "ACin"]
+           "Units", "Notes", "ACin", "SP"]
 _ = None
 TASKS = [
     (1, "Initiation", "Auto", _, _, _, _, _, _, _, _, _, _, _, _, _, _, "Phase 1 - summary rows roll up dates, work, cost and progress automatically."),
@@ -44,10 +45,13 @@ TASKS = [
 
 # Actual cost entered for a few tasks (by task number); the others use Cost x Progress.
 ACTUAL_COST = {2: 3040, 6: 5040, 13: 4080}
+# Story points (by task number) for the agile reports; milestones and summaries have none.
+STORY_POINTS = {2: 3, 3: 2, 6: 8, 7: 5, 8: 5, 12: 5, 13: 8, 14: 5, 16: 5, 17: 8, 18: 3, 21: 8, 22: 5, 23: 3, 24: 1,
+                26: 5, 28: 1, 29: 2}
 
 
 def _row(i, t):
-    return dict(zip(COLUMNS, t), ACin=ACTUAL_COST.get(i + 1))
+    return dict(zip(COLUMNS, t), ACin=ACTUAL_COST.get(i + 1), SP=STORY_POINTS.get(i + 1))
 
 
 def tasks(blank=False, stress=0):

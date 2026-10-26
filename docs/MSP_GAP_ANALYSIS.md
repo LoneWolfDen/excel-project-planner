@@ -101,8 +101,8 @@ Legend: ✅ equivalent · 🟡 partial / simplified · ❌ missing · ⛔ not pr
 | Fixed cost per task | ❌ | |
 | Multiple resources per task (assignments) | ❌ | One resource with units. |
 | Resource availability over time, leave | ❌ | |
-| Resource Usage / Task Usage time-phased views | 🟡 | Per sprint only, prorated by calendar day (weekends included). |
-| Over-allocation detection | 🟡 | Per resource per sprint. |
+| Resource Usage / Task Usage time-phased views | 🟡 | v1.3: resource x week hours and utilisation (working days only), plus per sprint. No task usage view. |
+| Over-allocation detection | ✅ | Per resource per week and per sprint, counted on the Resource Report. |
 | Resource graph | 🟡 | Sprint capacity vs work chart. |
 | Team Planner | ❌ | |
 
@@ -126,8 +126,8 @@ Legend: ✅ equivalent · 🟡 partial / simplified · ❌ missing · ⛔ not pr
 | MS Project feature | Planner | Notes |
 |---|---|---|
 | Dashboard / Project Overview | ✅ | KPIs, status counts, next milestones, sprint chart. |
-| Burndown / burnup | ❌ | |
-| Cost overview, Work overview, Resource overview | 🟡 | v1.3: earned value and phase cost on the reports; no time-phased cost. |
+| Burndown / burnup | 🟡 | v1.3: burndown; burn-up of scope changes needs snapshots. |
+| Cost overview, Work overview, Resource overview | 🟡 | v1.3: earned value, phase cost and the Resource Report; no time-phased cost. |
 | Late tasks, upcoming tasks, milestone report | ✅ | v1.3: Schedule Report (late, starting / due in a look-ahead window, milestones, critical). |
 | Project status with RAG | ✅ | v1.3: calculated RAG by area with thresholds, PM override, commentary. |
 
@@ -136,10 +136,10 @@ Legend: ✅ equivalent · 🟡 partial / simplified · ❌ missing · ⛔ not pr
 | Feature | Planner | Notes |
 |---|---|---|
 | Sprints with dates | ✅ | Generated from start, length, count. |
-| Sprint assigned to task | 🟡 | Automatic from forecast start; no manual override. |
-| Story points, velocity | ❌ | |
+| Sprint assigned to task | ✅ | v1.3: automatic from forecast start, or Planned Sprint. |
+| Story points, velocity | ✅ | v1.3: per sprint, rolling velocity, forecast finish sprint. |
 | Sprint / task board (Kanban) | ❌ | |
-| Sprint burndown | ❌ | |
+| Sprint burndown | ✅ | v1.3: release burndown by sprint and the current sprint by day. |
 | Backlog | 🟡 | Items outside sprint range show "Backlog". |
 
 ### Interoperability (~40%)
@@ -163,7 +163,7 @@ These are defects or rough edges in what exists, not missing features.
 3. ~~**Inserting a row renumbers IDs**~~ – links use UIDs (v1.1). Insert with *Insert Copied Cells* so the new row has formulas.
 4. ~~**Bad links cause circular references**~~ – self, own-summary, empty-row and missing-UID links are ignored and explained (v1.1).
    A loop through several tasks (A → B → A) is still circular.
-5. **Sprint and resource hours are prorated by calendar day,** so weekend days carry load.
+5. ~~**Sprint and resource hours are prorated by calendar day**~~ – working days only since v1.2.
 6. **Material and Cost resources** produce hours and count toward cost as if they were people.
 7. ~~**Dashboard "planned progress"** only counts tasks whose planned finish has passed~~ – partial credit by working day (v1.3).
 8. **Fixed capacity:** 200 tasks, 50 resources, 26 sprints, 150 Gantt columns; extending needs the build script.

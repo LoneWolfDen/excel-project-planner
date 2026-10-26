@@ -43,7 +43,7 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 ## Limits
 - Tables start with 200 task rows, 50 resources, 26 sprints and 100 holidays, and grow when you add rows. The Gantt and MSP_Tasks sheets show the first 200 tasks (rebuild with `--tasks N` for more).
 - Insert tasks with right-click → Insert → Table Rows Above (formulas fill in), then give the row `NextFreeUID`.
-- **A predecessor must be a detail task listed above its successor.** That rule is what lets the workbook run with no volatile functions and no circular references. Links that break it (or point to the task itself, an empty row or a missing UID) are ignored and explained in Link Check. Plans imported from MS Project may need reordering.
+- **A predecessor must be a detail task listed above its successor.** It keeps the schedule and the critical path consistent. Links that break it (or point to the task itself, an empty row or a missing UID) are ignored and explained in Link Check. Plans imported from MS Project may need reordering.
 - The status date is a typed date (Ctrl+; for today), not `TODAY()`, so it doesn't force a full recalculation after every edit. Update it when you report progress.
 
 ## Tests

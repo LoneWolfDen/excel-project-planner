@@ -4,12 +4,17 @@ Every formula below is a calculated column: one formula per column, written with
 (R("Duration") is this row's Duration, shown by Excel as [@Duration]). Rows inserted inside the table get the
 formulas automatically.
 
-No volatile functions. Two rules make that possible without circular references (docs/ARCHITECTURE.md):
-  * a predecessor must sit ABOVE its successor, and must be a detail task. Look-ups then read the rows above
-    this one (A("..."), the header-to-previous-row range), which can never include the row itself;
-  * detail-task values live in _Leaf... helper columns. Summary rows roll those up over the rows below them with
-    INDEX(col, first):INDEX(col, last), and the leaf columns never read the summary columns.
-Excel then recalculates only what a change can affect, instead of the whole schedule after every edit.
+Reading another row's CALCULATED value (a predecessor's finish, the parent's WBS) uses OFFSET from the column's
+header cell. Excel judges circular references by the ranges a formula names, and OFFSET names only the header
+cell; it is also the only construct that stays correct when rows are inserted directly above (a plain range
+ending at the row above would not grow). OFFSET is volatile, so those few columns recalculate after every edit;
+docs/ARCHITECTURE.md records the measurements and why the alternatives were rejected.
+
+Everything else avoids volatile functions:
+  * detail-task values live in _Leaf... helper columns; summaries roll them up over the rows below them with
+    INDEX(col, first):INDEX(col, last), and the leaf columns never read the summary columns;
+  * look-ups of INPUT columns (UID, Task Name, ID) use INDEX/MATCH over the whole column.
+A predecessor must be a detail task listed above its successor (the critical path's backward pass relies on it).
 """
 from openpyxl.formatting.rule import FormulaRule
 from openpyxl.styles import Font
@@ -83,9 +88,9 @@ def H(key):
     return T.head(N[key])
 
 
-def A(key):
-    """Header cell down to the row above this one, in one column (position 1 = header, 2 = first task)."""
-    return T.above(N[key])
+def other_row(key, pos):
+    """This column's value in the task at position pos (1 = first task). OFFSET from the header: see module docstring."""
+    return f"OFFSET({H(key)},{pos},0)"
 
 
 def block(key):
@@ -99,27 +104,26 @@ def wdiff(a, b):
 
 
 def pred_pos(p):
-    """Where the predecessor sits among the rows above (position in A(...); 0 = no predecessor, -1 = not above).
+    """Position of the predecessor in the table (1 = first task; 0 = no predecessor, -1 = UID not found).
     Looked up once per link, so the columns that need the predecessor don't each repeat a MATCH."""
-    return f'IF(N({R(p)})=0,0,IFERROR(MATCH({R(p)},{A("UID")},0),-1))'
+    return f'IF(N({R(p)})=0,0,IFERROR(MATCH({R(p)},{C("UID")},0),-1))'
 
 
 def link_problem(p, pos):
     """Why a predecessor link can't be used ("" = fine). Reads no dates, so it can never be circular."""
     pred, at = R(p), R(pos)
     return (f'IF(OR(N({pred})=0,{R("Name")}=""),"",IF({R("IsSum")},"ignored: summary tasks roll up",'
-            f'IF({pred}={R("UID")},"links to itself",'
-            f'IF({at}<0,IF(ISNUMBER(MATCH({pred},{C("UID")},0)),"UID "&{pred}&" is below this task: move it above",'
-            f'"UID "&{pred}&" not found"),'
-            f'IF(INDEX({A("Name")},{at})="","UID "&{pred}&" is an empty row",'
-            f'IF(INDEX({A("IsSum")},{at}),"UID "&{pred}&" is a summary: link to one of its tasks",""))))))')
+            f'IF({pred}={R("UID")},"links to itself",IF({at}<0,"UID "&{pred}&" not found",'
+            f'IF(INDEX({C("Name")},{at})="","UID "&{pred}&" is an empty row",'
+            f'IF({at}>{R("Idx")},"UID "&{pred}&" is below this task: move it above",'
+            f'IF(INDEX({C("IsSum")},{at}),"UID "&{pred}&" is a summary: link to one of its tasks","")))))))')
 
 
 def driver(p, t, lag, problem, start_key, finish_key):
     """Earliest start imposed by one predecessor link (FS/SS/FF/SF + lag); 0 if there is no usable link."""
     pos = R("R1" if p == "P1" else "R2")
-    pred_finish = f"INDEX({A(finish_key)},{pos})"
-    pred_start = f"INDEX({A(start_key)},{pos})"
+    pred_finish = other_row(finish_key, pos)
+    pred_start = other_row(start_key, pos)
     lag, dur = f"N({R(lag)})", R("Dur")
     back = f"-MAX(0,N({dur})-1)"
     return (f'IF(OR({pos}<=0,{R(problem)}<>"",{R("IsSum")},{R("Name")}=""),0,'
@@ -133,7 +137,7 @@ def driver(p, t, lag, problem, start_key, finish_key):
 def pred_text(p, t, lag, problem, by_id):
     """One link in MS Project notation: 12, 6SS+3d, 17FF+1d."""
     typ, lg = f'IF({R(t)}="","FS",{R(t)})', f"N({R(lag)})"
-    ref = f"INDEX({A('ID')},{R('R1' if p == 'P1' else 'R2')})" if by_id else R(p)
+    ref = f"INDEX({C('ID')},{R('R1' if p == 'P1' else 'R2')})" if by_id else R(p)
     return (f'IF(OR(N({R(p)})=0,{R(problem)}<>""),"",{ref}&IF(AND({typ}="FS",{lg}=0),"",'
             f'{typ}&IF({lg}=0,"",IF({lg}>0,"+","")&{lg}&"d")))')
 
@@ -149,9 +153,8 @@ def formulas():
     f["Idx"] = f"ROW()-ROW({H('ID')})"
     f["Parent"] = (f'IF(OR({blank},{R("Lvl")}<=1),0,IFERROR(LOOKUP(2,1/({T.upto(N["Lvl"])}={R("Lvl")}-1),'
                    f'ROW({T.upto(N["Lvl"])})),0))')
-    parent_pos = f'{R("Parent")}-ROW({H("WBS")})+1'
     f["WBS"] = (f'IF({blank},"",IF({R("Lvl")}=1,COUNTIF({T.upto(N["Lvl"])},1)&"",IF({R("Parent")}=0,"?",'
-                f'INDEX({A("WBS")},{parent_pos})&"."&'
+                f'{other_row("WBS", R("Parent") + "-ROW(" + H("WBS") + ")")}&"."&'
                 f'COUNTIF(INDEX({C("Lvl")},{R("Parent")}-ROW({H("Lvl")})+1):{R("Lvl")},{R("Lvl")}))))')
     # a row is a summary when the next row is one level deeper; only summaries need the descendant count
     f["NextLvl"] = f'IFERROR(N(INDEX({C("Lvl")},{R("Idx")}+1)),0)'

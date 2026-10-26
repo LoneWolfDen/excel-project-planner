@@ -8,9 +8,9 @@ Static checks (openpyxl only):
   * volatile functions (OFFSET, INDIRECT, TODAY, NOW, RAND, ...): every use must be on the allow-list in
     perf_budget.json, because a volatile cell makes Excel recalculate it, and everything that depends on it,
     after every edit
-  * A1 references inside formulas: there must be none; formulas use structured references and defined names.
-    One pattern is allowed, inside an Excel Table only: a range from the table's header cell down to the row
-    above ($X$5:X9 in row 10), which Excel has no structured reference for (see docs/ARCHITECTURE.md)
+  * A1 references inside formulas: there must be none; formulas use structured references and defined names
+  * Excel's hard limits: balanced parentheses, at most 8,192 characters and 64 nested functions per formula
+    (LibreOffice silently repairs some of these; Excel refuses the formula or repairs the file)
 Timing (LibreOffice via python3-uno, with --timing):
   * full recalculation and a single-edit recalculation, median of three runs
 
@@ -32,7 +32,6 @@ from openpyxl.formula import Tokenizer
 
 ROOT = Path(__file__).resolve().parents[1]
 VOLATILE = ("OFFSET", "INDIRECT", "TODAY", "NOW", "RAND", "RANDBETWEEN", "CELL", "INFO")
-ABOVE = re.compile(r"^\$([A-Z]{1,3})\$(\d+):([A-Z]{1,3})(\d+)$")
 A1 = re.compile(r"^(?:'?[^!']+'?!)?\$?(?:[A-Z]{1,3}\$?\d+(?::\$?[A-Z]{1,3}\$?\d+)?|[A-Z]{1,3}:\$?[A-Z]{1,3}|\d+:\$?\d+)$")
 
 
@@ -44,23 +43,40 @@ def formulas(wb):
                     yield ws.title, c, c.value
 
 
-def table_header(ws, cell):
-    """Header row of the Excel Table containing cell, or None."""
-    for t in ws.tables.values():
-        lo, hi = t.ref.split(":")
-        c1, r1 = openpyxl.utils.cell.coordinate_from_string(lo)
-        c2, r2 = openpyxl.utils.cell.coordinate_from_string(hi)
-        cols = range(openpyxl.utils.column_index_from_string(c1), openpyxl.utils.column_index_from_string(c2) + 1)
-        if r1 < cell.row <= r2 and cell.column in cols:
-            return r1
-    return None
+MAX_LENGTH, MAX_NESTING = 8192, 64
 
 
-def is_rows_above(ref, cell, header_row):
-    """$X$<header>:X<row-1> in a table: the one allowed A1 pattern."""
-    m = ABOVE.match(ref)
-    return bool(m and header_row and m.group(1) == m.group(3) and int(m.group(2)) == header_row
-                and int(m.group(4)) == cell.row - 1)
+def excel_limit_problems(formula):
+    """Problems Excel would reject: unbalanced parentheses, too long, nested too deeply."""
+    depth = deepest = 0
+    in_string = False
+    brackets = 0
+    for ch in formula:
+        if ch == '"':
+            in_string = not in_string
+        elif in_string:
+            continue
+        elif ch == "[":
+            brackets += 1
+        elif ch == "]":
+            brackets -= 1
+        elif brackets:
+            continue                                   # inside a structured reference
+        elif ch == "(":
+            depth += 1
+            deepest = max(deepest, depth)
+        elif ch == ")":
+            depth -= 1
+            if depth < 0:
+                return ["unbalanced parentheses"]
+    problems = []
+    if depth or in_string or brackets:
+        problems.append("unbalanced parentheses, quotes or brackets")
+    if len(formula) > MAX_LENGTH:
+        problems.append(f"{len(formula)} characters (Excel allows {MAX_LENGTH})")
+    if deepest > MAX_NESTING:
+        problems.append(f"nesting depth {deepest} (Excel allows {MAX_NESTING})")
+    return problems
 
 
 def a1_references(formula, names):
@@ -82,9 +98,13 @@ def static_report(path):
     per_sheet = Counter()
     volatile = defaultdict(Counter)          # sheet -> function -> cells
     a1 = []
-    above = 0
+    limits = []
+    longest = 0
     for sheet, cell, f in formulas(wb):
         coord = cell.coordinate
+        longest = max(longest, len(f))
+        for problem in excel_limit_problems(f):
+            limits.append(f"{sheet}!{coord}: {problem}")
         per_sheet[sheet] += 1
         upper = f.upper()
         for fn in VOLATILE:
@@ -92,15 +112,11 @@ def static_report(path):
                 volatile[sheet][fn] += 1
         refs = a1_references(f, names)
         if refs:
-            header = table_header(wb[sheet], cell)
-            rest = [r for r in refs if not is_rows_above(r, cell, header)]
-            above += len(refs) - len(rest)
-            if rest:
-                a1.append(f"{sheet}!{coord}: {', '.join(rest)}")
+            a1.append(f"{sheet}!{coord}: {', '.join(refs)}")
     return {"formulas": dict(per_sheet), "formulas_total": sum(per_sheet.values()),
             "volatile": {s: dict(c) for s, c in volatile.items()},
             "volatile_cells": sum(sum(c.values()) for c in volatile.values()), "a1_references": a1,
-            "rows_above_ranges": above}
+            "excel_limit_problems": limits, "longest_formula": longest}
 
 
 def time_recalc(path, runs=3):
@@ -191,6 +207,9 @@ def check(report, budget):
             limit = allowed.get(sheet, {}).get(fn, 0)
             if n > limit:
                 problems.append(f"{sheet}: {n} cells use volatile {fn} (allowed {limit})")
+    if report["excel_limit_problems"]:
+        problems.append(f"{len(report['excel_limit_problems'])} formulas break Excel limits, e.g. "
+                        + "; ".join(report["excel_limit_problems"][:5]))
     if report["a1_references"]:
         problems.append(f"{len(report['a1_references'])} formulas contain A1 references, e.g. "
                         + "; ".join(report["a1_references"][:5]))
@@ -206,7 +225,8 @@ def markdown(path, profile, report, budget, problems):
              f"| Formulas | {report['formulas_total']:,} | {budget['formulas_max']:,} |",
              f"| Volatile formula cells | {report['volatile_cells']:,} | allow-listed per sheet |",
              f"| Formulas with A1 references | {len(report['a1_references'])} | 0 |",
-             f"| Rows-above ranges (allowed A1 pattern) | {report['rows_above_ranges']:,} | in tables only |"]
+             f"| Formulas breaking Excel limits (parentheses, length, nesting) | {len(report['excel_limit_problems'])} | 0 |",
+             f"| Longest formula | {report['longest_formula']:,} chars | {MAX_LENGTH:,} |"]
     for k, label in (("full_recalc_s", "Full recalculation (LibreOffice)"),
                      ("edit_recalc_s", "Edit a duration near the top, then recalculate"),
                      ("edit_last_task_s", "Edit the last task's duration"), ("edit_note_s", "Edit a note")):

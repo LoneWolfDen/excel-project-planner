@@ -6,10 +6,12 @@ def build_msp_tasks(wb, n_rows):
     ws = wb.create_sheet("MSP_Tasks")
     m = Tab("MSPTasks")
     n = f"(ROW()-ROW({m.head('ID')}))"
+    # Rows past the end of the Tasks table (after tasks are deleted) are blank. Every formula tests that first with
+    # a plain IF, never inside OR(), because OR evaluates all of its arguments and INDEX past the end is #REF!.
     blank = f'IFERROR(INDEX(tsk_Name,{n})="",TRUE())'
     t = lambda col: f"INDEX({col},{n})"
     show = lambda col: f'IF({blank},"",{t(col)})'
-    not_summary = lambda expr: f'IF(OR({blank},{t("tsk_IsSummary")}),"",{expr})'
+    not_summary = lambda expr: f'IF({blank},"",IF({t("tsk_IsSummary")},"",{expr}))'
     date = lambda col: f'IF({blank},"",IF(N({t(col)})=0,"",{t(col)}))'
     units = t("tsk_Units")
     cols = [
@@ -31,14 +33,14 @@ def build_msp_tasks(wb, n_rows):
         Col("Actual Finish", width=12, fmt=SHORT_DATE, formula=date("tsk_ActFinish")),
         Col("Baseline Start", width=12, fmt=SHORT_DATE, formula=show("tsk_PlanStart")),
         Col("Baseline Finish", width=12, fmt=SHORT_DATE, formula=show("tsk_PlanFinish")),
-        Col("Baseline Duration", width=9, formula=f'IF(OR({blank},{t("tsk_BaseDuration")}=""),"",N({t("tsk_BaseDuration")})&"d")'),
-        Col("Baseline Work", width=9, formula=f'IF(OR({blank},{t("tsk_BaseWork")}=""),"",N({t("tsk_BaseWork")})&"h")'),
-        Col("Baseline Cost", width=11, formula=f'IF(OR({blank},{t("tsk_BaseCost")}=""),"",N({t("tsk_BaseCost")}))'),
+        Col("Baseline Duration", width=9, formula=f'IF({blank},"",IF({t("tsk_BaseDuration")}="","",N({t("tsk_BaseDuration")})&"d"))'),
+        Col("Baseline Work", width=9, formula=f'IF({blank},"",IF({t("tsk_BaseWork")}="","",N({t("tsk_BaseWork")})&"h"))'),
+        Col("Baseline Cost", width=11, formula=f'IF({blank},"",IF({t("tsk_BaseCost")}="","",N({t("tsk_BaseCost")})))'),
         Col("Constraint Type", width=22, formula=not_summary(
             f'IF(AND({t("tsk_Mode")}<>"Manual",N({t("tsk_Constraint")})>0),"Start No Earlier Than","As Soon As Possible")')),
         Col("Constraint Date", width=12, fmt=SHORT_DATE, formula=(
-            f'IF(OR({blank},{t("tsk_IsSummary")},{t("tsk_Mode")}="Manual"),"",IF(N({t("tsk_Constraint")})=0,"",'
-            f'{t("tsk_Constraint")}))')),
+            f'IF({blank},"",IF(OR({t("tsk_IsSummary")},{t("tsk_Mode")}="Manual"),"",IF(N({t("tsk_Constraint")})=0,"",'
+            f'{t("tsk_Constraint")})))')),
         Col("Deadline", width=12, fmt=SHORT_DATE, formula=date("tsk_Deadline")),
         Col("Notes", width=40, formula=f'IF({blank},"",{t("tsk_Notes")}&"")'),
     ]

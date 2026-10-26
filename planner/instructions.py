@@ -46,17 +46,17 @@ def text(n_tasks):
         ("Predecessors", "Enter the predecessor's UID. A predecessor must be a detail task listed ABOVE its successor "
                          "(order tasks roughly by date). Links that break this, or point to an empty row or a missing UID, are "
                          "ignored and explained in the Link Check column (red). Summary rows ignore Duration / Predecessors / "
-                         "Actuals - they roll up. This rule is what keeps the workbook fast: nothing recalculates more than "
-                         "it has to, and there can be no circular references."),
+                         "Actuals - they roll up. The rule keeps the schedule and the critical path consistent and rules out "
+                         "circular references."),
         ("Mode", "Auto = scheduled from predecessors, project start and 'Start No Earlier Than'. Manual = pinned to the date in "
                  "'Start No Earlier Than'."),
         ("Rescheduling", "Settings > RescheduleAfterStatus = Yes moves incomplete work to after the status date (like MS "
                          "Project 'Update Project'), so late tasks push successors."),
         ("Capacity", f"Tables grow when you add rows: Tasks starts with {n_tasks} rows, Resources 50, Sprints 26, Holidays 100. "
                      f"The Gantt and MSP_Tasks sheets show the first {n_tasks} tasks (the Gantt says so when there are more)."),
-        ("Speed", "No volatile functions: an edit recalculates only what it can affect (a note: nothing; a duration: the "
-                  "tasks below it, summaries and reports). Each change to the build is timed in CI; see docs/ARCHITECTURE.md "
-                  "in the repository."),
+        ("Speed", "An edit recalculates in well under a second for typical plans (about 0.05 s for 200 tasks). Each change "
+                  "to the build is timed in CI; see docs/ARCHITECTURE.md in the repository. Keep the status date typed "
+                  "(not =TODAY()), which would recalculate everything after every edit."),
         ("MOVING TO MICROSOFT PROJECT", None),
         ("One-time setting", "MS Project > File > Options > Trust Center > Trust Center Settings > Legacy Formats > 'Allow "
                              "loading files with legacy or non-default file formats'."),
@@ -84,8 +84,8 @@ def text(n_tasks):
         ("Resources / Sprints", "res_Name, res_MaxUnits, res_Rate, ...  spr_Name, spr_Start, spr_End, spr_WorkDays, spr_Capacity, "
                                 "spr_Work"),
         ("Key formulas", "Calculated start = WORKDAY.INTL(MAX(ProjectStart, [@Start No Earlier Than], predecessor drivers) - 1, "
-                         "1, WorkWeek, Holidays).  Predecessor driver (FS) = WORKDAY.INTL(INDEX(<_LeafCalcFinish from the header "
-                         "to the row above>, [@_Pred1Pos]), 1 + Lag, WorkWeek, Holidays).  Planned Start = Baseline Start if set, "
+                         "1, WorkWeek, Holidays).  Predecessor driver (FS) = WORKDAY.INTL(OFFSET(Tasks[[#Headers],[_LeafCalcFinish]], "
+                         "[@_Pred1Pos], 0), 1 + Lag, WorkWeek, Holidays).  Planned Start = Baseline Start if set, "
                          "else calculated.  Summary start = MIN(INDEX(Tasks[_LeafCalcStart], [@_Row]+1):INDEX(Tasks[_LeafCalcStart], "
                          "[@_Row]+[@_Descendants])), where _Descendants = COUNTIF(Tasks[WBS], [@WBS] & \".*\")."),
     ]

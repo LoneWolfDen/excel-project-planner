@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install openpyxl
+        run: pip install openpyxl
+
+      - name: Install LibreOffice (recalculates the workbook in tests)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libreoffice-calc
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Build workbooks
+        run: |
+          mkdir -p dist
+          python scripts/build_planner.py dist/Project_Planner.xlsx --recalc
+          python scripts/build_planner.py dist/Project_Planner_Blank.xlsx --blank --recalc
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: workbooks
+          path: dist/*.xlsx

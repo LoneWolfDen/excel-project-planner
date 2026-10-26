@@ -30,7 +30,8 @@ Tick each one and note anything odd (a screenshot is ideal).
 - [ ] No circular-reference warning, on open or after edits below.
 
 **Calculation (Tasks sheet)**
-- [ ] No `#NAME?`, `#VALUE!` or `#REF!` anywhere. Pay attention to Planned Start / Finish (columns N, O).
+- [ ] No `#NAME?`, `#VALUE!` or `#REF!` anywhere. Pay attention to the Planned Start / Finish columns.
+- [ ] Task 19 "Build complete": Deadline Check shows "Late by …" in red; Link Check column is empty for every task.
 - [ ] Task 2 "Project charter": Planned Start Mon 07-Sep-26, Planned Finish Wed 09-Sep-26.
 - [ ] Task 7 "Solution architecture" (SS + 3): Planned Start Thu 17-Sep-26.
 - [ ] Task 26 "Hypercare support": Planned Finish Mon 04-Jan-27 (holidays skipped).
@@ -39,11 +40,16 @@ Tick each one and note anything odd (a screenshot is ideal).
 **Ripple test (edit something)**
 - [ ] Change Task 2's Duration from 3 to 5. Planned dates of tasks 2, 3, 4 and later move by 2 working days.
 - [ ] Undo, or set it back to 3.
+- [ ] Type `7` in Task 7's "Pred 1 UID" (a link to itself). Link Check shows "Pred 1: links to itself." and no circular-reference warning appears. Undo.
 - [ ] On Settings, change `GanttPeriod` from 1 to 7. The Gantt switches to weeks. Set it back to 1.
 
 **Gantt sheet**
 - [ ] Green / blue / orange / dark bars appear; planned line (━) and milestone diamonds (◆ ◇) are visible.
-- [ ] Red column at today's date, grey weekend columns.
+- [ ] Red column at today's date, grey weekend columns, red ▼ deadline markers on tasks 19 and 25.
+
+**Baseline**
+- [ ] On Tasks, select the 5 "Baseline source" columns for rows 6–35, Copy, tap the first "Baseline Start" cell, Paste Special → Values. Dashboard "Baseline" shows "Set on 30 tasks".
+- [ ] Change Task 21's Duration from 8 to 10: Planned Finish stays put, Forecast Finish moves 2 days, Finish Variance shows 2.
 
 **Other sheets**
 - [ ] Dashboard: KPI numbers and both charts show.

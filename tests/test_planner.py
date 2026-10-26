@@ -121,8 +121,9 @@ class StructureTest(Tmp):
         cls.wb = openpyxl.load_workbook(cls.path)
 
     def test_sheets(self):
-        self.assertEqual(self.wb.sheetnames, ["Instructions", "Dashboard", "Settings", "Tasks", "Gantt", "Resources",
-                                              "Sprints", "Holidays", "MSP_Tasks", "MSP_Resources", "Lists"])
+        self.assertEqual(self.wb.sheetnames, ["Instructions", "Dashboard", "Status Report", "Schedule Report", "Settings",
+                                              "Tasks", "Gantt", "Resources", "Sprints", "Holidays", "MSP_Tasks",
+                                              "MSP_Resources", "Lists"])
 
     def test_named_ranges(self):
         names = set(self.wb.defined_names)
@@ -197,8 +198,8 @@ class StructureTest(Tmp):
 
     def test_views_read_tasks_by_name_not_row(self):
         # Gantt and MSP_Tasks use INDEX(tsk_..., n), so rows inserted on Tasks still show up
-        for sheet in ("Gantt", "MSP_Tasks"):
-            for row in self.wb[sheet].iter_rows(max_row=30, max_col=25):
+        for sheet in ("Gantt", "MSP_Tasks", "Status Report", "Schedule Report"):
+            for row in self.wb[sheet].iter_rows(max_row=120, max_col=25):
                 for c in row:
                     if isinstance(c.value, str) and c.value.startswith("="):
                         self.assertNotIn("Tasks!", c.value, f"{sheet}!{c.coordinate}")
@@ -431,6 +432,149 @@ class BaselineTest(Tmp):
         self.assertEqual(t.get(21, "FF"), dt.date(2026, 11, 23))
         self.assertEqual(t.get(21, "Var"), 2)
         self.assertEqual(t.get(22, "Var"), 0)                       # UAT's Start No Earlier Than absorbs the slip
+
+
+def table_rows(wb, sheet, table):
+    """Rows of an Excel Table as dicts keyed by header (blank list rows included)."""
+    ws = wb[sheet]
+    cells = list(ws[ws.tables[table].ref])
+    head = [c.value for c in cells[0]]
+    return [{h: d(c.value) for h, c in zip(head, row)} for row in cells[1:]]
+
+
+def working_days(a, b, holidays):
+    """NETWORKDAYS: Mon-Fri working days from a to b inclusive, skipping holidays."""
+    n, day = 0, a
+    while day <= b:
+        n += day.weekday() < 5 and day not in holidays
+        day += dt.timedelta(days=1)
+    return n
+
+
+@unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+class ReportTest(Tmp):
+    """Status Report and Schedule Report, checked against values worked out in Python from the Tasks sheet."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.wb = recalc(cls.path, cls.dir)
+
+    def leaves(self, wb):
+        """Detail tasks as dicts by header, from the recalculated Tasks sheet."""
+        return [r for r in table_rows(wb, "Tasks", "Tasks") if r["_IsLeaf"] == 1]
+
+    def expected_evm(self, wb):
+        holidays = {d(r["Date"]) for r in table_rows(wb, "Holidays", "HolidayTable") if r["Date"]}
+        bac = pv = ev = ac = 0
+        for t in self.leaves(wb):
+            budget = t["Cost"] if t["Baseline Cost"] is None else t["Baseline Cost"]
+            ps, pf = t["Planned Start"], t["Planned Finish"]
+            if pf < STATUS_DATE:
+                planned = 1
+            elif ps >= STATUS_DATE:
+                planned = 0
+            else:
+                planned = working_days(ps, STATUS_DATE - dt.timedelta(days=1), holidays) / working_days(ps, pf, holidays)
+            bac += budget
+            pv += budget * planned
+            ev += budget * t["Progress"]
+            ac += t["Cost"] * t["Progress"] if t["Actual Cost"] is None else t["Actual Cost"]
+        return bac, pv, ev, ac
+
+    def evm(self, wb, n):
+        return named_cell(wb, f"evm_{n}").value
+
+    def test_no_formula_errors(self):
+        self.assertEqual(errors_in(self.wb), [])
+
+    def test_earned_value(self):
+        bac, pv, ev, ac = self.expected_evm(self.wb)
+        self.assertEqual(bac, 58040)                        # = total cost: no baseline yet
+        self.assertEqual(ac - ev, 760 + 560 + 680)          # three tasks have an Actual Cost entered
+        for n, want in (("BAC", bac), ("PV", pv), ("EV", ev), ("AC", ac)):
+            self.assertAlmostEqual(self.evm(self.wb, n), want, places=6, msg=n)
+        self.assertAlmostEqual(self.evm(self.wb, "SPI"), ev / pv)
+        self.assertAlmostEqual(self.evm(self.wb, "CPI"), ev / ac)
+        self.assertAlmostEqual(self.evm(self.wb, "EAC"), ac + (bac - ev) / (ev / ac))
+        self.assertAlmostEqual(self.evm(self.wb, "TCPI"), (bac - ev) / (bac - ac))
+        # the phase table's summary values roll up to the project totals
+        phases = [r for r in table_rows(self.wb, "Schedule Report", "PhaseSummary") if r["Phase"]]
+        self.assertEqual([r["Phase"] for r in phases], ["Initiation", "Requirements & Design", "Build", "Test & Release",
+                                                        "Project Close"])
+        for col, want in (("Budget", bac), ("PV", pv), ("EV", ev), ("AC", ac)):
+            self.assertAlmostEqual(sum(r[col] for r in phases), want, places=6, msg=col)
+        dash = {self.wb["Dashboard"].cell(r, 2).value: self.wb["Dashboard"].cell(r, 3).value for r in range(5, 30)}
+        self.assertAlmostEqual(dash["Cost performance (CPI)"], ev / ac)
+        self.assertEqual(sum(r["Actual Cost"] or 0 for r in table_rows(self.wb, "Resources", "ResourceTable")), ac)
+
+    def test_earned_value_uses_the_baseline(self):
+        first = self.wb["Tasks"]
+        col = columns(first)
+        snapshot = {(r, i): first.cell(r, col[s]).value for r in range(FIRST, FIRST + 30) for i, s in enumerate(SOURCE)}
+
+        def baseline_then_grow(wb):
+            for (r, i), v in snapshot.items():
+                wb["Tasks"].cell(r, col[BASELINE[i]]).value = v
+            set_input(wb, 21, "Dur", 10)                    # cost grows, the budget doesn't
+        wb = recalc(self.path, self.dir, baseline_then_grow)
+        bac, pv, ev, ac = self.expected_evm(wb)
+        self.assertEqual(bac, 58040)
+        self.assertAlmostEqual(self.evm(wb, "BAC"), 58040)
+        self.assertAlmostEqual(self.evm(wb, "PV"), pv, places=6)
+        self.assertAlmostEqual(self.evm(wb, "EAC"), ac + (bac - ev) / (ev / ac), places=6)
+
+    def test_rag(self):
+        rag = {r["Area"]: r for r in table_rows(self.wb, "Status Report", "StatusRAG")}
+        self.assertEqual({a: r["RAG"] for a, r in rag.items()}, {
+            "Schedule": "Green", "Schedule performance": "Red", "Cost performance": "Amber", "Deadlines": "Red",
+            "Critical path": "Amber", "Plan quality": "Green"})
+        self.assertEqual(rag["Plan quality"]["Value"], 0)    # "?" in COUNTIF is a wildcard; the formula escapes it
+        self.assertEqual(rag["Critical path"]["Value"], 5)
+        self.assertEqual(table_rows(self.wb, "Status Report", "OverallStatus")[0]["RAG"], "Red")
+
+    def test_pm_override_and_thresholds(self):
+        def edit(wb):
+            ws = wb["Status Report"]
+            for row in ws.iter_rows(min_row=8, max_row=13):
+                if row[1].value in ("Schedule performance", "Deadlines"):
+                    row[5].value = "Amber"                  # PM RAG
+            named_cell(wb, "RAGRedIndex").value = 0.5     # CPI 0.93 stays amber
+        wb = recalc(self.path, self.dir, edit)
+        rag = {r["Area"]: r for r in table_rows(wb, "Status Report", "StatusRAG")}
+        self.assertEqual(rag["Deadlines"]["Calculated"], "Red")
+        self.assertEqual(rag["Deadlines"]["RAG"], "Amber")
+        self.assertEqual(rag["Schedule performance"]["Calculated"], "Amber")   # SPI 0.78 with red below 0.5
+        overall = table_rows(wb, "Status Report", "OverallStatus")[0]
+        self.assertEqual((overall["RAG"], overall["Value"]), ("Amber", "0 red, 4 amber"))
+
+    def listed(self, table):
+        return [r["Task"] if "Task" in r else r["Milestone"] for r in table_rows(self.wb, "Schedule Report", table)
+                if r["_Task"] not in (None, "")]
+
+    def test_schedule_lists(self):
+        tasks = self.leaves(self.wb)
+        end = named_cell(self.wb, "LookaheadEnd").value
+        end = d(end) if not isinstance(end, (int, float)) else dt.date(1899, 12, 30) + dt.timedelta(days=end)
+        self.assertEqual(end, dt.date(2026, 11, 6))
+        order = lambda rows, key: [t["Task Name"] for t in sorted(rows, key=key)]
+        self.assertEqual(self.listed("MilestoneReport"), order(
+            [t for t in tasks if t["Duration"] == 0], lambda t: (t["Planned Finish"], t["ID"])))
+        late = [t for t in tasks if t["Progress"] < 1 and (t["Finish Var"] > 0 or t["Status"] == "Late Start")]
+        self.assertEqual(len(late), 7)
+        self.assertEqual(self.listed("LateTasks"), order(late, lambda t: (-max(0, t["Finish Var"]), t["ID"])))
+        starting = [t for t in tasks if t["Actual Start"] is None and STATUS_DATE <= t["Forecast Start"] <= end]
+        self.assertEqual(self.listed("StartingSoon"), order(starting, lambda t: (t["Forecast Start"], t["ID"])))
+        self.assertEqual(self.listed("StartingSoon"), ["Payment gateway integration", "Accessibility review"])
+        due = [t for t in tasks if t["Progress"] < 1 and STATUS_DATE <= t["Forecast Finish"] <= end]
+        self.assertEqual(self.listed("DueSoon"), order(due, lambda t: (t["Forecast Finish"], t["ID"])))
+        critical = [t for t in tasks if t["Critical"] == "Yes"]
+        self.assertEqual(len(critical), 11)
+        self.assertEqual(self.listed("CriticalTasks"), order(critical, lambda t: (t["Forecast Start"], t["ID"])))
+        late_rows = table_rows(self.wb, "Schedule Report", "LateTasks")
+        self.assertEqual(late_rows[0]["Resource"], "Jordan Lee")
+        self.assertIn(late_rows[4]["Resource"], (None, ""))          # a milestone has no resource: blank, not 0
+        self.assertIn(late_rows[-1]["Task"], (None, ""))
 
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")

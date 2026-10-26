@@ -19,14 +19,17 @@ from .dashboard import build_dashboard
 from .gantt import build_gantt
 from .instructions import build_instructions
 from .msp import build_msp_resources, build_msp_tasks
+from .report_schedule import build_schedule_report
+from .report_status import build_status_report
 from .resources import build_resources
 from .settings import build_holidays, build_lists, build_settings
 from .sprints import build_sprints
 from .tasks import build_tasks
 
-ORDER = ["Instructions", "Dashboard", "Settings", "Tasks", "Gantt", "Resources", "Sprints", "Holidays", "MSP_Tasks",
+ORDER = ["Instructions", "Dashboard", "Status Report", "Schedule Report", "Settings", "Tasks", "Gantt", "Resources", "Sprints", "Holidays", "MSP_Tasks",
          "MSP_Resources", "Lists"]
-TAB_COLOURS = {"Instructions": "1F4E78", "Dashboard": "548235", "Settings": "BF8F00", "Tasks": "2F75B5",
+TAB_COLOURS = {"Instructions": "1F4E78", "Dashboard": "548235", "Status Report": "548235",
+               "Schedule Report": "548235", "Settings": "BF8F00", "Tasks": "2F75B5",
                "Gantt": "2F75B5", "Resources": "7030A0", "Sprints": "7030A0", "Holidays": "BF8F00",
                "MSP_Tasks": "595959", "MSP_Resources": "595959", "Lists": "A6A6A6"}
 N_RESOURCES, N_SPRINTS, N_GANTT_DAYS = 50, 26, 150
@@ -48,6 +51,8 @@ def make_workbook(blank=False, n_tasks=200, stress=0):
     build_msp_tasks(wb, n_tasks)
     build_msp_resources(wb, N_RESOURCES)
     build_dashboard(wb, sprints_ws, sprint_letters)
+    build_status_report(wb)
+    build_schedule_report(wb)
     build_instructions(wb, n_tasks)
     wb._sheets = [wb[n] for n in ORDER]
     for ws in wb.worksheets:

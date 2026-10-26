@@ -82,11 +82,11 @@ Legend: ✅ equivalent · 🟡 partial / simplified · ❌ missing · ⛔ not pr
 | Actual start / finish | ✅ | |
 | % complete, roll-up to summaries | ✅ | Duration-weighted. |
 | Actual / remaining duration, % work complete, physical % complete | ❌ | |
-| Actual work, actual cost entry | ❌ | Cost is plan-only. |
+| Actual work, actual cost entry | 🟡 | v1.3: Actual Cost per task (blank = Cost x Progress). No actual work. |
 | Baseline (frozen) and Baseline 1–10 | 🟡 | v1.1: one frozen baseline (start, finish, duration, work, cost) set by copy → paste values. No Baseline 1–10. |
 | Variance: finish | ✅ | Working days. |
 | Variance: start, duration, work, cost | ✅ | v1.1. |
-| Earned value (PV, EV, AC, SPI, CPI, EAC) | ❌ | Inputs mostly exist; needs actual cost. |
+| Earned value (PV, EV, AC, SPI, CPI, EAC) | ✅ | v1.3: per task and project, plus phase SPI / CPI; Status Report. |
 | Tracking Gantt | ✅ | |
 | Progress lines | ❌ | |
 | Status indicators | 🟡 | Text status with colours. |
@@ -127,8 +127,9 @@ Legend: ✅ equivalent · 🟡 partial / simplified · ❌ missing · ⛔ not pr
 |---|---|---|
 | Dashboard / Project Overview | ✅ | KPIs, status counts, next milestones, sprint chart. |
 | Burndown / burnup | ❌ | |
-| Cost overview, Work overview, Resource overview | 🟡 | Totals only. |
-| Late tasks, upcoming tasks, milestone report | 🟡 | Dashboard lists next 5 milestones only. |
+| Cost overview, Work overview, Resource overview | 🟡 | v1.3: earned value and phase cost on the reports; no time-phased cost. |
+| Late tasks, upcoming tasks, milestone report | ✅ | v1.3: Schedule Report (late, starting / due in a look-ahead window, milestones, critical). |
+| Project status with RAG | ✅ | v1.3: calculated RAG by area with thresholds, PM override, commentary. |
 
 ### Agile (MS Project Online desktop / Project for the web) (~30%)
 
@@ -164,7 +165,7 @@ These are defects or rough edges in what exists, not missing features.
    A loop through several tasks (A → B → A) is still circular.
 5. **Sprint and resource hours are prorated by calendar day,** so weekend days carry load.
 6. **Material and Cost resources** produce hours and count toward cost as if they were people.
-7. **Dashboard "planned progress"** only counts tasks whose planned finish has passed (no partial credit).
+7. ~~**Dashboard "planned progress"** only counts tasks whose planned finish has passed~~ – partial credit by working day (v1.3).
 8. **Fixed capacity:** 200 tasks, 50 resources, 26 sprints, 150 Gantt columns; extending needs the build script.
 9. **OFFSET is volatile,** so every edit recalculates the whole workbook. Fine at 200 rows; slower at 2,000+.
 10. **Gantt glyphs** (`━`, `◆`, `◇`) depend on the font; they may render as dashes in some fonts.

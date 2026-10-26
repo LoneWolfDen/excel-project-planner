@@ -37,11 +37,12 @@ N = {
     "FS": "Forecast Start", "FF": "Forecast Finish", "SVar": "Start Var", "Var": "Finish Var",
     "LS": "Late Start", "LF": "Late Finish", "TS": "Total Slack", "FSl": "Free Slack", "Crit": "Critical",
     "DLChk": "Deadline Check", "LinkChk": "Link Check", "Pct": "% Complete", "Prog": "Progress", "Status": "Status",
-    "Res": "Resource", "Units": "Units", "Work": "Work", "Cost": "Cost", "Sprint": "Sprint",
+    "Res": "Resource", "Units": "Units", "Work": "Work", "Cost": "Cost", "ACin": "Actual Cost", "Sprint": "Sprint",
     "PredTxt": "Predecessors", "Notes": "Notes",
     "SrcS": "BL Source Start", "SrcF": "BL Source Finish", "SrcD": "BL Source Duration", "SrcW": "BL Source Work",
     "SrcC": "BL Source Cost", "BS": "Baseline Start", "BF": "Baseline Finish", "BD": "Baseline Duration",
     "BW": "Baseline Work", "BC": "Baseline Cost", "DVar": "Duration Var", "WVar": "Work Var", "CVar": "Cost Var",
+    "Budget": "Budget", "PV": "PV", "EV": "EV", "ACt": "AC",
     # helper columns (hidden)
     "Lvl": "_Level", "Idx": "_Row", "Parent": "_ParentRow", "NextLvl": "_NextLevel", "IsSum": "_IsSummary",
     "Desc": "_Descendants", "IsLeaf": "_IsLeaf", "R1": "_Pred1Pos", "R2": "_Pred2Pos",
@@ -57,6 +58,10 @@ N = {
     "WtDur": "_WeightDur", "WtDone": "_WeightDone",
     "T1x": "_Pred1IDText", "T2x": "_Pred2IDText", "U1x": "_Pred1UIDText", "U2x": "_Pred2UIDText",
     "UPredTxt": "_UIDPredecessors", "MKey": "_MilestoneKey",
+    # earned value and the report lists
+    "PlanPct": "_PlannedPct", "LBud": "_LeafBudget", "LPV": "_LeafPV", "LEV": "_LeafEV", "LAC": "_LeafAC",
+    "Phase": "_Phase", "PhaseKey": "_PhaseKey", "MsKey": "_MilestoneOrder", "LateKey": "_LateKey", "StartKey": "_StartSoonKey",
+    "DueKey": "_DueSoonKey", "CritKey": "_CriticalKey",
 }
 
 # defined names used by every other sheet (tsk_Duration = Tasks[Duration], ...)
@@ -75,6 +80,10 @@ NAMES = {
     "LWork": "tsk_LeafWork", "SWD": "tsk_StartWD", "FWD": "tsk_FinishWD", "WPD": "tsk_WorkPerWD",
     "WBefore": "tsk_WorkBeforeStart", "WtDur": "tsk_WtDur", "WtDone": "tsk_WtDone",
     "UPredTxt": "tsk_UIDPredecessors", "MKey": "tsk_MilestoneKey",
+    "ACin": "tsk_ActCostInput", "Budget": "tsk_Budget", "PV": "tsk_PV", "EV": "tsk_EV", "ACt": "tsk_AC",
+    "PlanPct": "tsk_PlannedPct", "LBud": "tsk_LeafBudget", "LPV": "tsk_LeafPV", "LEV": "tsk_LeafEV",
+    "LAC": "tsk_LeafAC", "Phase": "tsk_Phase", "PhaseKey": "tsk_PhaseKey", "MsKey": "tsk_MilestoneOrder", "LateKey": "tsk_LateKey",
+    "StartKey": "tsk_StartSoonKey", "DueKey": "tsk_DueSoonKey", "CritKey": "tsk_CriticalKey",
 }
 
 
@@ -288,6 +297,33 @@ def formulas():
     f["WtDur"] = f'IF({leaf},MAX(N({R("Dur")}),0.1),0)'
     f["WtDone"] = f'{R("WtDur")}*{R("LProg")}'
     f["MKey"] = f'IF(AND({leaf},N({R("Dur")})=0,{R("LProg")}<1),{R("LFF")}+{R("Idx")}/100000,"")'
+    # earned value at the status date. Budget = Baseline Cost once a baseline is set, otherwise Cost. Planned % =
+    # share of the planned working days before the status date (the status date itself is not yet worked).
+    # Actual cost = the Actual Cost entered, or Cost x Progress when it is blank (as MS Project calculates it).
+    ps, pf = R("PS"), R("PF")
+    f["PlanPct"] = (f'IF(NOT({leaf}),0,IF({pf}<StatusDate,1,IF({ps}>=StatusDate,0,'
+                    f'IFERROR(MIN(1,NETWORKDAYS.INTL({ps},StatusDate-1,{WD})/NETWORKDAYS.INTL({ps},{pf},{WD})),0))))')
+    f["LBud"] = f'IF(NOT({leaf}),0,IF({R("BC")}="",{R("LCost")},N({R("BC")})))'
+    f["LPV"] = f'{R("LBud")}*{R("PlanPct")}'
+    f["LEV"] = f'{R("LBud")}*{R("LProg")}'
+    f["LAC"] = f'IF(NOT({leaf}),0,IF({R("ACin")}="",{R("LCost")}*{R("LProg")},N({R("ACin")})))'
+    f["Budget"] = rollup("SUM", "LBud")
+    f["PV"] = rollup("SUM", "LPV")
+    f["EV"] = rollup("SUM", "LEV")
+    f["ACt"] = rollup("SUM", "LAC")
+    # report lists (Schedule Report): each key is unique (the row position breaks ties) and blank when the task
+    # doesn't belong on the list, so the report finds the n-th task with SMALL / LARGE and MATCH
+    tie = f'{R("Idx")}/100000'
+    f["Phase"] = f'IF({blank},"",LEFT({R("WBS")},FIND(".",{R("WBS")}&".")-1))'
+    f["PhaseKey"] = f'IF(AND({nm}<>"",{R("Lvl")}=1),{R("Idx")},"")'
+    f["MsKey"] = f'IF(AND({leaf},N({R("Dur")})=0),{pf}+{tie},"")'
+    f["LateKey"] = (f'IF(AND({leaf},{R("LProg")}<1,OR(N({R("Var")})>0,{R("Status")}="Late Start")),'
+                    f'MAX(0,{R("Var")})+1-{R("Idx")}/1000000,"")')
+    f["StartKey"] = (f'IF(AND({leaf},N({R("AS")})=0,{R("LFS")}>=StatusDate,{R("LFS")}<=LookaheadEnd),'
+                     f'{R("LFS")}+{tie},"")')
+    f["DueKey"] = (f'IF(AND({leaf},{R("LProg")}<1,{R("LFF")}>=StatusDate,{R("LFF")}<=LookaheadEnd),'
+                   f'{R("LFF")}+{tie},"")')
+    f["CritKey"] = f'IF({R("LCrit")},{R("LFS")}+{tie},"")'
     return f
 
 
@@ -330,6 +366,8 @@ LAYOUT = [
     ("Units", "in", 7, "0%", False, "Share of the resource's time (blank = DefaultUnits)."),
     ("Work", "calc", 9, "#,##0.0", False, "Hours = Duration x HoursPerDay x Units."),
     ("Cost", "calc", 11, "#,##0.00", False, None),
+    ("ACin", "in", 11, "#,##0.00", False, "Cost to date of a detail task. Blank = Cost x Progress (as MS Project "
+                                          "calculates it). Summaries roll up in the AC column."),
     ("Sprint", "calc", 10, None, True, "Sprint containing the forecast start."),
     ("PredTxt", "calc", 14, None, False, "Predecessors in MS Project notation, by ID."),
     ("Notes", "in", 40, None, False, None),
@@ -346,19 +384,24 @@ LAYOUT = [
     ("DVar", "calc", 9, None, True, "Duration minus Baseline Duration (working days)."),
     ("WVar", "calc", 9, "#,##0.0", False, "Work minus Baseline Work (hours)."),
     ("CVar", "calc", 11, "#,##0.00", False, "Cost minus Baseline Cost."),
+    ("Budget", "calc", 11, "#,##0.00", False, "Budget at completion: Baseline Cost once a baseline is set, otherwise Cost."),
+    ("PV", "calc", 11, "#,##0.00", False, "Planned value: the budget of the work planned before the status date."),
+    ("EV", "calc", 11, "#,##0.00", False, "Earned value: Budget x Progress."),
+    ("ACt", "calc", 11, "#,##0.00", False, "Actual cost to date: Actual Cost, or Cost x Progress when it is blank."),
 ] + [(k, "help", 11, DATE if k in ("CPS", "CPF", "LCS", "LCF", "LFS", "LFF", "D1P", "D2P", "D1F", "D2F", "SuccLF",
                                        "LLF", "LLS")
                           else None, False, None)
      for k in ("Lvl", "Idx", "Parent", "NextLvl", "IsSum", "Desc", "IsLeaf", "R1", "R2", "LCS", "LCF", "LFS", "LFF",
                "LProg", "LWork", "LCost", "F1", "F2", "K1", "K2", "LastSucc", "SuccLF", "LLF", "LLS",
                "LTS", "LCrit", "CPS", "CPF", "M1", "M2", "D1P", "D2P", "D1F",
-               "D2F", "SWD", "FWD", "WPD", "WBefore", "WtDur", "WtDone", "T1x", "T2x", "U1x", "U2x", "UPredTxt", "MKey")]
+               "D2F", "SWD", "FWD", "WPD", "WBefore", "WtDur", "WtDone", "T1x", "T2x", "U1x", "U2x", "UPredTxt", "MKey",
+               "PlanPct", "LBud", "LPV", "LEV", "LAC", "Phase", "PhaseKey", "MsKey", "LateKey", "StartKey", "DueKey", "CritKey")]
 
 GROUPS = [("ID", "IDENTITY"), ("Mode", "SCHEDULING INPUTS"), ("PS", "PLAN / ACTUAL / FORECAST"), ("SVar", "VARIANCE"),
           ("LS", "CRITICAL PATH"), ("DLChk", "CHECKS"),
           ("Pct", "PROGRESS"), ("Res", "RESOURCES & SPRINT"),
           ("SrcS", "SET BASELINE: copy these 5 columns, then Paste Special > Values onto the 5 Baseline columns"),
-          ("DVar", "VARIANCE vs BASELINE"), ("Lvl", "HELPER COLUMNS (hidden - click + above to show)")]
+          ("DVar", "VARIANCE vs BASELINE"), ("Budget", "EARNED VALUE (at status date)"), ("Lvl", "HELPER COLUMNS (hidden - click + above to show)")]
 STATUS_COLOURS = {"Complete": "548235", "In Progress": "2F75B5", "Behind": "C00000", "Late Start": "C55A11",
                   "Not Started": "7F7F7F"}
 
@@ -391,7 +434,7 @@ def build_tasks(wb, rows, n_rows):
     for key, defined in NAMES.items():
         name(wb, defined, C(key))
     ws.freeze_panes = f"{L['Mode']}{HEADER_ROW + 1}"
-    ws.column_dimensions.group(L["Lvl"], L["MKey"], hidden=True, outline_level=1)
+    ws.column_dimensions.group(L["Lvl"], L["CritKey"], hidden=True, outline_level=1)
     _validation_and_formatting(ws, L, n_rows)
     ws.sheet_view.zoomScale = 90
     return ws
@@ -424,10 +467,11 @@ def _validation_and_formatting(ws, L, n_rows):
                       error="Enter 0% - 100%."), "Pct")
     dv(DataValidation(type="list", formula1="=res_Name"), "Res")
     dv(DataValidation(type="decimal", operator="between", formula1="0", formula2="10"), "Units")
+    dv(DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0"), "ACin")
 
     cf = ws.conditional_formatting
-    cf.add(f"A{first}:{L['CVar']}{last}", FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(bold=True), fill=fill("DDEBF7")))
-    for k in ("Dur", "P1", "T1", "L1", "P2", "T2", "L2", "Cons", "AS", "AF", "Pct", "Res", "Units"):
+    cf.add(f"A{first}:{L['ACt']}{last}", FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(bold=True), fill=fill("DDEBF7")))
+    for k in ("Dur", "P1", "T1", "L1", "P2", "T2", "L2", "Cons", "AS", "AF", "Pct", "Res", "Units", "ACin"):
         cf.add(rng(k), FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(color="A6A6A6", italic=True, bold=True)))
     for status, colour in STATUS_COLOURS.items():
         cf.add(rng("Status"), FormulaRule(formula=[f'{at("Status")}="{status}"'], font=Font(color=colour, bold=True)))

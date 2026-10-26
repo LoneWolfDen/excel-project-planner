@@ -158,3 +158,48 @@ def add_table(ws, table_name, header_row, first_col, cols, n_rows, style="TableS
 
 def col_range(letter, first_row, last_row):
     return f"{letter}{first_row}:{letter}{last_row}"
+
+
+@dataclass
+class Show:
+    """One column of a ranked list: header text, the tsk_ name to read, and how to show it."""
+    header: str
+    source: str
+    kind: str = "text"        # "text", "date" (blank when empty) or "num"
+    width: float = 14
+    fmt: str = None
+
+
+def ranked_table(ws, table_name, header_row, first_col, key, n_rows, shows, largest=False, label=None, extra=()):
+    """A report list: row k shows the task with the k-th smallest (or largest) value in the helper column `key`.
+
+    Keys are unique and blank for tasks not on the list, so SMALL / LARGE then MATCH finds the task. The match is
+    done once per row, in the _Task column (first, so every list on a sheet hides the same column); the visible
+    columns only INDEX by it. `extra` adds calculated Cols after the shown ones. `label` is an Excel text expression
+    shown above the table with the count of tasks on the list. To show more rows, drag the table's corner down: the
+    formulas fill in. Returns {column name: letter}."""
+    t = Tab(table_name)
+    k = f"ROW()-ROW({t.head('_Task')})"
+    nth = f"{'LARGE' if largest else 'SMALL'}({key},{k})"
+    pos = t.row("_Task")
+
+    def show(s):
+        value = f"INDEX({s.source},{pos})"
+        if s.kind == "date":
+            value = f'IF(N({value})=0,"",{value})'
+        elif s.kind == "text":
+            value = f'{value}&""'
+        return f'IF({pos}="","",{value})'
+
+    cols = [Col("_Task", "help", 4, formula=f'IFERROR(MATCH({nth},{key},0),"")',
+                note="Row of the task in the Tasks table (helper, hidden).")]
+    cols += [Col(s.header, width=s.width, fmt=s.fmt, formula=show(s), center=s.kind != "text") for s in shows]
+    cols += list(extra)
+    letters = add_table(ws, table_name, header_row, first_col, cols, n_rows, autofilter=False)
+    ws.column_dimensions[letters["_Task"]].hidden = True
+    if label:
+        rows = f'ROWS({t.col("_Task")})'
+        cell = ws.cell(header_row - 1, first_col + 1)
+        cell.value = f'={label}&": "&COUNT({key})&IF(COUNT({key})>{rows}," (showing the first "&{rows}&")","")'
+        cell.font = LABEL_FONT
+    return letters

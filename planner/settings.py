@@ -64,7 +64,7 @@ def settings_rows(blank, max_sprints):
         ("Sprint1Start", "Sprint 1 start date", "=ProjectStart", DATE, True,
          "Defaults to the project start. Overwrite to align with your sprint calendar."),
         ("SprintLength", "Sprint length (calendar days)", 14, "0", True, "14 = two-week sprints."),
-        ("SprintCount", "Number of sprints", 12, "0", True,
+        ("SprintCount", "Number of sprints", min(12, max_sprints), "0", True,
          f"Up to the number of rows in the Sprints table ({max_sprints}; add rows to the table for more). "
          "Tasks outside the sprint range are labelled 'Backlog'."),
         ("SprintPrefix", "Sprint name prefix", "Sprint ", "@", True, "Sprint names = prefix & number."),

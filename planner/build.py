@@ -3,8 +3,11 @@
     python scripts/build_planner.py Project_Planner.xlsx --recalc
     python scripts/build_planner.py Project_Planner_Blank.xlsx --blank --recalc
     python scripts/build_planner.py stress.xlsx --tasks 1000 --stress 33      # performance testing
+    python scripts/build_planner.py big.xlsx --tasks 2000 --resources 100 --grid-resources 60 --sprints 52 \
+        --gantt-columns 365 --weeks 52                                         # a bigger template
 """
 import argparse
+from dataclasses import dataclass
 import re
 import shutil
 import subprocess
@@ -40,34 +43,57 @@ TAB_COLOURS = {"Instructions": "1F4E78", "Dashboard": "548235", "Status Report":
                "Decisions": "C55A11", "Changes": "C55A11", "History": "C55A11", "Settings": "BF8F00", "Tasks": "2F75B5",
                "Gantt": "2F75B5", "Resources": "7030A0", "Sprints": "7030A0", "Holidays": "BF8F00",
                "MSP_Tasks": "595959", "MSP_Resources": "595959", "Lists": "A6A6A6"}
-N_RESOURCES, N_SPRINTS, N_GANTT_DAYS = 50, 26, 150
+@dataclass(frozen=True)
+class Sizes:
+    """How many rows / columns each table and grid starts with. Tables grow when users add rows; the fixed grids
+    (Gantt timeline, per-resource grids, weeks) are sized here, so a bigger plan is a rebuild, not a formula edit."""
+    tasks: int = 200
+    resources: int = 50          # ResourceTable and MSP_Resources rows
+    grid_resources: int = 25     # rows in the per-resource grids (Sprints load / utilisation, Resource Report)
+    sprints: int = 26            # SprintTable rows (SprintCount can be at most this)
+    gantt_columns: int = 150     # Gantt timeline columns (days or weeks, Settings > GanttPeriod)
+    weeks: int = 26              # Resource Report weekly grids
+
+    def check(self):
+        limits = {"tasks": (1, 20000), "resources": (1, 2000), "grid_resources": (1, 500), "sprints": (1, 520),
+                  "gantt_columns": (7, 1000), "weeks": (1, 260)}
+        for field, (low, high) in limits.items():
+            value = getattr(self, field)
+            if not low <= value <= high:
+                raise SystemExit(f"--{field.replace('_', '-')} must be between {low} and {high} (got {value})")
+        if self.grid_resources > self.resources:
+            raise SystemExit("--grid-resources can't be more than --resources")
 
 
-def make_workbook(blank=False, n_tasks=200, stress=0):
+def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None):
+    sizes = sizes or Sizes(tasks=n_tasks)
+    sizes.check()
+    n_tasks = sizes.tasks
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
     rows = sample.tasks(blank, stress)
     if len(rows) > n_tasks:
         raise SystemExit(f"{len(rows)} sample tasks do not fit in {n_tasks} rows; raise --tasks")
     build_lists(wb)
-    build_settings(wb, blank, N_SPRINTS)
+    build_settings(wb, blank, sizes.sprints)
     build_holidays(wb, blank)
-    build_resources(wb, blank, N_RESOURCES)
+    build_resources(wb, blank, sizes.resources)
     build_tasks(wb, rows, n_tasks)
-    sprints_ws, sprint_letters = build_sprints(wb, blank, N_SPRINTS, 25)
-    build_gantt(wb, n_tasks, N_GANTT_DAYS)
+    sprints_ws, sprint_letters = build_sprints(wb, blank, sizes.sprints, sizes.grid_resources)
+    build_gantt(wb, n_tasks, sizes.gantt_columns)
     build_msp_tasks(wb, n_tasks)
-    build_msp_resources(wb, N_RESOURCES)
-    build_dashboard(wb, sprints_ws, sprint_letters)
+    build_msp_resources(wb, sizes.resources)
+    charted = min(12, sizes.sprints)                 # sprints shown on the Dashboard and Agile Report charts
+    build_dashboard(wb, sprints_ws, sprint_letters, charted)
     build_raid(wb, blank)
     build_decisions(wb, blank)
     build_changes(wb, blank)
     build_status_report(wb)
     build_schedule_report(wb)
-    build_resource_report(wb, 25)
-    build_agile_report(wb, sprints_ws, sprint_letters)
+    build_resource_report(wb, sizes.grid_resources, sizes.weeks)
+    build_agile_report(wb, sprints_ws, sprint_letters, charted)
     build_history(wb, blank)
-    build_instructions(wb, n_tasks)
+    build_instructions(wb, sizes)
     wb._sheets = [wb[n] for n in ORDER]
     for ws in wb.worksheets:
         ws.sheet_properties.tabColor = TAB_COLOURS[ws.title]
@@ -127,10 +153,18 @@ def main(argv=None):
     p.add_argument("--blank", action="store_true", help="empty template: no sample tasks, resources, holidays")
     p.add_argument("--recalc", action="store_true",
                    help="recalculate with LibreOffice so the saved file carries values (for previews)")
-    p.add_argument("--tasks", type=int, default=200, help="rows in the Tasks table (and Gantt / MSP_Tasks)")
+    d = Sizes()
+    p.add_argument("--tasks", type=int, default=d.tasks, help="rows in the Tasks table (and Gantt / MSP_Tasks)")
+    p.add_argument("--resources", type=int, default=d.resources, help="rows in the Resources table")
+    p.add_argument("--grid-resources", type=int, default=d.grid_resources,
+                   help="resources shown in the per-resource grids (Sprints, Resource Report)")
+    p.add_argument("--sprints", type=int, default=d.sprints, help="rows in the Sprints table")
+    p.add_argument("--gantt-columns", type=int, default=d.gantt_columns, help="columns in the Gantt timeline")
+    p.add_argument("--weeks", type=int, default=d.weeks, help="weeks in the Resource Report grids")
     p.add_argument("--stress", type=int, default=0, help="repeat the sample project N times (performance tests)")
     a = p.parse_args(argv)
-    save(make_workbook(a.blank, a.tasks, a.stress), a.out, a.recalc)
+    sizes = Sizes(a.tasks, a.resources, a.grid_resources, a.sprints, a.gantt_columns, a.weeks)
+    save(make_workbook(a.blank, stress=a.stress, sizes=sizes), a.out, a.recalc)
     print("saved", a.out)
 
 

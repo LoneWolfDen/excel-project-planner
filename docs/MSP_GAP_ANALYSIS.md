@@ -166,7 +166,8 @@ These are defects or rough edges in what exists, not missing features.
 5. ~~**Sprint and resource hours are prorated by calendar day**~~ – working days only since v1.2.
 6. **Material and Cost resources** produce hours and count toward cost as if they were people.
 7. ~~**Dashboard "planned progress"** only counts tasks whose planned finish has passed~~ – partial credit by working day (v1.3).
-8. **Fixed capacity:** 200 tasks, 50 resources, 26 sprints, 150 Gantt columns; extending needs the build script.
+8. **Grid sizes are set at build time:** tables grow, but the Gantt timeline, per-resource grids and Resource Report weeks are
+   sized by `scripts/build_planner.py` options (`--tasks`, `--resources`, `--grid-resources`, `--sprints`, `--gantt-columns`, `--weeks`).
 9. **OFFSET is volatile,** so every edit recalculates the whole workbook. Fine at 200 rows; slower at 2,000+.
 10. **Gantt glyphs** (`━`, `◆`, `◇`) depend on the font; they may render as dashes in some fonts.
 11. **Locale:** `TEXT(date,"ddd")` / `"mmm"` labels are locale-dependent.

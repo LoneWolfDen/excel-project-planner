@@ -132,6 +132,13 @@ Earned value at the status date: Budget = Baseline Cost (or Cost before a baseli
 before the status date / planned working days; PV = Budget x planned %; EV = Budget x Progress; AC = Actual Cost, or
 Cost x Progress when blank; EAC = AC + (BAC - EV) / CPI.
 
+**Leave is text, read by formulas.** Each Leave cell holds days like `16, 17(0.5)` under a month header (`Nov-26`).
+`planner/leave.py` reads it with one `SUMPRODUCT` per calendar month over the constant `{1..31}` (`leave_Days`): every
+day in the text gets a value in brackets and `,N(0)` is appended for each day N, so the search for `,N(` always
+succeeds. That avoids `IF` / `IFERROR` on arrays, which Excel 2019 only evaluates with Ctrl+Shift+Enter. The month's
+column is found by its header (so months can be added) and each person's row once per grid row, in helper cells.
+Leave changes capacity only; the grids read inputs, so a task edit doesn't recalculate them.
+
 **History without macros.** A formula can't remember last week's value, so status history works like the baseline:
 `SnapshotNow` is one row of formulas (names only) and the PM pastes it as values into `StatusHistory`, an input
 table the trend charts read. A macro or script may automate the copy, but the workbook never depends on it.

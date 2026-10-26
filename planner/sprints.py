@@ -8,6 +8,9 @@ from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
 from .core import (BOX, CALC_FONT, DATE, LABEL_FONT, NOTE_FONT, Col, Tab, add_table, fill, font, header_cell, name)
+from .leave import leave_days, leave_row, month_column, month_start, team_leave_hours
+
+LEAVE_MONTHS = 3        # calendar months a sprint can touch (any sprint up to about two months long)
 
 WD = "WorkWeek,Holidays"
 GOALS = ["Charter & kickoff", "Requirements", "Design & architecture", "Foundations: DB + components",
@@ -54,8 +57,11 @@ def build_sprints(wb, blank, n_sprints, n_resources):
         Col("Tasks Starting", width=9, formula=f'IF({has},"",COUNTIF(tsk_Sprint,{r("Sprint")}))', center=True),
         Col("Planned Work", width=11, fmt="#,##0.0", formula=f'IF({has},"",{work_between(r("Start"), r("End"))})',
             note="Hours of task work falling in the sprint."),
-        Col("Capacity", width=11, fmt="#,##0.0", note="Sum of Work resources' Max Units x HoursPerDay x working days.",
-            formula=f'IF({has},"",SUMIFS(res_MaxUnits,res_Type,"Work")*HoursPerDay*{r("Working Days")})'),
+        Col("Capacity", width=11, fmt="#,##0.0",
+            note="Sum of Work resources' Max Units x HoursPerDay x working days, less the leave of the people in the "
+                 "grids below (Leave sheet).",
+            formula=(f'IF({has},"",SUMIFS(res_MaxUnits,res_Type,"Work")*HoursPerDay*{r("Working Days")}'
+                     f'-{team_leave_hours("spr_LeaveGrid", r("No"))})')),
         Col("Utilisation", width=10, fmt="0%",
             formula=f'IF(OR({has},N({r("Capacity")})=0),"",{r("Planned Work")}/{r("Capacity")})'),
         Col("Status", width=12, center=True,
@@ -87,7 +93,9 @@ def build_sprints(wb, blank, n_sprints, n_resources):
             note="Straight line from the total scope to zero at the last sprint."),
         # charts plot "" as zero; #N/A leaves a gap, so the burndown chart reads this copy (hidden)
         Col("_ChartRemaining", "help", 8, formula=f'IF({r("Remaining Points")}="",NA(),{r("Remaining Points")})'),
-    ]
+    ] + [Col(f"_LeaveCol{k}", "help", 6, formula=month_column(month_start(r("Start"), k)),
+             note="LeaveTable column of a month the sprint touches (for the leave look-ups).")
+         for k in range(LEAVE_MONTHS)]
     L = add_table(ws, "SprintTable", 5, 1, cols, n_sprints, autofilter=False)
     for column, defined in {"Sprint": "spr_Name", "Start": "spr_Start", "End": "spr_End", "Working Days": "spr_WorkDays",
                             "Planned Work": "spr_Work", "Capacity": "spr_Capacity", "Status": "spr_Status",
@@ -97,7 +105,9 @@ def build_sprints(wb, blank, n_sprints, n_resources):
     first, last = 6, 5 + n_sprints
     cf = ws.conditional_formatting
     end = L["Ideal Remaining"]
-    ws.column_dimensions[L["_ChartRemaining"]].hidden = True
+    ws.column_dimensions.group(L["_ChartRemaining"], L[f"_LeaveCol{LEAVE_MONTHS - 1}"], hidden=True, outline_level=1)
+    for k in range(LEAVE_MONTHS):
+        name(wb, f"spr_LeaveCol{k}", f"SprintTable[_LeaveCol{k}]")
     cf.add(f"A{first}:{end}{last}", FormulaRule(formula=[f'${L["Sprint"]}{first}=""'], font=Font(color="D9D9D9")))
     cf.add(f"A{first}:{end}{last}", FormulaRule(formula=[f'${L["Status"]}{first}="Active"'], fill=fill("FFF2CC"), font=Font(bold=True)))
     cf.add(f"{L['Utilisation']}{first}:{L['Utilisation']}{last}",
@@ -111,14 +121,16 @@ def build_sprints(wb, blank, n_sprints, n_resources):
     load_top = last + 3
     util_top = load_top + n_resources + 5
     _grid(wb, ws, "load", load_top, n_sprints, n_resources,
-          "Resource load by sprint (hours)  -  red = over capacity (Max Units x HoursPerDay x working days)")
-    _grid(wb, ws, "util", util_top, n_sprints, n_resources, "Resource utilisation by sprint (%)")
+          "Resource load by sprint (hours)  -  red = over capacity (Max Units x HoursPerDay x working days, less leave)",
+          util_top - load_top)
+    _grid(wb, ws, "util", util_top, n_sprints, n_resources, "Resource utilisation by sprint (% of capacity after leave)")
+    _leave_grid(wb, ws, util_top + n_resources + 5, n_sprints, n_resources)
     ws.freeze_panes = "D6"
     ws.column_dimensions["B"].width = 16
     return ws, L
 
 
-def _grid(wb, ws, kind, top, n_sprints, n_resources, heading):
+def _grid(wb, ws, kind, top, n_sprints, n_resources, heading, util_offset=0):
     """Rows = resources, columns = sprints. The origin cell (resource header) anchors every position."""
     ws.cell(top - 1, 1, heading).font = font(bold=True, size=12, color="1F4E78")
     origin = f"{kind}_Origin"
@@ -151,8 +163,9 @@ def _grid(wb, ws, kind, top, n_sprints, n_resources, heading):
                 fmt = "#,##0;;-"
             else:
                 load = f"INDEX(load_Grid,{i},{j})"
+                capacity = f"({units}*HoursPerDay*(INDEX(spr_WorkDays,{j})-INDEX(spr_LeaveGrid,{i},{j})))"
                 v = (f'=IFERROR(IF(OR({resource}="",{sprint_name}="",N({units})=0),"",'
-                     f'{load}/({units}*HoursPerDay*INDEX(spr_WorkDays,{j}))),"")')
+                     f'IF({capacity}<=0,IF(N({load})>0,9.99,""),{load}/{capacity})),"")')
                 fmt = "0%;;-"
             cell = ws.cell(rr, c, v)
             cell.number_format = fmt
@@ -161,11 +174,33 @@ def _grid(wb, ws, kind, top, n_sprints, n_resources, heading):
     grid = f"D{first_row}:{last_col}{last_row}"
     if kind == "load":
         name(wb, "load_Grid", f"Sprints!$D${first_row}:${last_col}${last_row}")
+        util_cell = f"D{first_row + util_offset}"     # the matching utilisation cell: leave counts
         ws.conditional_formatting.add(grid, FormulaRule(
-            formula=[f"AND(ISNUMBER(D{first_row}),D{first_row}>$C{first_row}*HoursPerDay*"
-                     f"INDEX(spr_WorkDays,COLUMN()-COLUMN({origin})-1))"],
-            fill=fill("FFC7CE"), font=Font(color="9C0006", bold=True)))
+            formula=[f"AND(ISNUMBER({util_cell}),{util_cell}>1)"], fill=fill("FFC7CE"), font=Font(color="9C0006", bold=True)))
     else:
         ws.conditional_formatting.add(grid, ColorScaleRule(
             start_type="num", start_value=0, start_color="FFFFFF", mid_type="num", mid_value=0.8, mid_color="C6EFCE",
             end_type="num", end_value=1.2, end_color="F8696B"))
+
+
+def _leave_grid(wb, ws, top, n_sprints, n_resources):
+    """Hidden grid: working days of leave per person per sprint (Leave sheet), read by the utilisation grid. Each
+    person's LeaveTable row is looked up once, in column C; each sprint's month columns come from SprintTable."""
+    origin = "spr_LeaveOrigin"
+    name(wb, origin, f"Sprints!$B${top}")
+    ws.cell(top, 2, "Leave days by sprint (helper for the utilisation grid)").font = font(italic=True)
+    i = f"(ROW()-ROW({origin}))"
+    j = f"(COLUMN()-COLUMN({origin})-1)"
+    resource = f"INDEX(res_Name,{i})"
+    start, end = f"INDEX(spr_Start,{j})", f"INDEX(spr_End,{j})"
+    months = [(month_start(start, k), f"INDEX(spr_LeaveCol{k},{j})") for k in range(LEAVE_MONTHS)]
+    days = leave_days(start, end, f"INDEX(spr_LeaveRow,{i})", months)
+    last_col = get_column_letter(3 + n_sprints)
+    for r in range(top + 1, top + 1 + n_resources):
+        ws.cell(r, 3, f'=IFERROR(IF({resource}="",0,{leave_row(resource)}),0)').font = CALC_FONT
+        for c in range(4, 4 + n_sprints):
+            ws.cell(r, c, f'=IFERROR(IF(OR({resource}="",INDEX(spr_Name,{j})=""),0,{days}),0)').font = CALC_FONT
+    name(wb, "spr_LeaveRow", f"Sprints!$C${top + 1}:$C${top + n_resources}")
+    name(wb, "spr_LeaveGrid", f"Sprints!$D${top + 1}:${last_col}${top + n_resources}")
+    for r in range(top, top + 1 + n_resources):
+        ws.row_dimensions[r].hidden = True

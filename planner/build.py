@@ -21,6 +21,7 @@ from . import sample
 from .dashboard import build_dashboard
 from .gantt import build_gantt
 from .instructions import build_instructions
+from .leave import build_leave
 from .msp import build_msp_resources, build_msp_tasks
 from .changes import build_changes
 from .decisions import build_decisions
@@ -36,12 +37,12 @@ from .sprints import build_sprints
 from .tasks import build_tasks
 
 ORDER = ["Instructions", "Dashboard", "Status Report", "Schedule Report", "Resource Report", "Agile Report", "RAID",
-         "Decisions", "Changes", "History", "Settings", "Tasks", "Gantt", "Resources", "Sprints", "Holidays", "MSP_Tasks",
+         "Decisions", "Changes", "History", "Settings", "Tasks", "Gantt", "Resources", "Sprints", "Holidays", "Leave", "MSP_Tasks",
          "MSP_Resources", "Lists"]
 TAB_COLOURS = {"Instructions": "1F4E78", "Dashboard": "548235", "Status Report": "548235",
                "Schedule Report": "548235", "Resource Report": "548235", "Agile Report": "548235", "RAID": "C55A11",
                "Decisions": "C55A11", "Changes": "C55A11", "History": "C55A11", "Settings": "BF8F00", "Tasks": "2F75B5",
-               "Gantt": "2F75B5", "Resources": "7030A0", "Sprints": "7030A0", "Holidays": "BF8F00",
+               "Gantt": "2F75B5", "Resources": "7030A0", "Sprints": "7030A0", "Holidays": "BF8F00", "Leave": "7030A0",
                "MSP_Tasks": "595959", "MSP_Resources": "595959", "Lists": "A6A6A6"}
 @dataclass(frozen=True)
 class Sizes:
@@ -77,6 +78,7 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None):
     build_lists(wb)
     build_settings(wb, blank, sizes.sprints)
     build_holidays(wb, blank)
+    build_leave(wb, blank, sizes.resources)
     build_resources(wb, blank, sizes.resources)
     build_tasks(wb, rows, n_tasks)
     sprints_ws, sprint_letters = build_sprints(wb, blank, sizes.sprints, sizes.grid_resources)

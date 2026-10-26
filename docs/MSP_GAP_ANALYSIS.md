@@ -99,7 +99,7 @@ Legend: ✅ equivalent · 🟡 partial / simplified · ❌ missing · ⛔ not pr
 | Overtime rate, cost per use, cost rate tables, accrual | ❌ | |
 | Fixed cost per task | ❌ | |
 | Multiple resources per task (assignments) | ❌ | One resource with units. |
-| Resource availability over time, leave | ❌ | |
+| Resource availability over time, leave | 🟡 | v1.4: Leave sheet (full / part days) lowers capacity; it doesn't move tasks (no resource calendars). |
 | Resource Usage / Task Usage time-phased views | 🟡 | v1.3: resource x week hours and utilisation (working days only), plus per sprint. No task usage view. |
 | Over-allocation detection | ✅ | Per resource per week and per sprint, counted on the Resource Report. |
 | Resource graph | 🟡 | Sprint capacity vs work chart. |

@@ -36,11 +36,12 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 | Decisions / Changes | Decision log; change request log with schedule and cost impact (totals on the Status Report) |
 | History | Status snapshot (copy, paste as values each reporting date) and trend charts: finish, earned value S-curve, SPI / CPI, burn-up |
 | Settings | Project start, status date, working week, hours/day, Gantt scale, sprint calendar |
-| Tasks | Entry table: UID, Level, Name, Mode, Duration, 2 predecessors by UID (FS/SS/FF/SF + lag), deadline, actuals, % complete, resource, actual cost, planned sprint, story points; frozen baseline with start / finish / duration / work / cost variance; critical path (late start/finish, total and free slack, Critical); Link Check and Deadline Check columns |
+| Tasks | Entry table: UID, Level, Name, Mode, Duration, 2 predecessors by UID (FS/SS/FF/SF + lag), deadline, actuals, % complete, resource, over-allocated flag, actual cost, planned sprint, story points; frozen baseline with start / finish / duration / work / cost variance; critical path (late start/finish, total and free slack, Critical); Link Check and Deadline Check columns |
 | Gantt | Planned outline, done / remaining / critical / late bars, summaries, milestones, deadlines, status-date line (conditional formatting only, no formulas) |
 | Resources | Resource sheet with max units and rates; assigned hours and cost |
 | Sprints | Sprint calendar, capacity vs planned hours, committed / done story points, velocity, release burndown, per-person load with over-allocation flags |
 | Holidays | Non-working dates used by every date formula |
+| Leave | Each person's leave by month (`16, 17(0.5)` under `Nov-26`): lowers weekly and sprint capacity, utilisation and over-allocation (task dates don't move) |
 | MSP_Tasks / MSP_Resources | Columns named with MS Project field names for the Import Wizard |
 
 ## Moving to Microsoft Project

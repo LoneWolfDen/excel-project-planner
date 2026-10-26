@@ -30,7 +30,7 @@ H = {
     "P1": "Pred1 UID", "P2": "Pred2 UID", "AS": "Actual Start", "AF": "Actual Finish", "Pct": "% Complete",
     "PS": "Planned Start", "PF": "Planned Finish", "FS": "Forecast Start", "FF": "Forecast Finish",
     "SVar": "Start Var", "Var": "Finish Var", "DLChk": "Deadline Check", "Link": "Link Check", "Prog": "Progress",
-    "Status": "Status", "Work": "Work", "Cost": "Cost", "Sprint": "Sprint", "Pred": "Predecessors",
+    "Status": "Status", "Work": "Work", "Cost": "Cost", "Over-allocated": "Over-allocated", "Sprint": "Sprint", "Pred": "Predecessors",
     "DVar": "Duration Var", "WVar": "Work Var", "CVar": "Cost Var",
 }
 SOURCE = ["BL Source Start", "BL Source Finish", "BL Source Duration", "BL Source Work", "BL Source Cost"]
@@ -133,7 +133,7 @@ class StructureTest(Tmp):
         self.assertEqual(self.wb.sheetnames, ["Instructions", "Dashboard", "Status Report", "Schedule Report",
                                               "Resource Report", "Agile Report", "RAID", "Decisions", "Changes",
                                               "History", "Settings", "Tasks", "Gantt", "Resources", "Sprints",
-                                              "Holidays", "MSP_Tasks", "MSP_Resources", "Lists"])
+                                              "Holidays", "Leave", "MSP_Tasks", "MSP_Resources", "Lists"])
 
     def test_named_ranges(self):
         names = set(self.wb.defined_names)
@@ -718,7 +718,8 @@ class ResourceReportTest(Tmp):
         summary = {r["Resource"]: r for r in table_rows(wb, "Resource Report", "ResourceSummary") if r["Resource"]}
         jordan = summary["Jordan Lee"]
         self.assertEqual((jordan["Work"], jordan["Work Done"], jordan["Remaining"]), (208, 80, 128))
-        self.assertEqual((jordan["Late Tasks"], jordan["Open Critical"], jordan["Weeks Over"]), (2, 3, 0))
+        # over capacity in 2 weeks only because of leave: 30-Oct, and 21-23 Dec around the holidays
+        self.assertEqual((jordan["Late Tasks"], jordan["Open Critical"], jordan["Weeks Over"]), (2, 3, 2))
         self.assertEqual(sum(r["Actual Cost"] for r in summary.values()), named_cell(wb, "evm_AC").value)
 
     def test_over_allocation(self):
@@ -731,7 +732,10 @@ class ResourceReportTest(Tmp):
         ws = wb["Resource Report"]
         origin = named_cell(wb, "rw_LoadOrigin")
         week_days = [ws.cell(origin.row + 1, origin.column + 2 + w).value for w in range(26)]
-        over = sum(1 for h, n in zip(load["Jordan Lee"], week_days) if (h or 0) > 8 * n)
+        leave = leave_by_day(wb)
+        weeks = [self.START + dt.timedelta(days=7 * w) for w in range(26)]
+        off = [leave_between(leave, "Jordan Lee", w, w + dt.timedelta(days=6)) for w in weeks]
+        over = sum(1 for h, n, o in zip(load["Jordan Lee"], week_days, off) if (h or 0) > 8 * (n - o))
         self.assertGreater(over, 0)
         summary = {r["Resource"]: r for r in table_rows(wb, "Resource Report", "ResourceSummary") if r["Resource"]}
         self.assertEqual(summary["Jordan Lee"]["Weeks Over"], over)
@@ -955,6 +959,125 @@ class RippleTest(Tmp):
         self.assertEqual(t.get(13, "FS"), dt.date(2026, 10, 26))   # first working day after 25-Oct
         self.assertEqual(t.get(13, "FF"), dt.date(2026, 11, 6))
         self.assertEqual(t.get(14, "FS"), dt.date(2026, 11, 9))
+
+
+def parse_leave(text):
+    """{day of month: fraction} from a Leave cell such as "16, 17(0.5)" (semicolons and spaces allowed)."""
+    out = {}
+    for token in str(text or "").replace(";", ",").replace(" ", "").split(","):
+        if not token:
+            continue
+        day, _, rest = token.partition("(")
+        out[int(day)] = float(rest.rstrip(")")) if rest else 1.0
+    return out
+
+
+MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def leave_by_day(wb):
+    """{(person, date): working days of leave}, worked out in Python from the Leave sheet, working days only."""
+    holidays = {d(r["Date"]) for r in table_rows(wb, "Holidays", "HolidayTable") if r["Date"]}
+    out = {}
+    for row in table_rows(wb, "Leave", "LeaveTable"):
+        if not row["Resource"]:
+            continue
+        for header, text in row.items():
+            if header == "Resource" or not text:
+                continue
+            month, year = MONTH_NAMES.index(header[:3]) + 1, 2000 + int(header[-2:])
+            for day, fraction in parse_leave(text).items():
+                when = dt.date(year, month, day)
+                if when.weekday() < 5 and when not in holidays:
+                    out[(row["Resource"], when)] = fraction
+    return out
+
+
+def leave_between(leave, person, start, end):
+    return sum(f for (p, when), f in leave.items() if p == person and start <= when <= end)
+
+
+@unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+class LeaveTest(Tmp):
+    """Leave lowers capacity (not task dates): weekly and sprint grids, team capacity and the Over-allocated flag."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.wb = recalc(cls.path, cls.dir)
+
+    def grid(self, wb, name, origin_rows, people):
+        """{person: [values]} of a named grid whose rows follow ResourceTable."""
+        sheet, ref = wb.defined_names[name].attr_text.split("!")
+        top_left, bottom_right = ref.replace("$", "").split(":")
+        rows = [[c.value for c in row] for row in wb[sheet.strip("'")][top_left:bottom_right]]
+        return dict(zip(people, rows))
+
+    def people(self, wb):
+        return [r["Resource Name"] for r in table_rows(wb, "Resources", "ResourceTable") if r["Resource Name"]]
+
+    def check(self, wb):
+        self.assertEqual(errors_in(wb), [])
+        leave, people = leave_by_day(wb), self.people(wb)
+        first = serial(named_cell(wb, "ResourceWeekStart").value)
+        weekly = self.grid(wb, "rw_Leave", 0, people)
+        for person in people:
+            for w, got in enumerate(weekly[person][:26]):
+                start = first + dt.timedelta(days=7 * w)
+                self.assertAlmostEqual(got or 0, leave_between(leave, person, start, start + dt.timedelta(days=6)),
+                                       msg=f"{person} week of {start}")
+        sprints = [s for s in table_rows(wb, "Sprints", "SprintTable") if s["Sprint"]]
+        by_sprint = self.grid(wb, "spr_LeaveGrid", 0, people)
+        units = {r["Resource Name"]: r["Max Units"] for r in table_rows(wb, "Resources", "ResourceTable") if r["Resource Name"]}
+        for j, s in enumerate(sprints):
+            days = {p: leave_between(leave, p, s["Start"], s["End"]) for p in people}
+            for p in people:
+                self.assertAlmostEqual(by_sprint[p][j] or 0, days[p], msg=f"{p} {s['Sprint']}")
+            want = sum(units.values()) * 8 * s["Working Days"] - sum(units[p] * 8 * days[p] for p in people)
+            self.assertAlmostEqual(s["Capacity"], want, msg=s["Sprint"])
+        return leave, weekly
+
+    def test_sample_leave(self):
+        leave, weekly = self.check(self.wb)
+        self.assertEqual(weekly["Casey Kim"][6:8], [4.5, 5])           # weeks of 16 and 23 November
+        self.assertEqual(leave_between(leave, "Jordan Lee", dt.date(2026, 12, 21), dt.date(2026, 12, 27)), 2.5)
+        sprints = {s["Sprint"]: s for s in table_rows(self.wb, "Sprints", "SprintTable") if s["Sprint"]}
+        self.assertEqual(sprints["Sprint 6"]["Capacity"], 480 - 9.5 * 8)  # Casey off 9.5 days
+        summary = {r["Resource"]: r for r in table_rows(self.wb, "Resource Report", "ResourceSummary") if r["Resource"]}
+        self.assertEqual((summary["Casey Kim"]["Leave Days"], summary["Casey Kim"]["Weeks Over"]), (9.5, 1))
+
+    def test_over_allocated_flag(self):
+        people = self.people(self.wb)
+        util = self.grid(self.wb, "rw_Util", 0, people)
+        first = serial(named_cell(self.wb, "ResourceWeekStart").value)
+        want = []
+        for t in table_rows(self.wb, "Tasks", "Tasks"):
+            if t["_IsLeaf"] != 1 or not t["Resource"] or t["Progress"] >= 1:
+                continue
+            a = max(0, (t["Forecast Start"] - first).days // 7)
+            b = min(25, (t["Forecast Finish"] - first).days // 7)
+            if any((u or 0) > 1 for u in util[t["Resource"]][a:b + 1] if isinstance(u, (int, float))):
+                want.append(t["Task Name"])
+        flagged = [t["Task Name"] for t in table_rows(self.wb, "Tasks", "Tasks") if t["Over-allocated"] == "Yes"]
+        self.assertEqual(flagged, want)
+        self.assertEqual(flagged, ["Core API endpoints", "Training & user guides", "Hypercare support"])
+
+    def test_leave_entries(self):
+        def edit(wb):
+            ws = wb["Leave"]
+            head = {c.value: c.column for c in ws[4]}
+            ws.cell(5, head["Nov-26"]).value = "16;17 (0.25) , 21, 22"     # 21-22 Nov is a weekend
+            ws.cell(6, head["Dec-26"]).value = "24, 25, 28(0.5)"         # 24-25 Dec are holidays
+            ws.cell(9, head["Resource"]).value = "Taylor Morgan"
+            ws.cell(9, head["Nov-26"]).value = "9,10,11,12,13"
+        wb = recalc(self.path, self.dir, edit)
+        leave, weekly = self.check(wb)
+        self.assertEqual(weekly["Casey Kim"][6], 1.25)
+        self.assertEqual(leave_between(leave, "Jordan Lee", dt.date(2026, 12, 21), dt.date(2026, 12, 31)), 0.5)
+        self.assertEqual(weekly["Taylor Morgan"][5], 5)
+        t = Tasks(wb)
+        self.assertEqual(t.get(21, "Over-allocated"), "Yes")            # system testing, Taylor away all week
+        self.assertEqual(t.get(21, "FF"), dt.date(2026, 11, 19))        # capacity only: dates don't move
 
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")

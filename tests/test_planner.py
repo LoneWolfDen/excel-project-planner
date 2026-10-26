@@ -36,6 +36,7 @@ H = {
 SOURCE = ["BL Source Start", "BL Source Finish", "BL Source Duration", "BL Source Work", "BL Source Cost"]
 BASELINE = ["Baseline Start", "Baseline Finish", "Baseline Duration", "Baseline Work", "Baseline Cost"]
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import perf_check  # noqa: E402
 
 
@@ -56,7 +57,7 @@ def recalc(src, outdir, edit=None, status_date=True):
     """Optionally edit inputs (edit(wb) with formulas loaded), then let LibreOffice recalculate a copy."""
     wb = openpyxl.load_workbook(src)
     if status_date:
-        named_cell(wb, "StatusDateOverride").value = STATUS_DATE   # deterministic results
+        named_cell(wb, "StatusDateInput").value = STATUS_DATE   # deterministic results
     if edit:
         edit(wb)
     stage = Path(tempfile.mkdtemp(dir=outdir))
@@ -148,16 +149,25 @@ class StructureTest(Tmp):
         report = perf_check.static_report(self.path)
         self.assertEqual(report["a1_references"], [])
 
+    def test_formulas_within_excel_limits(self):
+        report = perf_check.static_report(self.path)
+        self.assertEqual(report["excel_limit_problems"], [])
+        self.assertEqual(perf_check.excel_limit_problems('=IF(A,"(",B'), ["unbalanced parentheses, quotes or brackets"])
+        self.assertEqual(perf_check.excel_limit_problems('=IF(Tasks[[#This Row],[x)]]=1,"a)",2)'), [])
+
     def test_a1_lint_catches_cell_references(self):
         names = {"ProjectStart"}
         self.assertEqual(perf_check.a1_references("=SUM(A1:B2)+Settings!$C$5+ProjectStart", names), ["A1:B2", "Settings!$C$5"])
         self.assertEqual(perf_check.a1_references("=Tasks[[#This Row],[Duration]]*2", names), [])
 
     def test_volatile_functions_only_where_allowed(self):
-        report = perf_check.static_report(self.path)
-        self.assertEqual(set(report["volatile"]), {"Tasks", "Settings"})
-        self.assertEqual(set(report["volatile"]["Tasks"]), {"OFFSET"})
-        self.assertEqual(report["volatile"]["Settings"], {"TODAY": 2})
+        # OFFSET only in Tasks, for the few columns that read another row's calculated value; no TODAY, INDIRECT ...
+        volatile = perf_check.static_report(self.path)["volatile"]
+        self.assertEqual(volatile, {"Tasks": {"OFFSET": 1000}})
+        ws = self.wb["Tasks"]
+        offset_cols = {ws.cell(5, c).value for c in range(1, ws.max_column + 1)
+                       if "OFFSET(" in str(ws.cell(FIRST, c).value)}
+        self.assertEqual(offset_cols, {"WBS", "_Pred1PlanDriver", "_Pred2PlanDriver", "_Pred1FcstDriver", "_Pred2FcstDriver"})
 
     def test_gantt_timeline_has_no_formulas(self):
         ws = self.wb["Gantt"]
@@ -172,11 +182,12 @@ class StructureTest(Tmp):
         drivers = [ws.cell(7, c).value for c in range(1, ws.max_column + 1)
                    if isinstance(ws.cell(7, c).value, str) and "CHOOSE(" in ws.cell(7, c).value]
         self.assertTrue(drivers)
-        for token in ("Tasks[[#Headers],[_CalcFinish]]", "Tasks[[#This Row],[_Pred1Row]]", "WorkWeek", "Holidays"):
+        for token in ("Tasks[[#Headers],[_LeafCalcFinish]]", "Tasks[[#This Row],[_Pred1Pos]]", "WorkWeek", "Holidays"):
             self.assertIn(token, drivers[0])
-        # every row of a calculated column carries the same text: nothing points at a particular row
-        col = columns(ws)["Forecast Start"]
-        self.assertEqual(len({ws.cell(r, col).value for r in range(FIRST, FIRST + 200)}), 1)
+        # every row of a calculated column carries the same formula text: nothing points at a particular row
+        for name in ("Forecast Start", "_Pred1PlanDriver", "WBS"):
+            col = columns(ws)[name]
+            self.assertEqual(len({ws.cell(r, col).value for r in range(FIRST, FIRST + 200)}), 1, name)
 
     def test_uids_prefilled(self):
         ws = self.wb["Tasks"]
@@ -402,20 +413,27 @@ class LinkCheckTest(Tmp):
             set_input(wb, 7, "P1", 7)      # itself
             set_input(wb, 13, "P2", 11)    # its own summary (Backend)
             set_input(wb, 14, "P1", 999)   # missing
-            set_input(wb, 6, "P2", 150)    # empty row
+            set_input(wb, 6, "P2", 150)    # empty row (below, too)
+            set_input(wb, 8, "P2", 21)     # a task further down: predecessors must be above
+            set_input(wb, 21, "P2", 15)    # another phase's summary (Frontend)
 
         wb = recalc(self.path, self.dir, edit)
         self.assertEqual(errors_in(wb), [])
         t = Tasks(wb)
         self.assertEqual(t.get(7, "Link"), "Pred 1: links to itself.")
-        self.assertEqual(t.get(13, "Link"), "Pred 2: UID 11 is its own summary.")
+        self.assertEqual(t.get(13, "Link"), "Pred 2: UID 11 is a summary: link to one of its tasks.")
         self.assertEqual(t.get(14, "Link"), "Pred 1: UID 999 not found.")
         self.assertEqual(t.get(6, "Link"), "Pred 2: UID 150 is an empty row.")
+        self.assertEqual(t.get(8, "Link"), "Pred 2: UID 21 is below this task: move it above.")
+        self.assertEqual(t.get(21, "Link"), "Pred 2: UID 15 is a summary: link to one of its tasks.")
+        self.assertEqual(t.get(8, "PS"), dt.date(2026, 9, 24))     # the valid link still applies
+        # task 14 lost its link (UID 999), so the build milestone moves to 29-Oct (task 18) and testing follows it
+        self.assertEqual(t.get(21, "PS"), dt.date(2026, 10, 30))
         self.assertEqual(t.get(7, "PS"), dt.date(2026, 9, 7))      # bad link ignored -> project start
         self.assertEqual(t.get(13, "PS"), dt.date(2026, 10, 9))    # good link still applies
         self.assertIn(t.get(7, "Pred"), (None, ""))
         dash = {wb["Dashboard"].cell(r, 2).value: wb["Dashboard"].cell(r, 3).value for r in range(5, 20)}
-        self.assertEqual(dash["Link problems (see Tasks > Link Check)"], 4)
+        self.assertEqual(dash["Link problems (see Tasks > Link Check)"], 6)
 
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")
@@ -459,6 +477,64 @@ class InsertRowTest(Tmp):
         self.assertEqual(gantt.cell(14 + FIRST - 1, 3).value.strip(), "Security review")
 
 
+import lo_session  # noqa: E402
+
+
+@unittest.skipUnless(SOFFICE and lo_session.AVAILABLE, "LibreOffice / python3-uno not installed")
+class RealRowEditTest(Tmp):
+    """Insert and delete real rows, as a person would in Excel, and check every existing formula still works.
+
+    This is what catches formulas that only look robust: a range that ends at the row above, for example, does
+    not grow when a row is inserted directly above, so the row below silently loses sight of the new task.
+    """
+
+    def edit(self, fn):
+        prepared = self.dir / f"prepared_{fn.__name__}.xlsx"
+        wb = openpyxl.load_workbook(self.path)
+        named_cell(wb, "StatusDateInput").value = STATUS_DATE
+        wb.save(prepared)
+        out = self.dir / f"edited_{fn.__name__}.xlsx"
+        cols = columns(wb["Tasks"])
+        with lo_session.Calc(prepared) as calc:
+            fn(calc, cols)
+            calc.save(out)
+        return openpyxl.load_workbook(out, data_only=True)
+
+    def test_insert_task_directly_above_and_link_to_it(self):
+        def insert(calc, cols):
+            row = 14 + FIRST - 1                                    # "Payment gateway integration"
+            calc.insert_row_like_excel("Tasks", row, max(cols.values()))
+            for c in cols.values():                                  # clear the copied inputs, keep the formulas
+                if not calc.sheet("Tasks").getCellByPosition(c - 1, row - 1).getFormula().startswith("="):
+                    calc.set("Tasks", c - 1, row, None)
+            for key, value in {"UID": 201, "Level": 3, "Name": "Security review", "Dur": 2, "P1": 13}.items():
+                calc.set("Tasks", cols[H[key]] - 1, row, value)
+            calc.set("Tasks", cols[H["P1"]] - 1, row + 1, 201)      # the task below now follows the new one
+
+        wb = self.edit(insert)
+        self.assertEqual(errors_in(wb), [])
+        t = Tasks(wb)
+        self.assertEqual(t.get(14, "Name"), "Security review")
+        self.assertEqual(t.get(14, "WBS"), "3.1.3")
+        self.assertEqual(t.get(14, "PF"), dt.date(2026, 10, 26))
+        self.assertEqual(t.get(15, "Name"), "Payment gateway integration")
+        self.assertIsNone(t.get(15, "Link"))
+        self.assertEqual(t.get(15, "PS"), dt.date(2026, 10, 27))   # follows the new task
+        self.assertEqual(t.get(20, "Pred"), "15,19")                 # IDs renumbered in the MSP text
+        self.assertEqual(wb["Gantt"].cell(14 + FIRST - 1, 3).value.strip(), "Security review")
+
+    def test_delete_a_predecessor(self):
+        def delete(calc, cols):
+            calc.delete_row("Tasks", 14 + FIRST - 1)                # remove "Payment gateway integration" (UID 14)
+
+        wb = self.edit(delete)
+        self.assertEqual(errors_in(wb), [])
+        t = Tasks(wb)
+        self.assertEqual(t.get(18, "Name"), "Build complete")
+        self.assertEqual(t.get(18, "Link"), "Pred 1: UID 14 not found.")
+        self.assertEqual(t.get(18, "PS"), dt.date(2026, 10, 29))   # still follows its other predecessor
+
+
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")
 class RippleTest(Tmp):
     """A late actual finish must push every successor's forecast dates."""
@@ -494,7 +570,8 @@ class BlankTemplateTest(unittest.TestCase):
             self.assertTrue(all(t.ws.cell(r, t.col[H["Name"]]).value is None for r in range(FIRST, FIRST + 200)))
             self.assertIsNone(wb["Resources"]["B6"].value)
             self.assertIsNone(wb["Holidays"]["B5"].value)
-            self.assertEqual(d(named_cell(wb, "ProjectStart").value), dt.date.today())
+            self.assertIsNone(named_cell(wb, "ProjectStartDate").value)      # required input, highlighted yellow
+            self.assertIsNone(named_cell(wb, "StatusDateInput").value)
             dash = {wb["Dashboard"].cell(r, 2).value: wb["Dashboard"].cell(r, 3).value for r in range(5, 20)}
             self.assertEqual(dash["Detail tasks"], 0)
 

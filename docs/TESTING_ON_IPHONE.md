@@ -35,17 +35,18 @@ Tick each one and note anything odd (a screenshot is ideal).
 - [ ] Task 2 "Project charter": Planned Start Mon 07-Sep-26, Planned Finish Wed 09-Sep-26.
 - [ ] Task 7 "Solution architecture" (SS + 3): Planned Start Thu 17-Sep-26.
 - [ ] Task 26 "Hypercare support": Planned Finish Mon 04-Jan-27 (holidays skipped).
-- [ ] Task 13 "Core API endpoints" status "Behind". The forecast depends on today's date, so it will differ from the tests.
+- [ ] Task 13 "Core API endpoints" status "Behind" (the sample's status date is 25-Oct-2026, on Settings).
 
 **Ripple test (edit something)**
 - [ ] Change Task 2's Duration from 3 to 5. Planned dates of tasks 2, 3, 4 and later move by 2 working days.
 - [ ] Undo, or set it back to 3.
 - [ ] Type `7` in Task 7's "Pred1 UID" (a link to itself). Link Check shows "Pred 1: links to itself." and no circular-reference warning appears. Undo.
+- [ ] Type `21` in Task 8's "Pred2 UID" (a task further down). Link Check shows "Pred 2: UID 21 is below this task: move it above." Undo.
 - [ ] On Settings, change `GanttPeriod` from 1 to 7. The Gantt switches to weeks. Set it back to 1.
 
 **Gantt sheet**
 - [ ] Green / blue / orange / dark grey bars appear; planned dates show as a thin dark outline; milestones are purple cells.
-- [ ] Red lines at today's date, grey weekend columns, red deadline cells on tasks 19 and 25.
+- [ ] Red lines at the status date (25-Oct), grey weekend columns, red deadline cells on tasks 19 and 25.
 
 **Baseline**
 - [ ] On Tasks, select the 5 "BL Source" columns for rows 6–35, Copy, tap the first "Baseline Start" cell, Paste Special → Values. Dashboard "Baseline" shows "Set on 30 tasks".

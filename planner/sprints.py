@@ -15,15 +15,21 @@ GOALS = ["Charter & kickoff", "Requirements", "Design & architecture", "Foundati
          "Release & hypercare", "Hypercare", "Close-out"]
 
 
-def overlap_hours(start, end, extra=""):
-    """Work hours of tasks falling between start and end, prorated by calendar days of overlap.
+def work_between(start, end, resource=None):
+    """Hours of task work scheduled from date start to date end (inclusive), counting working days only.
 
-    MIN(a,b) = (a+b-ABS(a-b))/2 and MAX(x,0) = (x+ABS(x))/2 keep this a single SUMPRODUCT (no array formulas).
-    """
-    lo = f"(tsk_FinishN+{end}-ABS(tsk_FinishN-{end}))/2"
-    hi = f"(tsk_StartN+{start}+ABS(tsk_StartN-{start}))/2"
-    days = f"({lo}-{hi}+1)"
-    return f"SUMPRODUCT({extra}tsk_WorkPerDay*(({days}+ABS{days})/2))"
+    Uses the cumulative form W(D) = SUMIFS(work, finish < D) + D * SUMIFS(work per day, running on D)
+    - SUMIFS(work before start, running on D), with D in working days since the project start. Six SUMIFS per cell
+    are far cheaper than a SUMPRODUCT over every task, and SUMIFS needs no array formulas."""
+    res = f',tsk_Resource,{resource}' if resource else ""
+
+    def upto(d):
+        running = f'tsk_StartWD,"<="&{d},tsk_FinishWD,">="&{d}{res}'
+        return (f'(SUMIFS(tsk_LeafWork,tsk_FinishWD,"<"&{d},tsk_FinishWD,">0"{res})'
+                f'+{d}*SUMIFS(tsk_WorkPerWD,{running})-SUMIFS(tsk_WorkBeforeStart,{running}))')
+    first = f"NETWORKDAYS.INTL(ProjectStart,{start},{WD})"
+    last = f"NETWORKDAYS.INTL(ProjectStart,{end},{WD})"
+    return f"({upto(last)}-{upto(f'({first}-1)')})"
 
 
 def build_sprints(wb, blank, n_sprints, n_resources):
@@ -31,7 +37,7 @@ def build_sprints(wb, blank, n_sprints, n_resources):
     ws["A1"] = '=ProjectName&"  -  Sprint & Capacity Planning"'
     ws["A1"].font = font(size=16, bold=True, color="1F4E78")
     ws["A2"] = ("Sprint calendar from Settings (Sprint1Start, SprintLength, SprintCount); add rows to the table for more "
-                "sprints. Work is prorated across sprints by the calendar days each task's forecast dates overlap the sprint.")
+                "sprints. Each task's work is spread evenly over its forecast working days, then summed per sprint.")
     ws["A2"].font = NOTE_FONT
     s = Tab("SprintTable")
     r = s.row
@@ -44,7 +50,7 @@ def build_sprints(wb, blank, n_sprints, n_resources):
         Col("Working Days", width=9, formula=f"NETWORKDAYS.INTL({r('Start')},{r('End')},{WD})", center=True),
         Col("Goal", "in", 36, values=[] if blank else GOALS),
         Col("Tasks Starting", width=9, formula=f'IF({has},"",COUNTIF(tsk_Sprint,{r("Sprint")}))', center=True),
-        Col("Planned Work", width=11, fmt="#,##0.0", formula=f'IF({has},"",{overlap_hours(r("Start"), r("End"))})',
+        Col("Planned Work", width=11, fmt="#,##0.0", formula=f'IF({has},"",{work_between(r("Start"), r("End"))})',
             note="Hours of task work falling in the sprint."),
         Col("Capacity", width=11, fmt="#,##0.0", note="Sum of Work resources' Max Units x HoursPerDay x working days.",
             formula=f'IF({has},"",SUMIFS(res_MaxUnits,res_Type,"Work")*HoursPerDay*{r("Working Days")})'),
@@ -103,7 +109,7 @@ def _grid(wb, ws, kind, top, n_sprints, n_resources, heading):
         u.number_format = "0%"
         for c in range(4, 4 + n_sprints):
             if kind == "load":
-                hours = overlap_hours(f"INDEX(spr_Start,{j})", f"INDEX(spr_End,{j})", f"(tsk_Resource={resource})*")
+                hours = work_between(f"INDEX(spr_Start,{j})", f"INDEX(spr_End,{j})", resource)
                 v = f'=IFERROR(IF(OR({resource}="",{sprint_name}=""),"",{hours}),"")'
                 fmt = "#,##0;;-"
             else:

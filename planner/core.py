@@ -104,16 +104,20 @@ class Tab:
         return f"{self.head(col)}:{self.row(col)}"
 
 
+
+
 def add_table(ws, table_name, header_row, first_col, cols, n_rows, style="TableStyleLight1", autofilter=True):
     """Write a styled Excel Table with calculated columns. Returns {column name: column letter}."""
     letters = {}
     last_row = header_row + n_rows
     for i, c in enumerate(cols):
-        col = first_col + i
-        letter = get_column_letter(col)
-        letters[c.name] = letter
+        letters[c.name] = get_column_letter(first_col + i)
         if c.key:
-            letters[c.key] = letter
+            letters[c.key] = letters[c.name]
+
+    for i, c in enumerate(cols):
+        col = first_col + i
+        letter = letters[c.name]
         header_cell(ws.cell(header_row, col), c.name, c.kind)
         if c.note:
             ws.cell(header_row, col).comment = Comment(c.note, "Planner")

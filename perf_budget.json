@@ -1,5 +1,5 @@
 {
-  "_comment": "Budgets checked by scripts/perf_check.py on every PR. Timings are LibreOffice on a CI runner, with roughly 3x headroom over local runs. edit_recalc_s is a duration edit near the top of the plan. OFFSET is allowed only in Tasks, for reading another row's calculated value (predecessor drivers, parent WBS, and the critical path's successor look-ups) (see docs/ARCHITECTURE.md). Raise a budget only with a reason in the PR; never to hide a regression. v1.3 raised formulas_max (sample 30,000 -> 35,000, stress 125,000 -> 150,000) for earned value and the report lists: 18 Tasks columns (one formula per task each) and about 960 report cells; the edit time rose by 0.06 s at 1,000 tasks. Reports 2 raised the sample formulas_max to 38,000 for the Resource Report's weekly grids (3 grids x 25 resources x 26-27 weeks; blank resource rows cost almost nothing to calculate) and the agile columns; one edit rose by about 0.02 s on the sample and 0.1 s at 1,000 tasks.",
+  "_comment": "Budgets checked by scripts/perf_check.py on every PR. Timings are LibreOffice on a CI runner, with roughly 3x headroom over local runs. edit_recalc_s is a duration edit near the top of the plan. OFFSET is allowed only in Tasks, for reading another row's calculated value (predecessor drivers, parent WBS, and the critical path's successor look-ups) (see docs/ARCHITECTURE.md). Raise a budget only with a reason in the PR; never to hide a regression. v1.3 raised formulas_max (sample 30,000 -> 35,000, stress 125,000 -> 150,000) for earned value and the report lists: 18 Tasks columns (one formula per task each) and about 960 report cells; the edit time rose by 0.06 s at 1,000 tasks. Reports 2 raised the sample formulas_max to 38,000 for the Resource Report's weekly grids (3 grids x 25 resources x 26-27 weeks; blank resource rows cost almost nothing to calculate) and the agile columns; one edit rose by about 0.02 s on the sample and 0.1 s at 1,000 tasks. Reports 3 raised the stress formulas_max to 155,000 for the RAID, Decisions, Changes and History sheets (about 1,200 formulas, fixed: they don't grow with the task count); edit time unchanged.",
   "sample": {
     "formulas_max": 38000,
     "volatile_allowed": {
@@ -11,7 +11,7 @@
     "edit_recalc_s_max": 0.5
   },
   "stress": {
-    "formulas_max": 150000,
+    "formulas_max": 155000,
     "volatile_allowed": {
       "Tasks": {
         "OFFSET": 7000

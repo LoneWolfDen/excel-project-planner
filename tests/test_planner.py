@@ -131,8 +131,9 @@ class StructureTest(Tmp):
 
     def test_sheets(self):
         self.assertEqual(self.wb.sheetnames, ["Instructions", "Dashboard", "Status Report", "Schedule Report",
-                                              "Resource Report", "Agile Report", "Settings", "Tasks", "Gantt",
-                                              "Resources", "Sprints", "Holidays", "MSP_Tasks", "MSP_Resources", "Lists"])
+                                              "Resource Report", "Agile Report", "RAID", "Decisions", "Changes",
+                                              "History", "Settings", "Tasks", "Gantt", "Resources", "Sprints",
+                                              "Holidays", "MSP_Tasks", "MSP_Resources", "Lists"])
 
     def test_named_ranges(self):
         names = set(self.wb.defined_names)
@@ -180,6 +181,14 @@ class StructureTest(Tmp):
         self.assertEqual(offset_cols, {"WBS", "_Pred1PlanDriver", "_Pred2PlanDriver", "_Pred1FcstDriver", "_Pred2FcstDriver",
                                        "_SuccessorFinishLimit", "Free Slack"})
 
+    def test_titles_not_in_hidden_columns(self):
+        # report lists hide their _Task helper column; it must never be the column a sheet's title is in
+        for ws in self.wb.worksheets:
+            for r in (1, 2):
+                for c in ws[r]:
+                    if c.value is not None and ws.column_dimensions[c.column_letter].hidden:
+                        self.fail(f"{ws.title}!{c.coordinate} is in a hidden column")
+
     def test_gantt_timeline_has_no_formulas(self):
         ws = self.wb["Gantt"]
         origin = named_cell(self.wb, "gantt_Origin")
@@ -207,7 +216,8 @@ class StructureTest(Tmp):
 
     def test_views_read_tasks_by_name_not_row(self):
         # Gantt and MSP_Tasks use INDEX(tsk_..., n), so rows inserted on Tasks still show up
-        for sheet in ("Gantt", "MSP_Tasks", "Status Report", "Schedule Report", "Resource Report", "Agile Report"):
+        for sheet in ("Gantt", "MSP_Tasks", "Status Report", "Schedule Report", "Resource Report", "Agile Report",
+                      "RAID", "Decisions", "Changes", "History"):
             for row in self.wb[sheet].iter_rows(max_row=120, max_col=25):
                 for c in row:
                     if isinstance(c.value, str) and c.value.startswith("="):
@@ -539,7 +549,7 @@ class ReportTest(Tmp):
         rag = {r["Area"]: r for r in table_rows(self.wb, "Status Report", "StatusRAG")}
         self.assertEqual({a: r["RAG"] for a, r in rag.items()}, {
             "Schedule": "Green", "Schedule performance": "Red", "Cost performance": "Amber", "Deadlines": "Red",
-            "Critical path": "Amber", "Plan quality": "Green"})
+            "Critical path": "Amber", "RAID": "Amber", "Plan quality": "Green"})
         self.assertEqual(rag["Plan quality"]["Value"], 0)    # "?" in COUNTIF is a wildcard; the formula escapes it
         self.assertEqual(rag["Critical path"]["Value"], 5)
         self.assertEqual(table_rows(self.wb, "Status Report", "OverallStatus")[0]["RAG"], "Red")
@@ -557,7 +567,7 @@ class ReportTest(Tmp):
         self.assertEqual(rag["Deadlines"]["RAG"], "Amber")
         self.assertEqual(rag["Schedule performance"]["Calculated"], "Amber")   # SPI 0.78 with red below 0.5
         overall = table_rows(wb, "Status Report", "OverallStatus")[0]
-        self.assertEqual((overall["RAG"], overall["Value"]), ("Amber", "0 red, 4 amber"))
+        self.assertEqual((overall["RAG"], overall["Value"]), ("Amber", "0 red, 5 amber"))
 
     def listed(self, table):
         return [r["Task"] if "Task" in r else r["Milestone"] for r in table_rows(self.wb, "Schedule Report", table)
@@ -726,6 +736,73 @@ class ResourceReportTest(Tmp):
         summary = {r["Resource"]: r for r in table_rows(wb, "Resource Report", "ResourceSummary") if r["Resource"]}
         self.assertEqual(summary["Jordan Lee"]["Weeks Over"], over)
         self.assertAlmostEqual(summary["Jordan Lee"]["Peak Use"], max(u or 0 for u in util["Jordan Lee"]))
+
+
+@unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+class LogsTest(Tmp):
+    """RAID, decision and change logs, the Status Report's summaries of them, and status snapshots."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.wb = recalc(cls.path, cls.dir)
+
+    def raid(self, wb):
+        return {r["Ref"]: r for r in table_rows(wb, "RAID", "RAIDLog") if r["Title"]}
+
+    def test_no_formula_errors(self):
+        self.assertEqual(errors_in(self.wb), [])
+
+    def test_raid_scoring_and_links(self):
+        raid = self.raid(self.wb)
+        # score = probability x impact; an issue counts as probability 5
+        self.assertEqual({k: (r["Score"], r["Rating"]) for k, r in raid.items()},
+                         {1: (16, "High"), 2: (9, "Medium"), 3: (20, "High"), 4: (8, "Medium"), 5: (15, "High"),
+                          6: (6, "Low")})
+        self.assertEqual([k for k, r in raid.items() if r["Overdue"] == "Overdue"], [3])   # due 23-Oct, not closed
+        self.assertEqual((raid[1]["Task"], serial(raid[1]["Task Finish"])),
+                         ("Payment gateway integration", dt.date(2026, 11, 9)))
+        top = [r["Item"] for r in table_rows(self.wb, "Status Report", "TopRAID") if r["_Task"] not in (None, "")]
+        self.assertEqual([t.split(":")[0] for t in top], ["Issue 3", "Risk 1", "Dependency 5", "Risk 2", "Assumption 4"])
+
+    def test_raid_edits(self):
+        def edit(wb):
+            ws = wb["RAID"]
+            head = {c.value: c.column for c in ws[4]}
+            ws.cell(6, head["Task UID"]).value = 999          # Ref 2 now points at a missing task
+            ws.cell(7, head["Status"]).value = "Closed"       # the issue is resolved
+            named_cell(wb, "RAIDHighScore").value = 16
+        wb = recalc(self.path, self.dir, edit)
+        self.assertEqual(errors_in(wb), [])
+        raid = self.raid(wb)
+        self.assertEqual(raid[2]["Task"], "UID 999 not found")
+        self.assertIn(raid[3]["Overdue"], (None, ""))
+        self.assertEqual(raid[5]["Rating"], "Medium")          # 15 is below the new threshold
+        rag = {r["Area"]: r for r in table_rows(wb, "Status Report", "StatusRAG")}
+        self.assertEqual(rag["RAID"]["Value"], 1)              # only Risk 1 (16) is still high and open
+        top = [r["Item"] for r in table_rows(wb, "Status Report", "TopRAID") if r["_Task"] not in (None, "")]
+        self.assertNotIn("Issue 3", " ".join(top))
+
+    def test_change_control_summary(self):
+        cc = {r["Measure"]: r["Value"] for r in table_rows(self.wb, "Status Report", "ChangeControl")}
+        self.assertEqual(cc, {
+            "Change requests awaiting decision": 1, "Change requests approved or implemented": 1,
+            "Approved schedule impact (working days)": 2, "Approved cost impact": 1360,
+            "Cost impact awaiting decision": 6800, "Decisions awaiting approval": 1, "Overdue RAID actions": 1})
+        waiting = {r["Ref"]: r["Waiting (days)"] for r in table_rows(self.wb, "Changes", "ChangeLog") if r["Title"]}
+        self.assertEqual(waiting[2], 3)                        # raised 22-Oct, status date 25-Oct
+        self.assertIn(waiting[1], (None, ""))
+
+    def test_snapshot_matches_the_reports(self):
+        snap = table_rows(self.wb, "History", "SnapshotNow")[0]
+        self.assertEqual(serial(snap["Status Date"]), STATUS_DATE)
+        for field, n in (("BAC", "evm_BAC"), ("EV", "evm_EV"), ("SPI", "evm_SPI"), ("Points Done", "agl_Done")):
+            self.assertAlmostEqual(snap[field], named_cell(self.wb, n).value, msg=field)
+        self.assertEqual((snap["Open Risks"], snap["Open Issues"], snap["Pending Changes"], snap["RAG"]),
+                         (2, 1, 1, "Red"))
+        history = [r for r in table_rows(self.wb, "History", "StatusHistory") if r["Status Date"]]
+        self.assertEqual(len(history), 4)
+        self.assertEqual(list(history[0]), list(snap))          # same columns, so a pasted row lines up
 
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")

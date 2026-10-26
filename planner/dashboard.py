@@ -28,6 +28,9 @@ KPIS = [
     ("Cost performance (CPI)", 'IF(evm_CPI="","-",evm_CPI)', "0.00"),
     ("Forecast cost at completion (EAC)", "evm_EAC", "#,##0.00"),
     ("Story points done / total", 'IF(TotalPoints=0,"-",agl_Done&" / "&TotalPoints)', "@"),
+    ("Open risks / issues (see RAID)",
+     'COUNTIFS(raid_Type,"Risk",raid_Status,"<>Closed")&" / "&COUNTIFS(raid_Type,"Issue",raid_Status,"<>Closed")', "@"),
+    ("Change requests awaiting decision", 'COUNTIF(chg_Status,"Submitted")+COUNTIF(chg_Status,"Under Review")', "0"),
 ]
 ALERT_IF_POSITIVE = {"Finish variance (work days)", "Missed deadlines", "Link problems (see Tasks > Link Check)"}
 

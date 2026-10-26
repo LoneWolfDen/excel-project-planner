@@ -14,6 +14,11 @@ LISTS = {  # table name, column name, named range, values
     "L_ResType": ("ListResType", "Resource Type", ["Work", "Material", "Cost"]),
     "L_Period": ("ListPeriod", "Gantt Days per Column", [1, 7]),
     "L_RAG": ("ListRAG", "RAG", ["Green", "Amber", "Red"]),
+    "L_RAIDType": ("ListRAIDType", "RAID Type", ["Risk", "Assumption", "Issue", "Dependency"]),
+    "L_RAIDStatus": ("ListRAIDStatus", "RAID Status", ["Open", "In Progress", "Closed"]),
+    "L_DecisionStatus": ("ListDecisionStatus", "Decision Status", ["Proposed", "Approved", "Rejected", "Superseded"]),
+    "L_ChangeStatus": ("ListChangeStatus", "Change Status", ["Submitted", "Under Review", "Approved", "Rejected",
+                                                             "Implemented"]),
 }
 
 
@@ -93,6 +98,9 @@ def settings_rows(blank, max_sprints):
         ("RAGAmberIndex", "RAG: amber when SPI or CPI is below", 0.95, "0.00", True,
          "SPI = earned value / planned value; CPI = earned value / actual cost. 1.00 = on plan."),
         ("RAGRedIndex", "RAG: red when SPI or CPI is below", 0.85, "0.00", True, ""),
+        ("RAIDHighScore", "RAID: high rating from score", 15, "0", True,
+         "Score = probability x impact (1-25). At or above this a risk or issue is rated High."),
+        ("RAIDMediumScore", "RAID: medium rating from score", 8, "0", True, ""),
         ("ResourceWeekStart", "Resource Report first week", "=MAX(2,StatusDate-WEEKDAY(StatusDate,3)-14)", DATE, True,
          "Defaults to the Monday two weeks before the status date. Overwrite with any Monday to scroll the weekly grids."),
         ("NextFreeUID", "Next free task UID (calculated)", "=MAX(tsk_UID)+1", "0", False,

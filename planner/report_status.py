@@ -10,7 +10,7 @@ from openpyxl.styles import Alignment
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from . import rag
-from .core import DATE, Col, Tab, add_table, font, name, title
+from .core import DATE, NOTE_FONT, TITLE_FONT, Col, Show, Tab, add_table, font, name, ranked_table
 
 SHEET = "Status Report"
 WIDTHS = {"A": 3, "B": 36, "C": 56, "D": 16, "E": 12, "F": 10, "G": 10, "H": 50}
@@ -24,6 +24,8 @@ AREAS = [
     ("Deadlines", "Tasks forecast to miss their deadline", 'COUNTIF(tsk_DeadlineCheck,"Late*")', rag.count("{v}", 2), "0"),
     ("Critical path", "Critical tasks forecast to finish late",
      'COUNTIFS(tsk_Critical,"Yes",tsk_IsLeaf,1,tsk_Variance,">0")', rag.count("{v}", 1), "0"),
+    ("RAID", "Open high-rated risks, issues, dependencies, assumptions",
+     'COUNTIFS(raid_Rating,"High",raid_Status,"<>Closed")', rag.count("{v}", 1), "0"),
     ("Plan quality", "Ignored links and outline errors (see Tasks)", 'COUNTIF(tsk_LinkCheck,"?*")+COUNTIF(tsk_WBS,"~?")',
      rag.count("{v}", 1), "0"),
 ]
@@ -48,6 +50,20 @@ EVM = [
     ("evm_PctPlanned", "% complete (planned)", "IF(evm_BAC>0,evm_PV/evm_BAC,0)", "PV / BAC.", "0%"),
 ]
 
+# label, formula, format
+CHANGE_CONTROL = [
+    ("Change requests awaiting decision", 'COUNTIF(chg_Status,"Submitted")+COUNTIF(chg_Status,"Under Review")', "0"),
+    ("Change requests approved or implemented", 'COUNTIF(chg_Status,"Approved")+COUNTIF(chg_Status,"Implemented")', "0"),
+    ("Approved schedule impact (working days)",
+     'SUMIFS(chg_Days,chg_Status,"Approved")+SUMIFS(chg_Days,chg_Status,"Implemented")', "+0;-0;0"),
+    ("Approved cost impact", 'SUMIFS(chg_Cost,chg_Status,"Approved")+SUMIFS(chg_Cost,chg_Status,"Implemented")', MONEY),
+    ("Cost impact awaiting decision",
+     'SUMIFS(chg_Cost,chg_Status,"Submitted")+SUMIFS(chg_Cost,chg_Status,"Under Review")', MONEY),
+    ("Decisions awaiting approval", 'COUNTIF(dec_Status,"Proposed")', "0"),
+    ("Overdue RAID actions", 'COUNTIF(raid_Overdue,"Overdue")', "0"),
+]
+TOP_RAID_ROWS = 8
+
 NOTES = ["Summary", "Achievements this period", "Planned for next period", "Issues and escalations",
          "Decisions needed", "Risks to watch"]
 
@@ -70,11 +86,13 @@ def _rag_columns(table, measures, values, severities):
 
 def build_status_report(wb):
     ws = wb.create_sheet(SHEET)
-    title(ws, None)
-    ws["A1"] = '=ProjectName&"  -  Status Report"'
-    ws["A2"] = ('="Status date "&TEXT(StatusDate,"ddd dd-mmm-yyyy")&"   Project manager: "&ProjectManager&'
+    # the title sits in column B: column A holds the top-RAID list's hidden helper column
+    ws["B1"] = '=ProjectName&"  -  Status Report"'
+    ws["B1"].font = TITLE_FONT
+    ws["B2"] = ('="Status date "&TEXT(StatusDate,"ddd dd-mmm-yyyy")&"   Project manager: "&ProjectManager&'
                 '"   Forecast finish "&TEXT(ProjectFinish,"ddd dd-mmm-yyyy")&" ("&TEXT(FinishVarianceDays,"+0;-0;0")&'
                 '" working days vs plan)"')
+    ws["B2"].font = NOTE_FONT
     for col, width in WIDTHS.items():
         ws.column_dimensions[col].width = width
 
@@ -115,7 +133,29 @@ def build_status_report(wb):
         name(wb, defined, f"'{SHEET}'!$D${r}")
     evm_top = top
 
+    # top open RAID items (the list's hidden _Task column is the margin, column A)
     top += len(EVM) + 3
+    ranked_table(ws, "TopRAID", top, 1, "raid_TopKey", TOP_RAID_ROWS, [
+        Show("Item", "raid_Label", width=WIDTHS["B"]), Show("Response", "raid_Response", width=WIDTHS["C"]),
+        Show("Owner", "raid_Owner", width=WIDTHS["D"]), Show("Due", "raid_Due", "date", WIDTHS["E"], "dd-mmm-yy"),
+        Show("Score", "raid_Score", "num", WIDTHS["F"]), Show("Rating", "raid_Rating", width=WIDTHS["G"]),
+        Show("Task", "raid_Task", width=WIDTHS["H"]),
+    ], largest=True, label='"TOP OPEN RAID ITEMS (by score)"')
+    ws.column_dimensions["A"].width = WIDTHS["A"]
+    rag.colour(ws, f"G{top + 1}:G{top + TOP_RAID_ROWS}", f"G{top + 1}")
+
+    top += TOP_RAID_ROWS + 3
+    ws.cell(top - 1, 2, "CHANGE CONTROL AND DECISIONS").font = font(bold=True, color="1F4E78")
+    add_table(ws, "ChangeControl", top, 2, [
+        Col("Measure", width=WIDTHS["B"], values=[c[0] for c in CHANGE_CONTROL]),
+        Col("Source", width=WIDTHS["C"], values=["Changes"] * 5 + ["Decisions", "RAID"]),
+        Col("Value", width=WIDTHS["D"], values=[f"={c[1]}" for c in CHANGE_CONTROL]),
+    ], len(CHANGE_CONTROL), autofilter=False)
+    for i, (_, _, fmt) in enumerate(CHANGE_CONTROL):
+        ws.cell(top + 1 + i, 4).number_format = fmt
+        ws.cell(top + 1 + i, 4).font = font(bold=True)
+
+    top += len(CHANGE_CONTROL) + 3
     ws.cell(top - 1, 2, "COMMENTARY for this period (type in the Notes column)").font = font(bold=True, color="1F4E78")
     add_table(ws, "StatusNotes", top, 2, [
         Col("Section", width=WIDTHS["B"], values=NOTES),
@@ -132,8 +172,8 @@ def build_status_report(wb):
     chart.set_categories(Reference(ws, min_col=2, min_row=evm_top + 1, max_row=evm_top + 4))
     chart.height, chart.width = 7, 16
     ws.add_chart(chart, f"E{evm_top}")
-    ws.page_setup.orientation = "landscape"     # one page when printed or saved as PDF
-    ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 1
+    ws.page_setup.orientation = "landscape"     # one page wide when printed or saved as PDF
+    ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
     ws.sheet_properties.pageSetUpPr.fitToPage = True
     ws.freeze_panes = "A4"
     return ws

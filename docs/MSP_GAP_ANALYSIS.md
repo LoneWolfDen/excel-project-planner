@@ -126,7 +126,8 @@ Legend: ✅ equivalent · 🟡 partial / simplified · ❌ missing · ⛔ not pr
 | MS Project feature | Planner | Notes |
 |---|---|---|
 | Dashboard / Project Overview | ✅ | KPIs, status counts, next milestones, sprint chart. |
-| Burndown / burnup | 🟡 | v1.3: burndown; burn-up of scope changes needs snapshots. |
+| Burndown / burnup | ✅ | v1.3: burndown from the plan; burn-up and trends from History snapshots. |
+| Risk / issue / decision / change logs | ✅ | v1.3: RAID, Decisions and Changes sheets (not in MS Project desktop). |
 | Cost overview, Work overview, Resource overview | 🟡 | v1.3: earned value, phase cost and the Resource Report; no time-phased cost. |
 | Late tasks, upcoming tasks, milestone report | ✅ | v1.3: Schedule Report (late, starting / due in a look-ahead window, milestones, critical). |
 | Project status with RAG | ✅ | v1.3: calculated RAG by area with thresholds, PM override, commentary. |

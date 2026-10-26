@@ -156,6 +156,15 @@ The weekly resource grids first cost 0.25 s per edit at 1,000 tasks (six SUMIFS 
 cumulative hours at each week boundary (three SUMIFS, none outside the project's dates) brought that to about
 0.05 s; each week is then the difference of two neighbours.
 
+## MS Project interchange
+
+`planner/mspdi.py` (workbook → MS Project XML) and `planner/mspdi_import.py` (MS Project XML → a new workbook, through
+`make_workbook(data=ProjectData(...))`) are the only converters. The command-line scripts call them, and
+`docs/export.html` runs the same files in Pyodide: `scripts/build_export_page.py` bundles the planner package with
+openpyxl / et_xmlfile (pinned in `requirements-dev.txt`) into the page as one deterministic zip. Rebuild the page after
+changing anything in `planner/` (CI checks it); CI also drives the page in headless Chromium in both directions and
+compares its output with the command line's.
+
 ## Excel version
 
 **Excel 2019 or Microsoft 365** (Windows or Mac). The only post-2010 functions are `MINIFS` and `MAXIFS`, stored with

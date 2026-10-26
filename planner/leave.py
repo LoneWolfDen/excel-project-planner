@@ -97,7 +97,8 @@ def team_leave_hours(grid, column):
     return f"(HoursPerDay*SUMPRODUCT({work}*{units}*INDEX({grid},0,{column})))"
 
 
-def build_leave(wb, blank, n_rows=50, months=None):
+def build_leave(wb, blank, n_rows=50, months=None, entries=None):
+    """entries: {person: {month header: days text}} replacing the sample (an import); months: the month headers."""
     ws = wb.create_sheet("Leave")
     title(ws, "Leave",
           'One row per person, one column per month. Type the days off, e.g. "16, 17(0.5)" under Nov-26 = all of '
@@ -105,7 +106,7 @@ def build_leave(wb, blank, n_rows=50, months=None):
           'Add a month by typing its name (e.g. "Jan-29") in the header cell after the last month.')
     ws.column_dimensions["A"].width = 3
     labels = months or month_labels()
-    data = {} if blank else SAMPLE
+    data = entries if entries is not None else {} if blank else SAMPLE
     people = list(data)
     cols = [Col("Resource", "in", 20, values=people, note="Name as on the Resources sheet.")]
     for label in labels:

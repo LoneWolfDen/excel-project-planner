@@ -148,7 +148,7 @@ Legend: ✅ equivalent · 🟡 partial / simplified · ❌ missing · ⛔ not pr
 |---|---|---|
 | Import into MS Project via Import Wizard | 🟡 | Field names match; untested; blank rows import as blank tasks. |
 | Microsoft Project XML (MSPDI) export | ✅ | v1.4: browser page and CLI; calendar, holidays, links by UID, constraints, baseline, resources, assignments. Element order checked against files MS Project wrote; not yet opened in MS Project. |
-| Import from MS Project (.mpp / .xml) | ❌ | Manual paste today. |
+| Import from MS Project (.mpp / .xml) | ✅ | v1.4: MS Project XML into a new workbook (browser page and CLI); save .mpp as XML first. |
 | Saved import/export maps | ❌ | |
 | Excel for the web / Mac / Google Sheets | ? | Untested. OFFSET is supported everywhere; Google Sheets unknown. |
 

@@ -110,6 +110,10 @@ def text(sizes):
                                  "project'. It carries the calendar and holidays, links by UID with lags, constraints, "
                                  "deadlines, actuals, the baseline, resources, assignments, Sprint (Text1) and Story "
                                  "Points (Number1), so MS Project schedules the plan the same way."),
+        ("From MS Project", "MS Project > File > Save As > XML, then choose the .xml on docs/export.html (or run "
+                            "python scripts/import_mspdi.py): you get a new planner workbook with the project's tasks, "
+                            "links, calendar, holidays, resources, assignments, baseline and leave. Anything the planner "
+                            "can't hold is listed and noted on the task."),
         ("Or: Import Wizard", "The MSP_Tasks / MSP_Resources sheets below. Carries less (no calendar or holidays)."),
         ("One-time setting", "MS Project > File > Options > Trust Center > Trust Center Settings > Legacy Formats > 'Allow "
                              "loading files with legacy or non-default file formats'."),

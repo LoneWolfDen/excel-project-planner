@@ -16,11 +16,11 @@ from .core import BOX, CALC_FILL, CALC_FONT, Col, Tab, add_table, fill, font, he
 from .sprints import work_upto
 
 SHEET = "Resource Report"
-N_WEEKS = 26
+DEFAULT_WEEKS = 26
 WD = "WorkWeek,Holidays"
 
 
-def build_resource_report(wb, n_resources):
+def build_resource_report(wb, n_resources, n_weeks=DEFAULT_WEEKS):
     ws = wb.create_sheet(SHEET)
     title(ws, None)
     ws["A1"] = '=ProjectName&"  -  Resource Report"'
@@ -33,10 +33,10 @@ def build_resource_report(wb, n_resources):
     _summary(ws, summary_top, n_resources)
     load_top = summary_top + n_resources + 4
     util_top = load_top + n_resources + 7
-    _grid(wb, ws, "load", load_top, n_resources, "Weekly hours by resource")
-    _grid(wb, ws, "util", util_top, n_resources, "Weekly utilisation by resource (hours / capacity)")
-    _cumulative(wb, ws, util_top + n_resources + 4, n_resources)
-    _team_chart(ws, load_top, n_resources)
+    _grid(wb, ws, "load", load_top, n_resources, n_weeks, "Weekly hours by resource")
+    _grid(wb, ws, "util", util_top, n_resources, n_weeks, "Weekly utilisation by resource (hours / capacity)")
+    _cumulative(wb, ws, util_top + n_resources + 4, n_resources, n_weeks)
+    _team_chart(ws, load_top, n_resources, n_weeks)
     ws.freeze_panes = "D4"
     ws.page_setup.orientation = "landscape"
     ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
@@ -83,7 +83,7 @@ def _summary(ws, top, n_resources):
         formula=[f"AND(ISNUMBER(M{first}),M{first}>1)"], font=Font(color="9C0006", bold=True)))
 
 
-def _grid(wb, ws, kind, top, n_resources, heading):
+def _grid(wb, ws, kind, top, n_resources, n_weeks, heading):
     """Rows = resources, columns = weeks. The origin cell (the "Resource" header) anchors every position."""
     ws.cell(top - 2, 2, heading).font = font(bold=True, size=12, color="1F4E78")
     origin = f"rw_{kind.capitalize()}Origin"
@@ -93,7 +93,7 @@ def _grid(wb, ws, kind, top, n_resources, heading):
     i = f"(ROW()-ROW({origin})-1)"               # resource number (row 1 below the working-days row)
     j = f"(COLUMN()-COLUMN({origin})-1)"          # week number
     week = f"(ResourceWeekStart+7*({j}-1))"
-    first_col, last_col = 4, 3 + N_WEEKS
+    first_col, last_col = 4, 3 + n_weeks
     for c in range(first_col, last_col + 1):
         header_cell(ws.cell(top, c), None)
         ws.cell(top, c).value = f"={week}"
@@ -145,15 +145,15 @@ def _grid(wb, ws, kind, top, n_resources, heading):
             end_type="num", end_value=1.2, end_color="F8696B"))
 
 
-def _team_chart(ws, load_top, n_resources):
+def _team_chart(ws, load_top, n_resources, n_weeks):
     totals_row = load_top + 2 + n_resources
     chart = BarChart()
     chart.title, chart.y_axis.title = "Team hours per week vs capacity", "Hours"
-    weeks = Reference(ws, min_col=4, max_col=3 + N_WEEKS, min_row=load_top)
-    chart.series.append(Series(Reference(ws, min_col=4, max_col=3 + N_WEEKS, min_row=totals_row), title="Team hours"))
+    weeks = Reference(ws, min_col=4, max_col=3 + n_weeks, min_row=load_top)
+    chart.series.append(Series(Reference(ws, min_col=4, max_col=3 + n_weeks, min_row=totals_row), title="Team hours"))
     chart.set_categories(weeks)
     capacity = LineChart()
-    capacity.series.append(Series(Reference(ws, min_col=4, max_col=3 + N_WEEKS, min_row=totals_row + 1),
+    capacity.series.append(Series(Reference(ws, min_col=4, max_col=3 + n_weeks, min_row=totals_row + 1),
                                   title="Team capacity"))
     capacity.set_categories(weeks)
     capacity.series[0].smooth = False
@@ -163,8 +163,8 @@ def _team_chart(ws, load_top, n_resources):
     ws.add_chart(chart, "P4")
 
 
-def _cumulative(wb, ws, top, n_resources):
-    """Hidden grid: each resource's cumulative work up to the end of the day before week b (b = 0 .. N_WEEKS).
+def _cumulative(wb, ws, top, n_resources, n_weeks):
+    """Hidden grid: each resource's cumulative work up to the end of the day before week b (b = 0 .. n_weeks).
 
     Week j's hours are column j+1 minus column j. Before the project starts the total is 0; from the forecast
     finish on it is the resource's whole work (one SUMIFS); only boundaries inside the project need work_upto."""
@@ -178,7 +178,7 @@ def _cumulative(wb, ws, top, n_resources):
     total = f"SUMIFS(tsk_LeafWork,tsk_Resource,{resource})"
     upto = work_upto(f"NETWORKDAYS.INTL(ProjectStart,{day},{WD})", resource)
     formula = (f'=IFERROR(IF({resource}="","",IF({day}<ProjectStart,0,IF({day}>=ProjectFinish,{total},{upto}))),"")')
-    first_col, last_col = 4, 4 + N_WEEKS
+    first_col, last_col = 4, 4 + n_weeks
     for r in range(top + 1, top + 1 + n_resources):
         for c in range(first_col, last_col + 1):
             ws.cell(r, c, formula).font = CALC_FONT

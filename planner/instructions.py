@@ -4,7 +4,7 @@ from openpyxl.styles import Alignment
 from .core import CALC_FILL, HEADER_FILLS, HEADER_FONT, INPUT_FONT, font
 
 
-def text(n_tasks):
+def text(sizes):
     return [
         ("REQUIREMENTS", None),
         ("Excel version", "Excel 2019 or Microsoft 365 (Windows or Mac), or Excel for the web. No macros needed."),
@@ -48,7 +48,7 @@ def text(n_tasks):
                                 "look-ahead window (Settings > LookaheadDays) and open critical tasks. Lists update with "
                                 "every edit; drag a list's bottom corner down to show more rows."),
         ("11. Resource Report", "Per resource: work, done, remaining, cost, actual cost, late and critical tasks, peak "
-                                "week and weeks over capacity. Weekly hours and utilisation grids for 26 weeks from "
+                                "week and weeks over capacity. Weekly hours and utilisation grids by week from "
                                 "Settings > ResourceWeekStart (red = over capacity), and a team hours vs capacity chart."),
         ("12. Agile Report", "Story points: scope, done, remaining, velocity (last 3 closed sprints) and the sprint it "
                              "forecasts finishing in; the current sprint's backlog and daily burndown; release burndown "
@@ -89,8 +89,13 @@ def text(n_tasks):
                  "'Start No Earlier Than'."),
         ("Rescheduling", "Settings > RescheduleAfterStatus = Yes moves incomplete work to after the status date (like MS "
                          "Project 'Update Project'), so late tasks push successors."),
-        ("Capacity", f"Tables grow when you add rows: Tasks starts with {n_tasks} rows, Resources 50, Sprints 26, Holidays 100. "
-                     f"The Gantt and MSP_Tasks sheets show the first {n_tasks} tasks (the Gantt says so when there are more)."),
+        ("Capacity", f"Tables grow when you add rows: Tasks starts with {sizes.tasks} rows, Resources {sizes.resources}, "
+                     f"Sprints {sizes.sprints}, Holidays 100. The Gantt and MSP_Tasks sheets show the first {sizes.tasks} "
+                     f"tasks (the Gantt says so when there are more); the Gantt timeline has {sizes.gantt_columns} columns; "
+                     f"the per-resource grids on Sprints and Resource Report show the first {sizes.grid_resources} "
+                     f"resources and the Resource Report {sizes.weeks} weeks. To change these sizes, rebuild with "
+                     "scripts/build_planner.py --tasks / --resources / --grid-resources / --sprints / --gantt-columns / "
+                     "--weeks (see README)."),
         ("Speed", "An edit recalculates in well under a second for typical plans (about 0.05 s for 200 tasks). Each change "
                   "to the build is timed in CI; see docs/ARCHITECTURE.md in the repository. Keep the status date typed "
                   "(not =TODAY()), which would recalculate everything after every edit."),
@@ -141,7 +146,7 @@ def text(n_tasks):
     ]
 
 
-def build_instructions(wb, n_tasks):
+def build_instructions(wb, sizes):
     ws = wb.create_sheet("Instructions")
     ws.column_dimensions["A"].width = 3
     ws.column_dimensions["B"].width = 28
@@ -149,7 +154,7 @@ def build_instructions(wb, n_tasks):
     ws["B1"] = "Project Planner - MS Project-compatible Excel template"
     ws["B1"].font = font(size=18, bold=True, color="1F4E78")
     r = 3
-    for label, body in text(n_tasks):
+    for label, body in text(sizes):
         if body is None:
             r += 1
             ws.cell(r, 2, label).font = HEADER_FONT

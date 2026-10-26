@@ -60,7 +60,7 @@ flowchart LR
 | [B-006](https://github.com/LoneWolfDen/excel-project-planner/issues/6) | ✅ Excel Tables with structured references | P1 | L | F | Tasks, Resources, Sprints become Excel Tables; formulas read `[@Duration]`; new rows inherit formulas automatically. Spike first: confirm LibreOffice can still recalculate for tests. |
 | [B-007](https://github.com/LoneWolfDen/excel-project-planner/issues/7) | ✅ Performance at scale (checked on every PR) | P1 | M | F | Generate 2,000 tasks; edit-to-recalc under 1 s in Excel; replace volatile OFFSET where it doesn't create circularity. |
 | [B-008](https://github.com/LoneWolfDen/excel-project-planner/issues/8) | CI on GitHub Actions | P1 | S | Py | Workflow installs LibreOffice, builds the workbook, runs the tests, uploads the .xlsx as an artifact on every push. |
-| [B-009](https://github.com/LoneWolfDen/excel-project-planner/issues/9) | 🟡 Configurable row capacity (`--tasks` done; resources, sprints, Gantt length to do) | P2 | S | Py | Build script options `--tasks`, `--resources`, `--sprints`, `--gantt-columns`. |
+| [B-009](https://github.com/LoneWolfDen/excel-project-planner/issues/9) | ✅ Configurable row capacity (`--tasks`, `--resources`, `--grid-resources`, `--sprints`, `--gantt-columns`, `--weeks`) | P2 | S | Py | Build script options `--tasks`, `--resources`, `--sprints`, `--gantt-columns`. |
 | [B-010](https://github.com/LoneWolfDen/excel-project-planner/issues/10) | Locale-safe labels and date formats | P2 | S | F | Weekday and month labels don't depend on the Excel language; date format is a setting. |
 
 ## E1 – Scheduling engine

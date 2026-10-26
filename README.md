@@ -61,7 +61,13 @@ rates, assignments with units, and Sprint / Story Points in the custom fields Te
 4. Map `Predecessors` (by ID) for a new project. `Unique ID` and `Unique ID Predecessors` are there for merging into an existing project.
 
 ## Limits
-- Tables start with 200 task rows, 50 resources, 26 sprints and 100 holidays, and grow when you add rows. The Gantt and MSP_Tasks sheets show the first 200 tasks (rebuild with `--tasks N` for more).
+- Tables start with 200 task rows, 50 resources, 26 sprints and 100 holidays, and grow when you add rows. The fixed
+  grids (Gantt timeline 150 columns, per-resource grids 25 resources, Resource Report 26 weeks; Gantt and MSP_Tasks
+  show the first 200 tasks) are sized at build time. For a bigger template, rebuild:
+  ```
+  python scripts/build_planner.py Big_Planner.xlsx --blank --recalc --tasks 2000 --resources 100 \
+      --grid-resources 60 --sprints 52 --gantt-columns 365 --weeks 52
+  ```
 - Insert tasks with right-click → Insert → Table Rows Above (formulas fill in), then give the row `NextFreeUID`.
 - **A predecessor must be a detail task listed above its successor.** It keeps the schedule and the critical path consistent. Links that break it (or point to the task itself, an empty row or a missing UID) are ignored and explained in Link Check. Plans imported from MS Project may need reordering.
 - The status date is a typed date (Ctrl+; for today), not `TODAY()`, so it doesn't force a full recalculation after every edit. Update it when you report progress.

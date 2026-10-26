@@ -958,6 +958,51 @@ class RippleTest(Tmp):
 
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+class BuildOptionsTest(unittest.TestCase):
+    """--resources, --grid-resources, --sprints, --gantt-columns and --weeks size the tables and grids."""
+
+    def check(self, flags, resources, grid, sprints, gantt, weeks):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "Project_Planner.xlsx"
+            build(path, *flags)
+            raw = openpyxl.load_workbook(path)
+            report = perf_check.static_report(path)
+            self.assertEqual((report["a1_references"], report["excel_limit_problems"]), ([], []))
+            rows = lambda sheet, table: openpyxl.utils.cell.range_boundaries(raw[sheet].tables[table].ref)[3] - \
+                openpyxl.utils.cell.range_boundaries(raw[sheet].tables[table].ref)[1]
+            self.assertEqual((rows("Resources", "ResourceTable"), rows("MSP_Resources", "MSPResources"),
+                              rows("Sprints", "SprintTable")), (resources, resources, sprints))
+            origin = named_cell(raw, "gantt_Origin")
+            gantt_ws = raw["Gantt"]
+            self.assertIsNotNone(gantt_ws.cell(origin.row, origin.column + gantt).value)    # last timeline date
+            self.assertIsNone(gantt_ws.cell(origin.row, origin.column + gantt + 1).value)
+            for grid_name in ("load_Grid", "rw_Load", "rw_Util"):
+                ref = raw.defined_names[grid_name].attr_text.split("!")[1].replace("$", "")
+                c1, r1, c2, r2 = openpyxl.utils.cell.range_boundaries(ref)
+                self.assertEqual(r2 - r1 + 1, grid, grid_name)
+                if grid_name != "load_Grid":
+                    self.assertEqual(c2 - c1 + 1, weeks, grid_name)
+            wb = recalc(path, tmp)
+            self.assertEqual(errors_in(wb), [])
+            self.assertEqual(named_cell(wb, "SprintCount").value, min(12, sprints))
+
+    def test_smaller(self):
+        self.check(["--resources", "10", "--grid-resources", "8", "--sprints", "6", "--gantt-columns", "40",
+                    "--weeks", "8"], 10, 8, 6, 40, 8)
+
+    def test_larger(self):
+        self.check(["--resources", "80", "--grid-resources", "40", "--sprints", "40", "--gantt-columns", "220",
+                    "--weeks", "52"], 80, 40, 40, 220, 52)
+
+    def test_invalid_sizes_are_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run([sys.executable, str(BUILD), str(Path(tmp) / "x.xlsx"), "--grid-resources", "60",
+                                     "--resources", "50"], capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("--grid-resources can't be more than --resources", result.stderr)
+
+
+@unittest.skipUnless(SOFFICE, "LibreOffice not installed")
 class BlankTemplateTest(unittest.TestCase):
     def test_blank_template(self):
         with tempfile.TemporaryDirectory() as tmp:

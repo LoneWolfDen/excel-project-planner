@@ -90,7 +90,7 @@ flowchart LR
 | [B-204](https://github.com/LoneWolfDen/excel-project-planner/issues/26) | Full variance set | P1 | S | F | Start, finish, duration, work and cost variance against baseline. |
 | [B-205](https://github.com/LoneWolfDen/excel-project-planner/issues/27) | Progress line on Gantt | P3 | M | F | Marker per task showing where progress is vs status date. |
 | [B-206](https://github.com/LoneWolfDen/excel-project-planner/issues/28) | MS Project status names | P2 | S | F | Status matches MS Project's Status field (Complete, On Schedule, Late, Future Task) plus the current richer statuses. |
-| [B-207](https://github.com/LoneWolfDen/excel-project-planner/issues/29) | Status snapshot history | P2 | M | VBA/Py | "Record snapshot" stores date, forecast finish, % complete, cost to a History sheet for trend charts. |
+| [B-207](https://github.com/LoneWolfDen/excel-project-planner/issues/29) | ✅ Status snapshot history (copy / paste values; no macro needed) | P2 | M | VBA/Py | "Record snapshot" stores date, forecast finish, % complete, cost to a History sheet for trend charts. |
 
 ## E3 – Resources and cost
 
@@ -109,7 +109,7 @@ flowchart LR
 |---|---|---|---|---|---|
 | [B-401](https://github.com/LoneWolfDen/excel-project-planner/issues/36) | ✅ Manual sprint assignment and story points | P1 | S | F | Sprint override column (dropdown) wins over the automatic sprint; Story Points column; sprint capacity in points. |
 | [B-402](https://github.com/LoneWolfDen/excel-project-planner/issues/37) | ✅ Velocity | P2 | S | F | Completed points per sprint, rolling average, forecast sprints remaining. |
-| [B-403](https://github.com/LoneWolfDen/excel-project-planner/issues/38) | 🟡 Burndown (release by sprint, current sprint by day; burn-up of scope changes needs B-207 snapshots) | P1 | M | F | Daily remaining work/points for the active sprint and the release; ideal line; charts on Sprints and Dashboard. |
+| [B-403](https://github.com/LoneWolfDen/excel-project-planner/issues/38) | ✅ Burndown and burn-up (burn-up from History snapshots) | P1 | M | F | Daily remaining work/points for the active sprint and the release; ideal line; charts on Sprints and Dashboard. |
 | [B-404](https://github.com/LoneWolfDen/excel-project-planner/issues/39) | Board view | P2 | M | F | Formula-generated board: columns Not Started / In Progress / Behind / Complete, filterable by sprint and resource. |
 | [B-405](https://github.com/LoneWolfDen/excel-project-planner/issues/40) | Product backlog sheet | P2 | M | F | Unscheduled items with priority and points; promoted to Tasks with a sprint. |
 | [B-406](https://github.com/LoneWolfDen/excel-project-planner/issues/41) | Flexible sprint calendar | P2 | S | F | Option to type sprint dates and names instead of generating them. |
@@ -135,9 +135,9 @@ flowchart LR
 |---|---|---|---|---|---|
 | [B-601](https://github.com/LoneWolfDen/excel-project-planner/issues/52) | ✅ Standard reports | P1 | M | F | Late tasks, Next 2 weeks, Milestone report, Cost overview, Resource overview. |
 | [B-602](https://github.com/LoneWolfDen/excel-project-planner/issues/53) | ✅ RAG status | P1 | S | F | Project and phase RAG from schedule and cost variance with thresholds in Settings. |
-| [B-603](https://github.com/LoneWolfDen/excel-project-planner/issues/54) | Trend charts | P2 | S | F | Forecast finish and cost trend from snapshots. Depends on B-207. |
-| [B-604](https://github.com/LoneWolfDen/excel-project-planner/issues/55) | 🟡 One-page status report (RAG, earned value, commentary done; risks/issues wait for B-605) | P2 | M | F | Printable summary: RAG, milestones, top risks/issues, next steps. |
-| [B-605](https://github.com/LoneWolfDen/excel-project-planner/issues/56) | RAID log | P2 | M | F | Risks, Assumptions, Issues, Dependencies sheet with owner, due date, linked task UID. |
+| [B-603](https://github.com/LoneWolfDen/excel-project-planner/issues/54) | ✅ Trend charts | P2 | S | F | Forecast finish and cost trend from snapshots. Depends on B-207. |
+| [B-604](https://github.com/LoneWolfDen/excel-project-planner/issues/55) | ✅ One-page status report | P2 | M | F | Printable summary: RAG, milestones, top risks/issues, next steps. |
+| [B-605](https://github.com/LoneWolfDen/excel-project-planner/issues/56) | ✅ RAID log | P2 | M | F | Risks, Assumptions, Issues, Dependencies sheet with owner, due date, linked task UID. |
 
 ## E7 – Interoperability and automation
 

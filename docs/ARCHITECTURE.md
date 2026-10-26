@@ -46,6 +46,8 @@ How the workbook is put together, and the rules every change follows. These rule
 | Schedule Report | `PhaseSummary`, `MilestoneReport`, `LateTasks`, `StartingSoon`, `DueSoon`, `CriticalTasks` | Ranked lists |
 | Resource Report | `ResourceSummary` + 2 week grids | Weekly hours (`rw_Load`) and utilisation (`rw_Util`) per resource |
 | Agile Report | `AgileKPIs`, `SprintBacklog`, `SprintBurndown` | Velocity forecast (`agl_*` names), current sprint |
+| RAID / Decisions / Changes | `RAIDLog`, `DecisionLog`, `ChangeLog` | Score, rating, overdue, linked task (`raid_*`, `dec_*`, `chg_*` names) |
+| History | `SnapshotNow`, `StatusHistory` | This status date's numbers; pasted history for trend charts |
 | Lists | `List*` | Dropdown values (`L_DepType`, `L_Mode`, ...) |
 
 Code: `planner/core.py` (styles, `add_table`, structured-reference helpers), one module per sheet, `planner/build.py`
@@ -129,6 +131,10 @@ phone, and are tested in CI. They follow three rules:
 Earned value at the status date: Budget = Baseline Cost (or Cost before a baseline); planned % = planned working days
 before the status date / planned working days; PV = Budget x planned %; EV = Budget x Progress; AC = Actual Cost, or
 Cost x Progress when blank; EAC = AC + (BAC - EV) / CPI.
+
+**History without macros.** A formula can't remember last week's value, so status history works like the baseline:
+`SnapshotNow` is one row of formulas (names only) and the PM pastes it as values into `StatusHistory`, an input
+table the trend charts read. A macro or script may automate the copy, but the workbook never depends on it.
 
 Weekly resource hours use the same SUMIFS spreading as the sprint load (`sprints.work_between`), anchored on
 `rw_LoadOrigin`; story points are done on a task's Actual Finish (`_DoneDate`), and per-sprint points are columns

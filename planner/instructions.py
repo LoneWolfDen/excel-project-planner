@@ -53,6 +53,17 @@ def text(n_tasks):
         ("12. Agile Report", "Story points: scope, done, remaining, velocity (last 3 closed sprints) and the sprint it "
                              "forecasts finishing in; the current sprint's backlog and daily burndown; release burndown "
                              "and committed vs done charts."),
+        ("13. RAID", "Risks, assumptions, issues and dependencies: owner, due date, probability and impact (1-5). Score "
+                     "= probability x impact (issues count as probability 5); Rating from Settings > RAIDHighScore / "
+                     "RAIDMediumScore; Overdue when not closed past its due date. Link a task by UID. The Status Report "
+                     "lists the top open items and rates RAID amber when any open item is High."),
+        ("14. Decisions and Changes", "Decision log (what, options and reasons, who, status) and change request log "
+                                      "(schedule and cost impact, status, who decided). The Status Report totals "
+                                      "approved and pending changes. Approving a change doesn't edit the plan: update "
+                                      "the tasks, and re-baseline if the sponsor agrees."),
+        ("15. History", "On each reporting date, copy the SnapshotNow row on History and Paste Special > Values onto the "
+                        "first empty row of StatusHistory. Trend charts: forecast vs planned finish, earned value "
+                        "S-curve, SPI / CPI and a story-point burn-up that shows scope changes."),
         ("Earned value", "Set a baseline first: without one, Budget = current Cost and PV follows the current plan, so "
                          "SPI and CPI only show progress against the latest plan. PV = budget of work planned before the "
                          "status date; EV = Budget x Progress; AC = Actual Cost. SPI = EV/PV, CPI = EV/AC, "
@@ -101,13 +112,14 @@ def text(n_tasks):
         ("NAMES AND TABLES (Formulas > Name Manager)", None),
         ("Tables", "Tasks, ResourceTable, SprintTable, HolidayTable, GanttView, MSPTasks, MSPResources, KPIs, StatusSummary, "
                    "NextMilestones, OverallStatus, StatusRAG, EarnedValue, StatusNotes, PhaseSummary, MilestoneReport, "
-                   "LateTasks, StartingSoon, DueSoon, CriticalTasks, ResourceSummary, AgileKPIs, SprintBacklog, SprintBurndown and "
-                   "the List* dropdown tables. Inside a table, formulas read [@Column] (this row)."),
+                   "LateTasks, StartingSoon, DueSoon, CriticalTasks, ResourceSummary, AgileKPIs, SprintBacklog, SprintBurndown, "
+                   "RAIDLog, DecisionLog, ChangeLog, TopRAID, ChangeControl, SnapshotNow, StatusHistory and the List* "
+                   "dropdown tables. Inside a table, formulas read [@Column] (this row)."),
         ("Settings", "ProjectStart, StatusDate, StatusWorkday, WorkWeek, Holidays, HoursPerDay, DefaultUnits, "
                      "RescheduleAfterStatus, GanttStart, GanttPeriod, Sprint1Start, SprintLength, SprintCount, SprintPrefix, "
                      "SprintLastEnd, CriticalSlackDays, ProjectFinish, PlannedFinish, FinishVarianceDays, LookaheadDays, "
                      "RAGAmberSlipDays, RAGRedSlipDays, RAGAmberIndex, RAGRedIndex, ResourceWeekStart, CurrentSprint, TotalPoints, "
-                     "NextFreeUID. Report values: ProjectRAG, "
+                     "RAIDHighScore, RAIDMediumScore, NextFreeUID. Report values: ProjectRAG, "
                      "evm_BAC, evm_PV, evm_EV, evm_AC, evm_SPI, evm_CPI, evm_EAC ..."),
         ("Task columns", "tsk_ID, tsk_UID, tsk_WBS, tsk_Name, tsk_Duration, tsk_PlanStart, tsk_FcFinish, tsk_Status, tsk_Resource, "
                          "tsk_Work, tsk_Cost ... each is Tasks[Column], so it grows with the table. Other sheets read Tasks "

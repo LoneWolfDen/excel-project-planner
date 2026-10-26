@@ -28,10 +28,13 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 |---|---|
 | Instructions | How to use it, colour key, MS Project import steps, named ranges |
 | Dashboard | Planned vs forecast finish, slip, progress, hours, cost, overall RAG, SPI / CPI, next milestones, charts |
-| Status Report | Overall RAG and RAG by area (calculated, with PM override and comment), earned value (BAC, PV, EV, AC, SPI, CPI, EAC, VAC, TCPI), commentary for the period |
+| Status Report | Overall RAG and RAG by area (calculated, with PM override and comment), earned value (BAC, PV, EV, AC, SPI, CPI, EAC, VAC, TCPI), top open RAID items, change control, commentary for the period |
 | Schedule Report | Phase summary with RAG, milestones, late tasks, tasks starting / due in the look-ahead window, open critical tasks |
 | Resource Report | Per-resource work, progress, cost, late / critical tasks; weekly hours and utilisation grids (over-allocation in red); team hours vs capacity chart |
 | Agile Report | Story points scope / done / remaining, velocity and forecast finish sprint, current sprint backlog and daily burndown, release burndown and velocity charts |
+| RAID | Risks, assumptions, issues, dependencies: owner, due, probability x impact score and rating, overdue flag, linked task |
+| Decisions / Changes | Decision log; change request log with schedule and cost impact (totals on the Status Report) |
+| History | Status snapshot (copy, paste as values each reporting date) and trend charts: finish, earned value S-curve, SPI / CPI, burn-up |
 | Settings | Project start, status date, working week, hours/day, Gantt scale, sprint calendar |
 | Tasks | Entry table: UID, Level, Name, Mode, Duration, 2 predecessors by UID (FS/SS/FF/SF + lag), deadline, actuals, % complete, resource, actual cost, planned sprint, story points; frozen baseline with start / finish / duration / work / cost variance; critical path (late start/finish, total and free slack, Critical); Link Check and Deadline Check columns |
 | Gantt | Planned outline, done / remaining / critical / late bars, summaries, milestones, deadlines, status-date line (conditional formatting only, no formulas) |
@@ -59,7 +62,7 @@ python -m unittest discover -s tests -v
 Builds the workbook, recalculates it with headless LibreOffice (`soffice`) at a fixed status date of 25-Oct-2026,
 and checks: no formula errors, WBS numbering, FS / SS / FF links with lags, two predecessors, weekends and holidays skipped,
 Start No Earlier Than, manual tasks, summary roll-ups, forecast from actuals, slips rippling to successors,
-rescheduling after the status date, deadlines, frozen baseline and variances, earned value and the RAG rules (worked out independently in Python), PM RAG overrides, the report lists, velocity and burndown, the planned-sprint override, weekly resource hours (recomputed in Python) and over-allocation, invalid-link handling, inserting a task
+rescheduling after the status date, deadlines, frozen baseline and variances, earned value and the RAG rules (worked out independently in Python), PM RAG overrides, the report lists, velocity and burndown, the planned-sprint override, weekly resource hours (recomputed in Python) and over-allocation, RAID scoring and links, change control totals, status snapshots, invalid-link handling, inserting a task
 mid-list (links follow UIDs), the blank template, sprint tagging, cost, the MS Project export columns, and that the
 committed workbooks match the build script, tables keep their calculated columns, and no formula contains an A1
 reference. GitHub Actions runs the same suite on every push, then `scripts/perf_check.py` on the sample and on a

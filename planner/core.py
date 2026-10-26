@@ -203,3 +203,9 @@ def ranked_table(ws, table_name, header_row, first_col, key, n_rows, shows, larg
         cell.value = f'={label}&": "&COUNT({key})&IF(COUNT({key})>{rows}," (showing the first "&{rows}&")","")'
         cell.font = LABEL_FONT
     return letters
+
+
+def linked_task(uid, column="tsk_Name"):
+    """A task's value looked up by UID, for logs that link to a task: blank when no UID, a message when it's
+    missing. UID is an input column, so the MATCH is not volatile; only the value read may change."""
+    return f'IF(N({uid})=0,"",IFERROR(INDEX({column},MATCH({uid},tsk_UID,0)),"UID "&{uid}&" not found"))'

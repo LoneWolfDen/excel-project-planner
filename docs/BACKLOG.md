@@ -86,7 +86,7 @@ flowchart LR
 |---|---|---|---|---|---|
 | [B-201](https://github.com/LoneWolfDen/excel-project-planner/issues/23) | Multiple baselines and interim plans | P2 | M | F + VBA | Baseline 1–3 columns, selectable "compare against" baseline in Settings. Depends on B-003. |
 | [B-202](https://github.com/LoneWolfDen/excel-project-planner/issues/24) | Actual / remaining duration, actual work, % work complete | P2 | M | F | Entering actual work or remaining duration drives % complete and forecast, like MS Project. |
-| [B-203](https://github.com/LoneWolfDen/excel-project-planner/issues/25) | Earned value | P1 | M | F | Actual Cost input; PV, EV, AC, SV, CV, SPI, CPI, EAC, VAC per task and project; dashboard tiles with RAG. Depends on B-003. |
+| [B-203](https://github.com/LoneWolfDen/excel-project-planner/issues/25) | ✅ Earned value | P1 | M | F | Actual Cost input; PV, EV, AC, SV, CV, SPI, CPI, EAC, VAC per task and project; dashboard tiles with RAG. Depends on B-003. |
 | [B-204](https://github.com/LoneWolfDen/excel-project-planner/issues/26) | Full variance set | P1 | S | F | Start, finish, duration, work and cost variance against baseline. |
 | [B-205](https://github.com/LoneWolfDen/excel-project-planner/issues/27) | Progress line on Gantt | P3 | M | F | Marker per task showing where progress is vs status date. |
 | [B-206](https://github.com/LoneWolfDen/excel-project-planner/issues/28) | MS Project status names | P2 | S | F | Status matches MS Project's Status field (Complete, On Schedule, Late, Future Task) plus the current richer statuses. |
@@ -133,10 +133,10 @@ flowchart LR
 
 | ID | Item | Pri | Size | How | Acceptance criteria |
 |---|---|---|---|---|---|
-| [B-601](https://github.com/LoneWolfDen/excel-project-planner/issues/52) | Standard reports | P1 | M | F | Late tasks, Next 2 weeks, Milestone report, Cost overview, Resource overview. |
-| [B-602](https://github.com/LoneWolfDen/excel-project-planner/issues/53) | RAG status | P1 | S | F | Project and phase RAG from schedule and cost variance with thresholds in Settings. |
+| [B-601](https://github.com/LoneWolfDen/excel-project-planner/issues/52) | 🟡 Standard reports (late, look-ahead, milestones, cost done; resource overview to do) | P1 | M | F | Late tasks, Next 2 weeks, Milestone report, Cost overview, Resource overview. |
+| [B-602](https://github.com/LoneWolfDen/excel-project-planner/issues/53) | ✅ RAG status | P1 | S | F | Project and phase RAG from schedule and cost variance with thresholds in Settings. |
 | [B-603](https://github.com/LoneWolfDen/excel-project-planner/issues/54) | Trend charts | P2 | S | F | Forecast finish and cost trend from snapshots. Depends on B-207. |
-| [B-604](https://github.com/LoneWolfDen/excel-project-planner/issues/55) | One-page status report | P2 | M | F | Printable summary: RAG, milestones, top risks/issues, next steps. |
+| [B-604](https://github.com/LoneWolfDen/excel-project-planner/issues/55) | 🟡 One-page status report (RAG, earned value, commentary done; risks/issues wait for B-605) | P2 | M | F | Printable summary: RAG, milestones, top risks/issues, next steps. |
 | [B-605](https://github.com/LoneWolfDen/excel-project-planner/issues/56) | RAID log | P2 | M | F | Risks, Assumptions, Issues, Dependencies sheet with owner, due date, linked task UID. |
 
 ## E7 – Interoperability and automation

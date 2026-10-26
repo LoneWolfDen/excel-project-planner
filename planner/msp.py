@@ -36,6 +36,8 @@ def build_msp_tasks(wb, n_rows):
         Col("Baseline Duration", width=9, formula=f'IF({blank},"",IF({t("tsk_BaseDuration")}="","",N({t("tsk_BaseDuration")})&"d"))'),
         Col("Baseline Work", width=9, formula=f'IF({blank},"",IF({t("tsk_BaseWork")}="","",N({t("tsk_BaseWork")})&"h"))'),
         Col("Baseline Cost", width=11, formula=f'IF({blank},"",IF({t("tsk_BaseCost")}="","",N({t("tsk_BaseCost")})))'),
+        Col("Actual Cost", width=11, formula=not_summary(
+            f'IF(N({t("tsk_ActCostInput")})=0,"",{t("tsk_ActCostInput")})')),
         Col("Constraint Type", width=22, formula=not_summary(
             f'IF(AND({t("tsk_Mode")}<>"Manual",N({t("tsk_Constraint")})>0),"Start No Earlier Than","As Soon As Possible")')),
         Col("Constraint Date", width=12, fmt=SHORT_DATE, formula=(

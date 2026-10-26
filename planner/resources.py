@@ -37,6 +37,8 @@ def build_resources(wb, blank, n_rows=50):
             note="Assigned work (hours)."),
         Col("Cost", "calc", 13, "#,##0.00", f'IF({nm}="","",SUMIFS(tsk_Cost,tsk_Resource,{nm},tsk_IsLeaf,1))',
             note="Assigned cost."),
+        Col("Actual Cost", "calc", 13, "#,##0.00", f'IF({nm}="","",SUMIFS(tsk_LeafAC,tsk_Resource,{nm}))',
+            note="Cost to date: Actual Cost entered on Tasks, or Cost x Progress where blank."),
         Col("Notes", "in", 30),
     ], n_rows)
     for column, defined in NAMES.items():

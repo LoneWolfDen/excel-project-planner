@@ -13,6 +13,7 @@ LISTS = {  # table name, column name, named range, values
     "L_YesNo": ("ListYesNo", "Yes / No", ["Yes", "No"]),
     "L_ResType": ("ListResType", "Resource Type", ["Work", "Material", "Cost"]),
     "L_Period": ("ListPeriod", "Gantt Days per Column", [1, 7]),
+    "L_RAG": ("ListRAG", "RAG", ["Green", "Amber", "Red"]),
 }
 
 
@@ -67,6 +68,22 @@ def settings_rows(blank, max_sprints):
          "0 = only tasks with no slack (or negative slack from a missed deadline) are critical, like MS Project."),
         ("ProjectFinish", "Forecast project finish (calculated)", "=MAX(tsk_FcFinish)", DATE, False,
          "The critical path's backward pass starts here."),
+        ("PlannedFinish", "Planned project finish (calculated)", "=MAX(tsk_PlanFinish)", DATE, False,
+         "Baseline finish once a baseline is set."),
+        ("FinishVarianceDays", "Project finish variance (calculated, working days)",
+         "=IF(ProjectFinish>=PlannedFinish,NETWORKDAYS.INTL(PlannedFinish,ProjectFinish,WorkWeek,Holidays)-1,"
+         "1-NETWORKDAYS.INTL(ProjectFinish,PlannedFinish,WorkWeek,Holidays))", "+0;-0;0", False,
+         "Forecast finish minus planned finish. Positive = late."),
+        ("LookaheadDays", "Look-ahead window (working days)", 10, "0", True,
+         "Schedule Report lists tasks starting or due within this many working days of the status date."),
+        ("LookaheadEnd", "Look-ahead window ends (calculated)", "=WORKDAY.INTL(StatusDate-1,LookaheadDays,WorkWeek,Holidays)",
+         DATE, False, ""),
+        ("RAGAmberSlipDays", "RAG: amber when the finish slips by (working days)", 3, "0", True,
+         "Status Report thresholds. A finish slip of at least this many working days is amber."),
+        ("RAGRedSlipDays", "RAG: red when the finish slips by (working days)", 10, "0", True, ""),
+        ("RAGAmberIndex", "RAG: amber when SPI or CPI is below", 0.95, "0.00", True,
+         "SPI = earned value / planned value; CPI = earned value / actual cost. 1.00 = on plan."),
+        ("RAGRedIndex", "RAG: red when SPI or CPI is below", 0.85, "0.00", True, ""),
         ("NextFreeUID", "Next free task UID (calculated)", "=MAX(tsk_UID)+1", "0", False,
          "Give a newly inserted task row this UID (see Instructions > Inserting tasks)."),
     ]

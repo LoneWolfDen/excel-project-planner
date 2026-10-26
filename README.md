@@ -27,9 +27,11 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 | Sheet | Purpose |
 |---|---|
 | Instructions | How to use it, colour key, MS Project import steps, named ranges |
-| Dashboard | Planned vs forecast finish, slip, progress, hours, cost, next milestones, charts |
+| Dashboard | Planned vs forecast finish, slip, progress, hours, cost, overall RAG, SPI / CPI, next milestones, charts |
+| Status Report | Overall RAG and RAG by area (calculated, with PM override and comment), earned value (BAC, PV, EV, AC, SPI, CPI, EAC, VAC, TCPI), commentary for the period |
+| Schedule Report | Phase summary with RAG, milestones, late tasks, tasks starting / due in the look-ahead window, open critical tasks |
 | Settings | Project start, status date, working week, hours/day, Gantt scale, sprint calendar |
-| Tasks | Entry table: UID, Level, Name, Mode, Duration, 2 predecessors by UID (FS/SS/FF/SF + lag), deadline, actuals, % complete, resource; frozen baseline with start / finish / duration / work / cost variance; critical path (late start/finish, total and free slack, Critical); Link Check and Deadline Check columns |
+| Tasks | Entry table: UID, Level, Name, Mode, Duration, 2 predecessors by UID (FS/SS/FF/SF + lag), deadline, actuals, % complete, resource, actual cost; frozen baseline with start / finish / duration / work / cost variance; critical path (late start/finish, total and free slack, Critical); Link Check and Deadline Check columns |
 | Gantt | Planned outline, done / remaining / critical / late bars, summaries, milestones, deadlines, status-date line (conditional formatting only, no formulas) |
 | Resources | Resource sheet with max units and rates; assigned hours and cost |
 | Sprints | Sprint calendar, capacity vs planned hours, per-person load with over-allocation flags |
@@ -55,7 +57,7 @@ python -m unittest discover -s tests -v
 Builds the workbook, recalculates it with headless LibreOffice (`soffice`) at a fixed status date of 25-Oct-2026,
 and checks: no formula errors, WBS numbering, FS / SS / FF links with lags, two predecessors, weekends and holidays skipped,
 Start No Earlier Than, manual tasks, summary roll-ups, forecast from actuals, slips rippling to successors,
-rescheduling after the status date, deadlines, frozen baseline and variances, invalid-link handling, inserting a task
+rescheduling after the status date, deadlines, frozen baseline and variances, earned value and the RAG rules (worked out independently in Python), PM RAG overrides, the report lists, invalid-link handling, inserting a task
 mid-list (links follow UIDs), the blank template, sprint tagging, cost, the MS Project export columns, and that the
 committed workbooks match the build script, tables keep their calculated columns, and no formula contains an A1
 reference. GitHub Actions runs the same suite on every push, then `scripts/perf_check.py` on the sample and on a

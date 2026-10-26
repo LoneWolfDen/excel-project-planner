@@ -22,7 +22,7 @@ How the workbook is put together, and the rules every change follows. These rule
    with `_` (`_CalcStart`, `_Pred1Row`). Each helper does one job so the visible formulas stay short. Header comments
    explain units and meaning.
 5. **Cheap to recalculate.** Volatile functions (`OFFSET`, `INDIRECT`, `TODAY`, `NOW`, `RAND`, `CELL`, `INFO`) make
-   Excel recalculate them and everything downstream after every edit. The only one allowed is `OFFSET`, in the five
+   Excel recalculate them and everything downstream after every edit. The only one allowed is `OFFSET`, in the seven
    Tasks columns that must read another row's calculated value (below). Dates you'd expect to be "today" (the
    status date) are typed instead. Report grids use `SUMIFS`, not `SUMPRODUCT` over every task. No whole-column
    (`A:A`) references, and no formulas in cells that only exist to be coloured: the Gantt timeline is conditional
@@ -42,6 +42,8 @@ How the workbook is put together, and the rules every change follows. These rule
 | Holidays | `HolidayTable` | Non-working dates (`Holidays` = `HolidayTable[Date]`) |
 | MSP_Tasks / MSP_Resources | `MSPTasks`, `MSPResources` | MS Project field names, for the Import Wizard |
 | Dashboard | `KPIs`, `StatusSummary`, `NextMilestones` | Project KPIs |
+| Status Report | `OverallStatus`, `StatusRAG`, `EarnedValue`, `StatusNotes` | RAG by area, earned value (`evm_*` names) |
+| Schedule Report | `PhaseSummary`, `MilestoneReport`, `LateTasks`, `StartingSoon`, `DueSoon`, `CriticalTasks` | Ranked lists |
 | Lists | `List*` | Dropdown values (`L_DepType`, `L_Mode`, ...) |
 
 Code: `planner/core.py` (styles, `add_table`, structured-reference helpers), one module per sheet, `planner/build.py`
@@ -61,7 +63,7 @@ A task's start depends on its predecessor's finish, and the WBS number on the pa
 The rows-above design was built and measured first (it is fast). `RealRowEditTest`, which inserts a real row with
 LibreOffice, showed the inserted task invisible to the task below it, so it was rejected: robustness first.
 
-`OFFSET` is therefore used in exactly five columns: the four predecessor drivers and the parent-WBS look-up. Volatile
+`OFFSET` is therefore used in exactly seven columns: the four predecessor drivers, the parent-WBS look-up and the critical path's two successor look-ups (`_SuccessorFinishLimit`, `Free Slack`). Volatile
 cells recalculate, with everything downstream, after every edit. Everything else is non-volatile:
 
 - **Roll-ups.** Detail-task values live in `_Leaf...` columns (`_LeafCalcStart`, `_LeafFcstFinish`, `_LeafWork`, ...);
@@ -106,6 +108,31 @@ deadline gives negative slack to the task and the chain feeding it, as in MS Pro
 | Sample (200 rows) | 0.04 s | 0.05 s |
 | 1,000 tasks | 0.42 s | ~0.5 s |
 
+## Reports
+
+Reports are formulas, not Power Query, so they are current after every edit, work in Excel for the web and on a
+phone, and are tested in CI. They follow three rules:
+
+- **Tasks decides, the report looks up.** A list such as "late tasks" needs a filter and a sort. Tasks does both in
+  one helper column per list (`_LateKey`, `_StartSoonKey`, `_CriticalKey`, ...): blank when the task is not on the
+  list, otherwise a unique sort key (the row position breaks ties). Row *k* of the report finds the *k*-th key with
+  `SMALL` / `LARGE` and `MATCH`, once, in its hidden `_Task` column; the visible columns only `INDEX` by it
+  (`core.ranked_table`). No `FILTER` / `SORT` (Microsoft 365 only) and no `SUMPRODUCT` per row.
+- **Totals sum leaf helpers.** Earned value is worked out per detail task (`_LeafBudget`, `_LeafPV`, `_LeafEV`,
+  `_LeafAC`, zero on summaries), so a project total is one `SUM` and a phase total is the summary row's roll-up.
+- **One rule, one place.** RAG thresholds are settings; `planner/rag.py` turns a measure into a severity (0 / 1 / 2)
+  and the worst severity into a word, for both the status rows and the phase table. A PM RAG typed next to a
+  calculated RAG overrides it.
+
+Earned value at the status date: Budget = Baseline Cost (or Cost before a baseline); planned % = planned working days
+before the status date / planned working days; PV = Budget x planned %; EV = Budget x Progress; AC = Actual Cost, or
+Cost x Progress when blank; EAC = AC + (BAC - EV) / CPI.
+
+| LibreOffice, one edit then recalculate | Before the reports | With them |
+|---|---|---|
+| Sample (200 rows) | 0.05 s | 0.06 s |
+| 1,000 tasks | 0.54 s | 0.57-0.61 s |
+
 ## Excel version
 
 **Excel 2019 or Microsoft 365** (Windows or Mac). The only post-2010 functions are `MINIFS` and `MAXIFS`, stored with
@@ -122,7 +149,7 @@ Run on every PR by `.github/workflows/ci.yml`:
 | No A1 references in formulas | `scripts/perf_check.py`, also a unit test | any formula contains one |
 | Excel limits: balanced parentheses, length <= 8,192, nesting <= 64 | `perf_check.py`, also a unit test | any formula breaks one (LibreOffice silently repairs some; Excel would not) |
 | Real row insertion and deletion keep every formula working | `RealRowEditTest` (LibreOffice via UNO) | a task can't see an inserted row, or a deleted row leaves `#REF!` |
-| Volatile functions only on the allow-list (OFFSET in 5 Tasks columns) | `perf_check.py`, `perf_budget.json`, also a unit test | any other volatile use appears |
+| Volatile functions only on the allow-list (OFFSET in 7 Tasks columns) | `perf_check.py`, `perf_budget.json`, also a unit test | any other volatile use appears |
 | Formula count | `perf_check.py` | above budget |
 | Recalculation time: full, a duration edit near the top, the last task, a note; sample and 1,000-task stress workbook | `perf_check.py --timing` (LibreOffice) | above budget |
 | Committed workbooks match the build | unit test | the `.xlsx` wasn't rebuilt after a code change |

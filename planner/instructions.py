@@ -24,7 +24,8 @@ def text(n_tasks):
                                 "frozen (like MS Project's Baseline) and the variance columns compare against it. To re-baseline, "
                                 "repeat; to clear it, delete the 5 Baseline columns' contents."),
         ("5. Track progress", "Enter Actual Start, Actual Finish and % Complete. Forecast Start/Finish then use actuals and push "
-                              "every dependent task. Start / Finish / Duration / Work / Cost Var and Status flag slippage."),
+                              "every dependent task. Start / Finish / Duration / Work / Cost Var and Status flag slippage. "
+                              "Optionally enter Actual Cost (cost to date) on detail tasks; blank = Cost x Progress."),
         ("Critical path", "Late Start / Late Finish come from a backward pass from the forecast project finish (and any "
                           "deadline). Total Slack = how far a task can slip before it delays the project or a deadline; Free "
                           "Slack = before it delays a successor. Critical = slack <= Settings > CriticalSlackDays on an "
@@ -35,8 +36,19 @@ def text(n_tasks):
         ("7. Sprints", "Sprint calendar from Settings. Each task is tagged with the sprint its forecast start falls in. Work "
                        "hours are prorated across sprints per resource, compared against capacity (Max Units x Hours/day x "
                        "working days); over-allocations turn red."),
-        ("8. Dashboard", "KPIs (including baseline, missed deadlines, link problems), status counts, upcoming milestones and "
-                         "sprint load vs capacity."),
+        ("8. Dashboard", "KPIs (including overall RAG, SPI, CPI, missed deadlines, link problems), status counts, upcoming "
+                         "milestones and sprint load vs capacity."),
+        ("9. Status Report", "For steering meetings: overall RAG and RAG by area (schedule, SPI, CPI, deadlines, critical "
+                             "path, plan quality), calculated from the thresholds on Settings (RAG...). Type a PM RAG to "
+                             "override one and say why in Comment. Earned value (BAC, PV, EV, AC, SPI, CPI, EAC, VAC, TCPI) "
+                             "and a commentary box for the period."),
+        ("10. Schedule Report", "Phase summary with RAG, all milestones, late tasks, tasks starting and due in the "
+                                "look-ahead window (Settings > LookaheadDays) and open critical tasks. Lists update with "
+                                "every edit; drag a list's bottom corner down to show more rows."),
+        ("Earned value", "Set a baseline first: without one, Budget = current Cost and PV follows the current plan, so "
+                         "SPI and CPI only show progress against the latest plan. PV = budget of work planned before the "
+                         "status date; EV = Budget x Progress; AC = Actual Cost. SPI = EV/PV, CPI = EV/AC, "
+                         "EAC = AC + (BAC - EV)/CPI."),
         ("CELL COLOURS", None),
         ("Blue text", "Input - type here."),
         ("Black text on grey", "Formula - do not overwrite. Summary rows grey-out inputs that are ignored."),
@@ -80,10 +92,13 @@ def text(n_tasks):
                                      "/ Predecessors etc. into the Tasks input columns (split '3FS+2d' into UID, Type, Lag)."),
         ("NAMES AND TABLES (Formulas > Name Manager)", None),
         ("Tables", "Tasks, ResourceTable, SprintTable, HolidayTable, GanttView, MSPTasks, MSPResources, KPIs, StatusSummary, "
-                   "NextMilestones and the List* dropdown tables. Inside a table, formulas read [@Column] (this row)."),
+                   "NextMilestones, OverallStatus, StatusRAG, EarnedValue, StatusNotes, PhaseSummary, MilestoneReport, "
+                   "LateTasks, StartingSoon, DueSoon, CriticalTasks and the List* dropdown tables. Inside a table, formulas read [@Column] (this row)."),
         ("Settings", "ProjectStart, StatusDate, StatusWorkday, WorkWeek, Holidays, HoursPerDay, DefaultUnits, "
                      "RescheduleAfterStatus, GanttStart, GanttPeriod, Sprint1Start, SprintLength, SprintCount, SprintPrefix, "
-                     "SprintLastEnd, NextFreeUID"),
+                     "SprintLastEnd, CriticalSlackDays, ProjectFinish, PlannedFinish, FinishVarianceDays, LookaheadDays, "
+                     "RAGAmberSlipDays, RAGRedSlipDays, RAGAmberIndex, RAGRedIndex, NextFreeUID. Report values: ProjectRAG, "
+                     "evm_BAC, evm_PV, evm_EV, evm_AC, evm_SPI, evm_CPI, evm_EAC ..."),
         ("Task columns", "tsk_ID, tsk_UID, tsk_WBS, tsk_Name, tsk_Duration, tsk_PlanStart, tsk_FcFinish, tsk_Status, tsk_Resource, "
                          "tsk_Work, tsk_Cost ... each is Tasks[Column], so it grows with the table. Other sheets read Tasks "
                          "only through these names."),

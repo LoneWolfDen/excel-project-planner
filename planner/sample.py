@@ -4,9 +4,9 @@ import datetime as dt
 D = dt.date
 
 # Level, Task Name, Mode, Duration, Pred1 UID, Type, Lag, Pred2 UID, Type, Lag, Start No Earlier Than, Deadline,
-# Actual Start, Actual Finish, % Complete, Resource, Units, Notes
+# Actual Start, Actual Finish, % Complete, Resource, Units, Notes. Actual Cost (ACin) comes from ACTUAL_COST.
 COLUMNS = ["Level", "Name", "Mode", "Dur", "P1", "T1", "L1", "P2", "T2", "L2", "Cons", "DL", "AS", "AF", "Pct", "Res",
-           "Units", "Notes"]
+           "Units", "Notes", "ACin"]
 _ = None
 TASKS = [
     (1, "Initiation", "Auto", _, _, _, _, _, _, _, _, _, _, _, _, _, _, "Phase 1 - summary rows roll up dates, work, cost and progress automatically."),
@@ -42,17 +42,25 @@ TASKS = [
 ]
 
 
+# Actual cost entered for a few tasks (by task number); the others use Cost x Progress.
+ACTUAL_COST = {2: 3040, 6: 5040, 13: 4080}
+
+
+def _row(i, t):
+    return dict(zip(COLUMNS, t), ACin=ACTUAL_COST.get(i + 1))
+
+
 def tasks(blank=False, stress=0):
     """Rows as dicts keyed by COLUMNS. stress=N repeats the sample N times; each copy follows the previous one."""
     if blank:
         return []
     if not stress:
-        return [dict(zip(COLUMNS, t)) for t in TASKS]
+        return [_row(i, t) for i, t in enumerate(TASKS)]
     rows = []
     n = len(TASKS)
     for copy in range(stress):
-        for t in TASKS:
-            row = dict(zip(COLUMNS, t))
+        for i, t in enumerate(TASKS):
+            row = _row(i, t)
             for p in ("P1", "P2"):
                 if row[p]:
                     row[p] += copy * n

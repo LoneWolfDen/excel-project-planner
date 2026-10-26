@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 import openpyxl
@@ -25,17 +26,17 @@ FIRST = 6  # first task row on Tasks
 
 # Tasks headers used by the tests (columns are found by header, not letter)
 H = {
-    "ID": "ID", "UID": "UID", "WBS": "WBS", "Level": "Level", "Name": "Task Name", "Dur": "Duration (work days)",
-    "P1": "Pred 1 UID", "P2": "Pred 2 UID", "AS": "Actual Start", "AF": "Actual Finish", "Pct": "% Complete (enter)",
-    "PS": "Planned Start (baseline, else calculated)", "PF": "Planned Finish (baseline, else calculated)",
-    "FS": "Forecast Start", "FF": "Forecast Finish", "SVar": "Start Variance (work days)",
-    "Var": "Finish Variance (work days)", "DLChk": "Deadline Check", "Link": "Link Check", "Prog": "Progress % (rolled up)",
-    "Status": "Status", "Work": "Work (hrs)", "Cost": "Cost", "Sprint": "Sprint", "Pred": "Predecessors (by ID, MSP format)",
-    "DVar": "Duration Variance (days)", "WVar": "Work Variance (hrs)", "CVar": "Cost Variance",
+    "ID": "ID", "UID": "UID", "WBS": "WBS", "Level": "Level", "Name": "Task Name", "Dur": "Duration",
+    "P1": "Pred1 UID", "P2": "Pred2 UID", "AS": "Actual Start", "AF": "Actual Finish", "Pct": "% Complete",
+    "PS": "Planned Start", "PF": "Planned Finish", "FS": "Forecast Start", "FF": "Forecast Finish",
+    "SVar": "Start Var", "Var": "Finish Var", "DLChk": "Deadline Check", "Link": "Link Check", "Prog": "Progress",
+    "Status": "Status", "Work": "Work", "Cost": "Cost", "Sprint": "Sprint", "Pred": "Predecessors",
+    "DVar": "Duration Var", "WVar": "Work Var", "CVar": "Cost Var",
 }
-SOURCE = ["Baseline source: Start", "Baseline source: Finish", "Baseline source: Duration",
-          "Baseline source: Work (hrs)", "Baseline source: Cost"]
-BASELINE = ["Baseline Start", "Baseline Finish", "Baseline Duration", "Baseline Work (hrs)", "Baseline Cost"]
+SOURCE = ["BL Source Start", "BL Source Finish", "BL Source Duration", "BL Source Work", "BL Source Cost"]
+BASELINE = ["Baseline Start", "Baseline Finish", "Baseline Duration", "Baseline Work", "Baseline Cost"]
+sys.path.insert(0, str(ROOT / "scripts"))
+import perf_check  # noqa: E402
 
 
 def build(path, *flags):
@@ -128,16 +129,54 @@ class StructureTest(Tmp):
                   "GanttPeriod", "Sprint1Start", "SprintLength", "NextFreeUID", "tsk_ID", "tsk_UID", "tsk_PlanStart",
                   "tsk_CalcStart", "tsk_FcFinish", "tsk_Resource", "tsk_Deadline", "tsk_DeadlineCheck", "tsk_LinkCheck",
                   "tsk_BaseStart", "tsk_BaseCost", "tsk_CostVariance", "res_Name", "res_Rate", "spr_Name", "spr_Start",
-                  "hdr_CalcFinish"):
+                  "gantt_Origin", "load_Grid"):
             self.assertIn(n, names)
+        # column names are structured references, so they grow with the table
+        self.assertEqual(self.wb.defined_names["tsk_Duration"].attr_text, "Tasks[Duration]")
+        self.assertEqual(self.wb.defined_names["Holidays"].attr_text, "HolidayTable[Date]")
+
+    def test_tables_have_calculated_columns(self):
+        tasks = self.wb["Tasks"].tables["Tasks"]
+        calculated = {c.name for c in tasks.tableColumns if c.calculatedColumnFormula is not None}
+        self.assertIn("Forecast Finish", calculated)
+        self.assertNotIn("Duration", calculated)                 # inputs are not calculated columns
+        for sheet, table in (("Resources", "ResourceTable"), ("Sprints", "SprintTable"), ("Gantt", "GanttView"),
+                             ("MSP_Tasks", "MSPTasks"), ("Holidays", "HolidayTable")):
+            self.assertIn(table, self.wb[sheet].tables)
+
+    def test_no_a1_references_in_formulas(self):
+        report = perf_check.static_report(self.path)
+        self.assertEqual(report["a1_references"], [])
+
+    def test_a1_lint_catches_cell_references(self):
+        names = {"ProjectStart"}
+        self.assertEqual(perf_check.a1_references("=SUM(A1:B2)+Settings!$C$5+ProjectStart", names), ["A1:B2", "Settings!$C$5"])
+        self.assertEqual(perf_check.a1_references("=Tasks[[#This Row],[Duration]]*2", names), [])
+
+    def test_volatile_functions_only_where_allowed(self):
+        report = perf_check.static_report(self.path)
+        self.assertEqual(set(report["volatile"]), {"Tasks", "Settings"})
+        self.assertEqual(set(report["volatile"]["Tasks"]), {"OFFSET"})
+        self.assertEqual(report["volatile"]["Settings"], {"TODAY": 2})
+
+    def test_gantt_timeline_has_no_formulas(self):
+        ws = self.wb["Gantt"]
+        origin = named_cell(self.wb, "gantt_Origin")
+        for row in ws.iter_rows(min_row=origin.row + 1, max_row=origin.row + 30, min_col=origin.column + 1,
+                                max_col=origin.column + 150):
+            for c in row:
+                self.assertIsNone(c.value, c.coordinate)
 
     def test_scheduling_formulas_use_names(self):
         ws = self.wb["Tasks"]
         drivers = [ws.cell(7, c).value for c in range(1, ws.max_column + 1)
                    if isinstance(ws.cell(7, c).value, str) and "CHOOSE(" in ws.cell(7, c).value]
         self.assertTrue(drivers)
-        for token in ("tsk_UID", "WorkWeek", "Holidays"):
+        for token in ("Tasks[[#Headers],[_CalcFinish]]", "Tasks[[#This Row],[_Pred1Row]]", "WorkWeek", "Holidays"):
             self.assertIn(token, drivers[0])
+        # every row of a calculated column carries the same text: nothing points at a particular row
+        col = columns(ws)["Forecast Start"]
+        self.assertEqual(len({ws.cell(r, col).value for r in range(FIRST, FIRST + 200)}), 1)
 
     def test_uids_prefilled(self):
         ws = self.wb["Tasks"]
@@ -187,6 +226,11 @@ class CommittedWorkbooksTest(unittest.TestCase):
                         if x != y and not (x in (None, "") and y in (None, "")):
                             diffs.append(f"{ws.title}!{c.coordinate}: build={x!r} committed={y!r}")
             self.assertEqual(diffs[:10], [], f"{committed.name} is out of date ({len(diffs)} cells differ)")
+            # LibreOffice's save drops calculated-column formulas; the build restores them so Excel auto-fills rows
+            with zipfile.ZipFile(committed) as z:
+                tables = [z.read(n).decode() for n in z.namelist() if n.startswith("xl/tables/")]
+            tasks = next(t for t in tables if 'displayName="Tasks"' in t)
+            self.assertIn("<calculatedColumnFormula>", tasks)
 
     def test_sample_workbook_up_to_date(self):
         self.compare(ROOT / "Project_Planner.xlsx")
@@ -267,8 +311,9 @@ class ScheduleTest(Tmp):
         self.assertEqual(self.val(25, "DLChk"), "OK")
         self.assertIsNone(self.val(2, "DLChk"))
         self.assertEqual(self.dashboard("Missed deadlines"), 1)
-        gantt_row = "".join(str(c.value or "") for c in self.wb["Gantt"][self.t.row_of(19)])
-        self.assertIn("▼", gantt_row)
+        gantt = self.wb["Gantt"]
+        col = {c.value: c.column for c in gantt[5] if c.value}
+        self.assertEqual(d(gantt.cell(self.t.row_of(19), col["_Deadline"]).value), dt.date(2026, 11, 6))
 
     def test_no_link_problems_in_sample(self):
         self.assertEqual(self.dashboard("Link problems (see Tasks > Link Check)"), 0)

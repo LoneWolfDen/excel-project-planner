@@ -1,0 +1,15 @@
+{
+  "_comment": "Budgets checked by scripts/perf_check.py on every PR. Timings are LibreOffice on a CI runner, with roughly 3x headroom over local runs. Raise a budget only with a reason in the PR; never to hide a regression.",
+  "sample": {
+    "formulas_max": 25000,
+    "volatile_allowed": {"Tasks": {"OFFSET": 2600}, "Settings": {"TODAY": 2}},
+    "full_recalc_s_max": 0.5,
+    "edit_recalc_s_max": 0.5
+  },
+  "stress": {
+    "formulas_max": 110000,
+    "volatile_allowed": {"Tasks": {"OFFSET": 13000}, "Settings": {"TODAY": 2}},
+    "full_recalc_s_max": 2.5,
+    "edit_recalc_s_max": 2.0
+  }
+}

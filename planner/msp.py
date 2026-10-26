@@ -1,0 +1,67 @@
+"""MS Project export sheets. Column headers are MS Project field names, so the Import Wizard maps them itself."""
+from .core import SHORT_DATE, Col, Tab, add_table
+
+
+def build_msp_tasks(wb, n_rows):
+    ws = wb.create_sheet("MSP_Tasks")
+    m = Tab("MSPTasks")
+    n = f"(ROW()-ROW({m.head('ID')}))"
+    blank = f'IFERROR(INDEX(tsk_Name,{n})="",TRUE())'
+    t = lambda col: f"INDEX({col},{n})"
+    show = lambda col: f'IF({blank},"",{t(col)})'
+    not_summary = lambda expr: f'IF(OR({blank},{t("tsk_IsSummary")}),"",{expr})'
+    date = lambda col: f'IF({blank},"",IF(N({t(col)})=0,"",{t(col)}))'
+    units = t("tsk_Units")
+    cols = [
+        Col("ID", width=5, formula=show("tsk_ID")),
+        Col("Unique ID", width=8, formula=show("tsk_UID")),
+        Col("Name", width=36, formula=show("tsk_Name")),
+        Col("Outline Level", width=8, formula=show("tsk_Level")),
+        Col("Task Mode", width=18, formula=f'IF({blank},"",IF({t("tsk_Mode")}="Manual","Manually Scheduled","Auto Scheduled"))'),
+        Col("Duration", width=9, formula=not_summary(f'N({t("tsk_Duration")})&"d"')),
+        Col("Start", width=12, fmt=SHORT_DATE, formula=show("tsk_FcStart")),
+        Col("Finish", width=12, fmt=SHORT_DATE, formula=show("tsk_FcFinish")),
+        Col("Predecessors", width=14, formula=not_summary(t("tsk_Predecessors"))),
+        Col("Unique ID Predecessors", width=14, formula=not_summary(t("tsk_UIDPredecessors"))),
+        Col("Resource Names", width=22, formula=(
+            f'IF({blank},"",IF({t("tsk_Resource")}="","",{t("tsk_Resource")}&'
+            f'IF(OR({units}="",{units}=1),"","["&ROUND({units}*100,0)&"%]")))')),
+        Col("% Complete", width=9, formula=not_summary(f'ROUND({t("tsk_Progress")}*100,0)')),
+        Col("Actual Start", width=12, fmt=SHORT_DATE, formula=date("tsk_ActStart")),
+        Col("Actual Finish", width=12, fmt=SHORT_DATE, formula=date("tsk_ActFinish")),
+        Col("Baseline Start", width=12, fmt=SHORT_DATE, formula=show("tsk_PlanStart")),
+        Col("Baseline Finish", width=12, fmt=SHORT_DATE, formula=show("tsk_PlanFinish")),
+        Col("Baseline Duration", width=9, formula=f'IF(OR({blank},{t("tsk_BaseDuration")}=""),"",N({t("tsk_BaseDuration")})&"d")'),
+        Col("Baseline Work", width=9, formula=f'IF(OR({blank},{t("tsk_BaseWork")}=""),"",N({t("tsk_BaseWork")})&"h")'),
+        Col("Baseline Cost", width=11, formula=f'IF(OR({blank},{t("tsk_BaseCost")}=""),"",N({t("tsk_BaseCost")}))'),
+        Col("Constraint Type", width=22, formula=not_summary(
+            f'IF(AND({t("tsk_Mode")}<>"Manual",N({t("tsk_Constraint")})>0),"Start No Earlier Than","As Soon As Possible")')),
+        Col("Constraint Date", width=12, fmt=SHORT_DATE, formula=(
+            f'IF(OR({blank},{t("tsk_IsSummary")},{t("tsk_Mode")}="Manual"),"",IF(N({t("tsk_Constraint")})=0,"",'
+            f'{t("tsk_Constraint")}))')),
+        Col("Deadline", width=12, fmt=SHORT_DATE, formula=date("tsk_Deadline")),
+        Col("Notes", width=40, formula=f'IF({blank},"",{t("tsk_Notes")}&"")'),
+    ]
+    add_table(ws, "MSPTasks", 1, 1, cols, n_rows)
+    ws.freeze_panes = "C2"
+    return ws
+
+
+def build_msp_resources(wb, n_rows):
+    ws = wb.create_sheet("MSP_Resources")
+    m = Tab("MSPResources")
+    n = f"(ROW()-ROW({m.head('Name')}))"
+    blank = f'IFERROR(INDEX(res_Name,{n})="",TRUE())'
+    t = lambda col: f"INDEX({col},{n})"
+    text = lambda col: f'IF({blank},"",{t(col)}&"")'
+    cols = [
+        Col("Name", width=22, formula=text("res_Name")),
+        Col("Initials", width=9, formula=text("res_Initials")),
+        Col("Group", width=20, formula=text("res_Group")),
+        Col("Type", width=10, formula=text("res_Type")),
+        Col("Max Units", width=10, formula=f'IF({blank},"",ROUND({t("res_MaxUnits")}*100,0)&"%")'),
+        Col("Standard Rate", width=12, formula=f'IF({blank},"",{t("res_Rate")}&"/h")'),
+        Col("Email Address", width=26, formula=text("res_Email")),
+    ]
+    add_table(ws, "MSPResources", 1, 1, cols, n_rows)
+    return ws

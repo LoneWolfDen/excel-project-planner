@@ -14,7 +14,7 @@ LISTS = {  # table name, column name, named range, values
     "L_Constraint": ("ListConstraint", "Constraint", CONSTRAINTS),
     "L_YesNo": ("ListYesNo", "Yes / No", ["Yes", "No"]),
     "L_ResType": ("ListResType", "Resource Type", ["Work", "Material", "Cost"]),
-    "L_Period": ("ListPeriod", "Gantt Days per Column", [1, 7]),
+    "L_Period": ("ListPeriod", "Gantt Days per Column", [1, 7, 30, 91]),
     "L_RAG": ("ListRAG", "RAG", ["Green", "Amber", "Red"]),
     "L_RAIDType": ("ListRAIDType", "RAID Type", ["Risk", "Assumption", "Issue", "Dependency"]),
     "L_RAIDStatus": ("ListRAIDStatus", "RAID Status", ["Open", "In Progress", "Closed"]),
@@ -62,7 +62,13 @@ def settings_rows(blank, max_sprints):
          "7-character Mon..Sun string used by WORKDAY.INTL (1 = non-working)."),
         ("GanttStart", "Gantt timeline start", "=ProjectStart-WEEKDAY(ProjectStart,3)", DATE, True,
          "Defaults to the Monday of the project start week. Overwrite with any date to scroll the timeline."),
-        ("GanttPeriod", "Gantt days per column", 1, "0", True, "1 = daily timeline, 7 = weekly timeline."),
+        ("GanttPeriod", "Gantt days per column", 1, "0", True,
+         "1 = daily timeline, 7 = weekly, 30 = monthly (calendar months), 91 = quarterly (calendar quarters)."),
+        ("OutlineShowLevel", "Show tasks down to outline level", 9, "0", True,
+         "Tasks and Gantt > Show is Yes for rows at this level or above: filter Show = Yes to see only phases (1), "
+         "phases and tasks (2) ... Reapply the filter (Data > Reapply) after changing it."),
+        ("RoadmapStart", "Roadmap first month", "=DATE(YEAR(ProjectStart),MONTH(ProjectStart),1)", "mmm-yy", True,
+         "The Roadmap sheet's first month. Overwrite with the first of any month to scroll it."),
         ("Sprint1Start", "Sprint 1 start date", "=ProjectStart", DATE, True,
          "Defaults to the project start. Overwrite to align with your sprint calendar."),
         ("SprintLength", "Sprint length (calendar days)", 14, "0", True, "14 = two-week sprints."),
@@ -143,6 +149,9 @@ def build_settings(wb, blank, max_sprints, values=None):
     period = DataValidation(type="list", formula1="=L_Period")
     st.add_data_validation(period)
     period.add(f"C{rows['GanttPeriod']}")
+    levels = DataValidation(type="whole", operator="between", formula1="1", formula2="9")
+    st.add_data_validation(levels)
+    levels.add(f"C{rows['OutlineShowLevel']}")
     sprints = DataValidation(type="whole", operator="between", formula1="1", formula2=str(max_sprints))
     st.add_data_validation(sprints)
     sprints.add(f"C{rows['SprintCount']}")

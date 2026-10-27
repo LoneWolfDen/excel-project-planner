@@ -4,11 +4,14 @@ The timeline cells hold no formulas at all: bars, the planned outline, milestone
 non-working days are conditional-format rules, which Excel only evaluates for the cells on screen. That keeps the
 calculation chain small (see docs/ARCHITECTURE.md).
 """
-from openpyxl.formatting.rule import FormulaRule
+from openpyxl.formatting.rule import FormulaRule, Rule
+from openpyxl.styles.differential import DifferentialStyle
+from openpyxl.styles.numbers import NumberFormat
 from openpyxl.styles import Alignment, Border, Font, Side
 from openpyxl.utils import get_column_letter
 
 from .core import (HEADER_FILLS, NOTE_FONT, SHORT_DATE, Col, Tab, add_table, fill, font, name)
+from .tasks import group_outline
 
 TABLE = "GanttView"
 HEADER_ROW = 5
@@ -17,7 +20,22 @@ COLOURS = {"critical": "E06666", "summary": "404040", "done": "70AD47", "remaini
            "deadline": "C00000", "planned": "1F3864", "status": "FF0000", "nonworking": "EDEDED"}
 
 
-def build_gantt(wb, n_rows, n_days):
+def period_end(d):
+    """The day after the timeline column that starts on d: GanttPeriod 1 / 7 are days, 30 / 91 calendar months /
+    quarters (EDATE, so months keep their real lengths)."""
+    return f"IF(GanttPeriod<28,{d}+GanttPeriod,EDATE({d},IF(GanttPeriod>=90,3,1)))"
+
+
+def column_start(k):
+    """The first day of timeline column k (1 = first). Month and quarter scales start on the 1st of GanttStart's
+    month / calendar quarter."""
+    first_month = ("DATE(YEAR(GanttStart),MONTH(GanttStart)-IF(GanttPeriod>=90,MOD(MONTH(GanttStart)-1,3),0),1)")
+    return (f"IF(GanttPeriod<28,GanttStart+({k}-1)*GanttPeriod,"
+            f"EDATE({first_month},({k}-1)*IF(GanttPeriod>=90,3,1)))")
+
+
+def build_gantt(wb, n_rows, n_days, levels=()):
+    """levels: the Level of each task the workbook is built with, for the Excel outline grouping."""
     ws = wb.create_sheet("Gantt")
     ws["A1"] = '=ProjectName&"  -  Gantt Chart"'
     ws["A1"].font = font(size=16, bold=True, color="1F4E78")
@@ -47,6 +65,8 @@ def build_gantt(wb, n_rows, n_days):
         Col("%", width=6, fmt="0%", center=True, formula=show("tsk_Progress")),
         Col("Resource", width=13, formula=f'IF({blank},"",{task("tsk_ResourceNames")}&"")'),
         Col("Status", width=11, center=True, formula=show("tsk_Status")),
+        Col("Show", width=6, center=True, formula=f'IF({blank},"",{task("tsk_Show")}&"")',
+            note="Yes down to Settings > OutlineShowLevel: filter on Yes to collapse the outline."),
         # helpers read by the timeline's conditional formatting
         Col("_Row", "help", 5, formula=f"ROW()-ROW({g.head('ID')})"),
         Col("_IsSummary", "help", 5, formula=f"IF({blank},FALSE(),{task('tsk_IsSummary')})"),
@@ -63,7 +83,8 @@ def build_gantt(wb, n_rows, n_days):
         Col("_Deadline", "help", 8, "dd-mmm;;-", formula=f"IF({blank},0,N({task('tsk_Deadline')}))"),
         Col("_Critical", "help", 5, formula=f'IF({blank},FALSE(),{task("tsk_Critical")}="Yes")'),
     ]
-    L = add_table(ws, TABLE, HEADER_ROW, 1, cols, n_rows, autofilter=False)
+    L = add_table(ws, TABLE, HEADER_ROW, 1, cols, n_rows)
+    group_outline(ws, levels, HEADER_ROW + 1)
     for c in cols:
         for r in range(HEADER_ROW + 1, HEADER_ROW + n_rows + 1):
             ws[f"{L[c.name]}{r}"].font = font(size=9)
@@ -74,13 +95,17 @@ def build_gantt(wb, n_rows, n_days):
     ws.column_dimensions[get_column_letter(origin_col)].width = 1
     name(wb, "gantt_Origin", f"Gantt!${get_column_letter(origin_col)}${HEADER_ROW}")
     first, last = origin_col + 1, origin_col + n_days
-    day = "GanttStart+(COLUMN()-COLUMN(gantt_Origin)-1)*GanttPeriod"
+    k = "(COLUMN()-COLUMN(gantt_Origin))"
     for col in range(first, last + 1):
         letter = get_column_letter(col)
         ws.column_dimensions[letter].width = 2.9
+        day = column_start(k)
         ws.cell(HEADER_ROW, col, f"={day}").number_format = "d"
-        ws.cell(4, col, f'=IF(OR(COLUMN()-COLUMN(gantt_Origin)=1,DAY({day})<=GanttPeriod),TEXT({day},"mmm yy"),"")')
-        ws.cell(3, col, f'=IF(GanttPeriod=1,LEFT(TEXT({day},"ddd"),1),"")')
+        # row 4: month (days / weeks) or year (months / quarters) where it changes; row 3: weekday, month or quarter
+        ws.cell(4, col, f'=IF(GanttPeriod<28,IF(OR({k}=1,DAY({day})<=GanttPeriod),TEXT({day},"mmm yy"),""),'
+                        f'IF(OR({k}=1,MONTH({day})<=IF(GanttPeriod>=90,3,1)),TEXT({day},"yyyy"),""))')
+        ws.cell(3, col, f'=IF(GanttPeriod=1,LEFT(TEXT({day},"ddd"),1),IF(GanttPeriod=30,LEFT(TEXT({day},"mmm"),1),'
+                        f'IF(GanttPeriod>=90,"Q"&INT((MONTH({day})+2)/3),"")))')
         for r, size, colour in ((3, 8, "404040"), (4, 8, "404040"), (5, 8, "FFFFFF")):
             c = ws.cell(r, col)
             c.font = font(size=size, bold=(r == 4), color=colour)
@@ -100,8 +125,9 @@ def _timeline_rules(ws, L, first, last, n_rows):
     grid = f"{g1}{top}:{get_column_letter(last)}{bottom}"
     d = f"{g1}${HEADER_ROW}"                                   # this column's date (header row)
     at = lambda col: f"${L[col]}{top}"                         # this row's helper cell
-    in_period = lambda x: f"AND({x}>0,{x}>={d},{x}<{d}+GanttPeriod)"
-    overlaps = lambda a, b: f"AND({a}>0,{d}<={b},{d}+GanttPeriod-1>={a})"
+    end = period_end(d)
+    in_period = lambda x: f"AND({x}>0,{x}>={d},{x}<{end})"
+    overlaps = lambda a, b: f"AND({a}>0,{d}<={b},{end}-1>={a})"
     thin = lambda colour: Side(style="thin", color=colour)
     rules = [
         FormulaRule(formula=[in_period(at("_Deadline"))], fill=fill(COLOURS["deadline"])),
@@ -120,8 +146,11 @@ def _timeline_rules(ws, L, first, last, n_rows):
     ]
     for rule in rules:
         ws.conditional_formatting.add(grid, rule)
-    ws.conditional_formatting.add(f"{g1}{HEADER_ROW}:{get_column_letter(last)}{HEADER_ROW}",
-                                  FormulaRule(formula=[in_period("StatusDate")], fill=fill("C00000")))
+    header = f"{g1}{HEADER_ROW}:{get_column_letter(last)}{HEADER_ROW}"
+    ws.conditional_formatting.add(header, FormulaRule(formula=[in_period("StatusDate")], fill=fill("C00000")))
+    # month / quarter scales: rows 3-4 name the month and year, so the header's day number (always 1) is hidden
+    hide = DifferentialStyle(numFmt=NumberFormat(numFmtId=200, formatCode=";;;"))
+    ws.conditional_formatting.add(header, Rule(type="expression", formula=["GanttPeriod>=28"], dxf=hide))
     panel = f"A{top}:{L['Status']}{bottom}"
     ws.conditional_formatting.add(panel, FormulaRule(formula=[at("_IsSummary")], font=Font(bold=True), fill=fill("DDEBF7")))
     from .tasks import STATUS_COLOURS

@@ -130,7 +130,7 @@ class StructureTest(Tmp):
         cls.wb = openpyxl.load_workbook(cls.path)
 
     def test_sheets(self):
-        self.assertEqual(self.wb.sheetnames, ["Instructions", "Dashboard", "Status Report", "Schedule Report",
+        self.assertEqual(self.wb.sheetnames, ["Instructions", "Dashboard", "Roadmap", "Status Report", "Schedule Report",
                                               "Resource Report", "Agile Report", "RAID", "Decisions", "Changes",
                                               "History", "Settings", "Tasks", "Gantt", "Resources", "Assignments", "Sprints",
                                               "Holidays", "Leave", "MSP_Tasks", "MSP_Resources", "Lists"])
@@ -784,6 +784,62 @@ class AssignmentsTest(Tmp):
         leaves = [r for r in table_rows(wb, "Tasks", "Tasks") if r["_IsLeaf"] == 1]
         self.assertAlmostEqual(sum(r["Work"] for r in resources.values() if r["Work"]), sum(r["Work"] for r in leaves))
         self.assertAlmostEqual(sum(r["Cost"] for r in resources.values() if r["Cost"]), sum(r["Cost"] for r in leaves))
+
+
+@unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+class ViewsTest(Tmp):
+    """Outline levels, the Gantt's month / quarter scales and the Roadmap."""
+
+    def test_outline_grouping_and_show_filter(self):
+        raw = openpyxl.load_workbook(self.path)
+        for sheet in ("Tasks", "Gantt"):
+            ws = raw[sheet]
+            self.assertFalse(ws.sheet_properties.outlinePr.summaryBelow, sheet)       # summary rows above
+            self.assertEqual([ws.row_dimensions[FIRST + i].outline_level for i in range(13)],
+                             [0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 2, 2], sheet)          # sample levels 1, 2, 2, 2, 1 ...
+        wb = recalc(self.path, self.dir, lambda wb: setattr(named_cell(wb, "OutlineShowLevel"), "value", 1))
+        self.assertEqual(errors_in(wb), [])
+        shown = [r["Task Name"] for r in table_rows(wb, "Tasks", "Tasks") if r["Show"] == "Yes"]
+        self.assertEqual(shown, ["Initiation", "Requirements & Design", "Build", "Test & Release", "Project Close"])
+        gantt = [r["Show"] for r in table_rows(wb, "Gantt", "GanttView")[:4]]
+        self.assertEqual(gantt, ["Yes", "No", "No", "No"])
+
+    def gantt_header(self, wb, n):
+        ws, origin = wb["Gantt"], named_cell(wb, "gantt_Origin")
+        return [[ws.cell(r, origin.column + 1 + k).value for k in range(n)] for r in (3, 4, origin.row)]
+
+    def test_month_and_quarter_scales(self):
+        for period, months, letters, years in (
+                (30, [(2026, m) for m in (9, 10, 11, 12)] + [(2027, 1)], ["S", "O", "N", "D", "J"],
+                 ["2026", "", "", "", "2027"]),
+                (91, [(2026, 7), (2026, 10), (2027, 1), (2027, 4), (2027, 7)], ["Q3", "Q4", "Q1", "Q2", "Q3"],
+                 ["2026", "", "2027", "", ""])):
+            wb = recalc(self.path, self.dir, lambda wb: setattr(named_cell(wb, "GanttPeriod"), "value", period))
+            self.assertEqual(errors_in(wb), [])
+            row3, row4, dates = self.gantt_header(wb, 5)
+            self.assertEqual([(d(x).year, d(x).month, d(x).day) for x in dates], [(y, m, 1) for y, m in months])
+            self.assertEqual((row3, [v or "" for v in row4]), (letters, years))
+
+    def test_roadmap(self):
+        self.wb = recalc(self.path, self.dir)
+        t = Tasks(self.wb)
+        phases = [r for r in table_rows(self.wb, "Roadmap", "RoadmapPhases") if r["Phase"]]
+        self.assertEqual([r["Phase"] for r in phases], ["Initiation", "Requirements & Design", "Build", "Test & Release",
+                                                        "Project Close"])
+        build = phases[2]
+        self.assertEqual((d(build["Start"]), d(build["Finish"]), build["Finish Var"]),
+                         (t.get(10, "FS"), t.get(10, "FF"), t.get(10, "Var")))
+        milestones = [r["Milestone"] for r in table_rows(self.wb, "Roadmap", "RoadmapMilestones") if r["Milestone"]]
+        self.assertEqual(milestones, ["Kickoff complete", "Design sign-off", "Build complete", "Go-live", "Project closed"])
+        ws, origin = self.wb["Roadmap"], named_cell(self.wb, "rm_Origin")
+        months = [d(ws.cell(origin.row, origin.column + k).value) for k in range(1, 19)]
+        self.assertEqual(months[0], dt.date(2026, 9, 1))                    # the project start's month
+        self.assertEqual(months[-1], dt.date(2028, 2, 1))
+        raw = openpyxl.load_workbook(self.path)["Roadmap"]
+        self.assertEqual((raw.page_setup.fitToWidth, raw.page_setup.fitToHeight), (1, 1))     # one page
+        timeline = [raw.cell(r, c).value for r in range(origin.row + 1, origin.row + 40)
+                    for c in range(origin.column + 1, origin.column + 19)]
+        self.assertTrue(all(v is None for v in timeline))                    # conditional formatting only
 
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")

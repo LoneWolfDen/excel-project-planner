@@ -33,7 +33,12 @@ def text(sizes):
                           "unfinished task. A missed deadline gives negative slack to the task and the chain feeding it."),
         ("6. Gantt", "Read-only view: dark outline = planned dates, green = done, blue = remaining on track, red = remaining "
                      "on the critical path, orange = remaining but late vs plan, dark grey = summary, purple = milestone, red cell = deadline, red border = status date. "
-                     "Change GanttStart / GanttPeriod (1 = days, 7 = weeks) on Settings to scroll or zoom."),
+                     "Change GanttStart / GanttPeriod (1 = days, 7 = weeks, 30 = months, 91 = quarters) on Settings to "
+                     "scroll or zoom. Collapse the outline with the 1 2 3 buttons at the top left (rows are grouped by "
+                     "Level), or set Settings > OutlineShowLevel and filter Show = Yes (also on Tasks)."),
+        ("6b. Roadmap", "One landscape page for sponsors: phases and milestones with their dates, drawn by month (blue "
+                        "= forecast, green = done, amber = late vs plan, outline = planned, purple = milestone, red = "
+                        "deadline missed). Settings > RoadmapStart scrolls the 18 months shown."),
         ("7. Sprints", "Sprint calendar from Settings. Each task is tagged with the sprint its forecast start falls in. Work "
                        "hours are prorated across sprints per resource, compared against capacity (Max Units x Hours/day x "
                        "working days); over-allocations turn red. Optional agile columns: Story Points and Planned "
@@ -143,7 +148,7 @@ def text(sizes):
                    "RAIDLog, DecisionLog, ChangeLog, TopRAID, ChangeControl, SnapshotNow, StatusHistory and the List* "
                    "dropdown tables. Inside a table, formulas read [@Column] (this row)."),
         ("Settings", "ProjectStart, StatusDate, StatusWorkday, WorkWeek, Holidays, HoursPerDay, DefaultUnits, "
-                     "RescheduleAfterStatus, GanttStart, GanttPeriod, Sprint1Start, SprintLength, SprintCount, SprintPrefix, "
+                     "RescheduleAfterStatus, GanttStart, GanttPeriod, OutlineShowLevel, RoadmapStart, Sprint1Start, SprintLength, SprintCount, SprintPrefix, "
                      "SprintLastEnd, CriticalSlackDays, ProjectFinish, PlannedFinish, FinishVarianceDays, LookaheadDays, "
                      "RAGAmberSlipDays, RAGRedSlipDays, RAGAmberIndex, RAGRedIndex, ResourceWeekStart, CurrentSprint, TotalPoints, "
                      "RAIDHighScore, RAIDMediumScore, NextFreeUID. Report values: ProjectRAG, "

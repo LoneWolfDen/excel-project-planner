@@ -45,7 +45,7 @@ def build_gantt(wb, n_rows, n_days):
         Col("Forecast Start", width=10, fmt=SHORT_DATE, formula=show("tsk_FcStart")),
         Col("Forecast Finish", width=10, fmt=SHORT_DATE, formula=show("tsk_FcFinish")),
         Col("%", width=6, fmt="0%", center=True, formula=show("tsk_Progress")),
-        Col("Resource", width=13, formula=f'IF({blank},"",{task("tsk_Resource")}&"")'),
+        Col("Resource", width=13, formula=f'IF({blank},"",{task("tsk_ResourceNames")}&"")'),
         Col("Status", width=11, center=True, formula=show("tsk_Status")),
         # helpers read by the timeline's conditional formatting
         Col("_Row", "help", 5, formula=f"ROW()-ROW({g.head('ID')})"),

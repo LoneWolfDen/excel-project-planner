@@ -26,7 +26,7 @@ The biggest gaps against MS Project are:
 2. ~~**No critical path or slack.**~~ *Done in v1.2.*
 3. ~~**Links break when rows are inserted.**~~ *Done in v1.1 (UID).* Predecessors refer to the row-sequence ID; MS Project re-points
    links automatically.
-4. **One resource per task.** *(v1.5: four predecessors per task, all constraint types.)*
+4. ~~**One resource per task.**~~ *Done in v1.5: Assignments sheet; also four predecessors per task, all constraint types.*
 5. ~~**Import is via the Excel Import Wizard only.**~~ *Done in v1.4:* Microsoft Project XML export (browser page and CLI).
 6. **Never opened in real Excel or MS Project.** Everything was verified in LibreOffice only.
 
@@ -40,7 +40,7 @@ The biggest gaps against MS Project are:
 | Notes | Done | Exported to MS Project's Notes field. |
 | Days with formulas updating all future dependencies | Done | Forecast dates ripple through FS/SS/FF/SF links, lags and status-date rescheduling; covered by tests. |
 | Gantt showing planned and actual | Done | Planned line plus done / remaining / late bars, milestones, status-date line, non-working days. |
-| Resource planning | Partial | Resource sheet, rates, hours and cost, per-sprint load. One resource per task; no resource calendars. |
+| Resource planning | Partial | Resource sheet, rates, hours and cost, per-sprint load. Several people per task (Assignments sheet); no resource calendars. |
 | Sprint planning | Partial | Generated sprint calendar, capacity vs load, per-person utilisation. No story points, burndown or manual sprint assignment. |
 | Everything configurable | Mostly | Calendar, hours, scale, sprints, rescheduling are settings. Colours, row counts and Gantt length are fixed in the build. |
 | Named references instead of cell references | Mostly | All cross-sheet lookups and settings use names. Same-row references (e.g. `$F6`) remain; Excel Tables would make these `[@Duration]`. |
@@ -98,7 +98,7 @@ Legend: ✅ equivalent · 🟡 partial / simplified · ❌ missing · ⛔ not pr
 | Work / Material / Cost resource types | 🟡 | Type stored; Material and Cost resources are treated like Work. |
 | Overtime rate, cost per use, cost rate tables, accrual | ❌ | |
 | Fixed cost per task | ❌ | |
-| Multiple resources per task (assignments) | ❌ | One resource with units. |
+| Multiple resources per task (assignments) | ✅ | v1.5: Tasks' Resource plus Assignments sheet rows (Task UID, Resource, Units); work = duration x units for each (fixed units, no effort-driven split). |
 | Resource availability over time, leave | 🟡 | v1.4: Leave sheet (full / part days) lowers capacity; it doesn't move tasks (no resource calendars). |
 | Resource Usage / Task Usage time-phased views | 🟡 | v1.3: resource x week hours and utilisation (working days only), plus per sprint. No task usage view. |
 | Over-allocation detection | ✅ | Per resource per week and per sprint, counted on the Resource Report. |

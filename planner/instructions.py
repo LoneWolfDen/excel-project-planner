@@ -13,7 +13,8 @@ def text(sizes):
                         "(Mon-Sun Yes/No), hours/day, Gantt scale and sprint calendar. Add holidays on 'Holidays'. "
                         "Update the status date whenever you report progress."),
         ("2. Resources", "List people/roles with Max Units and hourly rate. They appear in the Resource dropdown on Tasks and "
-                         "in sprint capacity."),
+                         "in sprint capacity. More than one person on a task: put the first on Tasks (Resource, Units) "
+                         "and add a row on the Assignments sheet (Task UID, Resource, Units) for each of the others."),
         ("3. Tasks", "One row per task. Enter Level (1 = phase/summary, 2 = task, 3 = sub-task...), Task Name, Duration in "
                      "working days (0 = milestone), and up to four predecessors by UID with link type (FS, SS, FF, SF) and lag in "
                      "days (negative = lead). A row becomes a SUMMARY automatically when the rows beneath it have a higher "
@@ -99,12 +100,13 @@ def text(sizes):
         ("Rescheduling", "Settings > RescheduleAfterStatus = Yes moves incomplete work to after the status date (like MS "
                          "Project 'Update Project'), so late tasks push successors."),
         ("Capacity", f"Tables grow when you add rows: Tasks starts with {sizes.tasks} rows, Resources {sizes.resources}, "
+                     f"Assignments {sizes.assignments}, "
                      f"Sprints {sizes.sprints}, Holidays 100. The Gantt and MSP_Tasks sheets show the first {sizes.tasks} "
                      f"tasks (the Gantt says so when there are more); the Gantt timeline has {sizes.gantt_columns} columns; "
                      f"the per-resource grids on Sprints and Resource Report show the first {sizes.grid_resources} "
                      f"resources and the Resource Report {sizes.weeks} weeks. To change these sizes, rebuild with "
-                     "scripts/build_planner.py --tasks / --resources / --grid-resources / --sprints / --gantt-columns / "
-                     "--weeks (see README)."),
+                     "scripts/build_planner.py --tasks / --resources / --assignments / --grid-resources / --sprints / "
+                     "--gantt-columns / --weeks (see README)."),
         ("Speed", "An edit recalculates in well under a second for typical plans (about 0.05 s for 200 tasks). Each change "
                   "to the build is timed in CI; see docs/ARCHITECTURE.md in the repository. Keep the status date typed "
                   "(not =TODAY()), which would recalculate everything after every edit."),
@@ -135,7 +137,7 @@ def text(sizes):
         ("From MS Project to Excel", "MS Project > File > Save As > Excel Workbook, then paste Name / Outline Level / Duration "
                                      "/ Predecessors etc. into the Tasks input columns (split '3FS+2d' into UID, Type, Lag)."),
         ("NAMES AND TABLES (Formulas > Name Manager)", None),
-        ("Tables", "Tasks, ResourceTable, SprintTable, HolidayTable, GanttView, MSPTasks, MSPResources, KPIs, StatusSummary, "
+        ("Tables", "Tasks, ResourceTable, AssignmentTable, SprintTable, HolidayTable, GanttView, MSPTasks, MSPResources, KPIs, StatusSummary, "
                    "NextMilestones, OverallStatus, StatusRAG, EarnedValue, StatusNotes, PhaseSummary, MilestoneReport, "
                    "LateTasks, StartingSoon, DueSoon, CriticalTasks, ResourceSummary, AgileKPIs, SprintBacklog, SprintBurndown, "
                    "RAIDLog, DecisionLog, ChangeLog, TopRAID, ChangeControl, SnapshotNow, StatusHistory and the List* "

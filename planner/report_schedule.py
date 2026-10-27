@@ -15,7 +15,7 @@ FIRST_COL = 2            # column B: every list's hidden _Task column, so hiding
 VAR = "+0;-0;0"
 MONEY = "#,##0"
 WBS = Show("WBS", "tsk_WBS", width=8)
-RESOURCE = Show("Resource", "tsk_Resource", width=16)
+RESOURCE = Show("Resource", "tsk_ResourceNames", width=16)
 CRITICAL = Show("Critical", "tsk_Critical", width=9)
 STATUS = Show("Status", "tsk_Status", width=12)
 

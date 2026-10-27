@@ -66,7 +66,7 @@ def build_agile_report(wb, sprints_ws, sprint_letters, n_chart_sprints=12):
     backlog_rows = 20
     ranked_table(ws, "SprintBacklog", top, 2, "tsk_CurrentSprintKey", backlog_rows, [
         Show("Task", "tsk_Name", width=44), Show("Story Points", "tsk_StoryPoints", "num", fmt="0.#;;-"),
-        Show("Resource", "tsk_Resource", width=30), Show("Forecast Finish", "tsk_FcFinish", "date", fmt=DATE),
+        Show("Resource", "tsk_ResourceNames", width=30), Show("Forecast Finish", "tsk_FcFinish", "date", fmt=DATE),
         Show("Progress", "tsk_Progress", "num", fmt="0%"), Show("Status", "tsk_Status"),
     ], label='"Current sprint backlog ("&agl_Current&")"')
 

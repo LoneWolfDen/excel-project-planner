@@ -51,6 +51,16 @@ STORY_POINTS = {2: 3, 3: 2, 6: 8, 7: 5, 8: 5, 12: 5, 13: 8, 14: 5, 16: 5, 17: 8,
 
 # Other inputs (by task number): constraint types and a third predecessor.
 EXTRA = {22: {"CType": "Start No Earlier Than"}, 24: {"P3": 21, "T3": "FS"}}
+# More people on a task (Assignments sheet): (task number, resource, units). Task number = UID in the sample.
+ASSIGNMENTS = [(7, "Jordan Lee", 0.5), (17, "Casey Kim", 0.5), (21, "Sam Rivera", 0.5), (22, "Taylor Morgan", None)]
+
+
+def assignments(blank=False, stress=0):
+    """Assignment rows for the sample; stress=N repeats them for each copy (UIDs follow the copies)."""
+    if blank:
+        return []
+    n = len(TASKS)
+    return [(uid + copy * n, res, units) for copy in range(max(1, stress)) for uid, res, units in ASSIGNMENTS]
 
 
 def _row(i, t):

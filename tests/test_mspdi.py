@@ -127,7 +127,7 @@ class ExportTest(unittest.TestCase):
         for a in self.root.iter(NS + "Assignment"):
             assignments.setdefault(int(text(a, "TaskUID")), []).append(
                 (uid_of[text(a, "ResourceUID")], float(text(a, "Units")), text(a, "Work")))
-        expected = {u: r for u, r in self.sheet.items() if r["Resource"] and not r["_IsSummary"]}
+        expected = {u: r for u, r in self.sheet.items() if r["_Resource1"] and not r["_IsSummary"]}
         self.assertEqual(sorted(assignments), sorted(expected))
         self.assertEqual(assignments[18], [("Casey Kim", 0.5, "PT12H0M0S")])     # 3 days at 50%
         self.assertEqual(assignments[2], [("Priya Sharma", 1.0, "PT24H0M0S")])
@@ -208,7 +208,7 @@ class ExportEditsTest(unittest.TestCase):
             for (r, i), v in snapshot.items():
                 wb["Tasks"].cell(r, col[BASELINE[i]]).value = v
             set_input(wb, 21, "Dur", 10)
-            set_input(wb, 23, "P2", 30)            # a link to a task below: ignored, so not exported
+            set_input(wb, 23, "P1", "21SS+2d, 30")   # a link to a task below: ignored, so not exported
         tasks = self.export(recalc(self.path, self.dir, edit))
         base = tasks[21].find(NS + "Baseline")
         self.assertEqual((text(base, "Number"), day(text(base, "Start")), day(text(base, "Finish"))),
@@ -323,16 +323,14 @@ class ImportTest(unittest.TestCase):
                          (dt.date(2027, 3, 1), dt.date(2027, 3, 2), 2, 15, 800))
         self.assertEqual((survey["Res"], survey["Units"]), ("Ben Okafor", 0.5))
         self.assertEqual((rows[12]["Res"], rows[12]["Units"]), ("Ana Silva", None))     # the one with the most work
-        self.assertEqual(project.assignments, [(12, "Ben Okafor", 0.5)])                # the other: Assignments sheet
-        self.assertEqual((rows[12]["P1"], rows[12]["T1"], rows[12]["L1"]), (11, "FS", 1))   # 1 elapsed day
-        self.assertIsNone(rows[12].get("L2"))                                              # % lag dropped
-        self.assertEqual([(rows[13][f"P{k}"], rows[13][f"T{k}"]) for k in (1, 2, 3)], [(11, "FS"), (12, "FF"), (40, "FS")])
-        self.assertEqual((rows[13]["L1"], rows[13]["DL"]), (2, dt.date(2027, 3, 19)))
+        self.assertEqual(project.assignments, [(12, "Ben Okafor", 0.5)])     # the other: into its Resources cell
+        self.assertEqual(rows[12]["PredIn"], "11FS+1d, 11SS")    # 1 elapsed day; the % lag dropped
+        self.assertEqual((rows[13]["PredIn"], rows[13]["DL"]), ("11FS+2d, 12FF, 40", dt.date(2027, 3, 19)))
         # every constraint type is kept, with its date (none for As Late As Possible)
         self.assertEqual((rows[12]["CType"], rows[12]["Cons"]), ("As Late As Possible", None))
         self.assertEqual((rows[13]["CType"], rows[13]["Cons"]), ("Must Start On", dt.date(2027, 3, 10)))
         self.assertEqual((rows[20]["CType"], rows[20]["Cons"]), ("Finish No Later Than", dt.date(2027, 4, 2)))
-        self.assertEqual([rows[20][f"P{k}"] for k in (1, 2, 3, 4)], [13, 11, 12, 30])      # 4 links; the 5th dropped
+        self.assertEqual(rows[20]["PredIn"], "13, 11, 12, 30")                             # 4 links; the 5th dropped
         self.assertEqual((rows[20]["Dur"], rows[30]["Mode"], rows[30]["Cons"]), (0, "Manual", dt.date(2027, 3, 8)))
         self.assertNotIn("Dur", rows[10])                                                  # summaries roll up
         joined = "\n".join(warnings)
@@ -375,10 +373,10 @@ class ImportRecalcTest(unittest.TestCase):
             original = openpyxl.load_workbook(SAMPLE, data_only=True)
             want = [r for r in table_rows(original, "Tasks", "Tasks") if r["Task Name"]]
             got = [r for r in table_rows(wb, "Tasks", "Tasks") if r["Task Name"]]
-            keys = ["UID", "Level", "Task Name", "Mode", "Duration", *[f"Pred{k} {x}" for k in tasks.LINK_NUMBERS
-                                                                        for x in ("UID", "Type", "Lag")],
+            keys = ["UID", "Level", "Task Name", "Mode", "Duration", "Predecessors",
+                    *[f"_Pred{k}{x}" for k in tasks.LINK_NUMBERS for x in ("UID", "Type", "Lag")],
                     "Constraint", "Constraint Date", "Deadline", "Actual Start", "Actual Finish",
-                    "% Complete", "Resource", "Units", "Resource Names", "Actual Cost", "Story Points", "Notes", "Forecast Start",
+                    "% Complete", "Resources", "Resource Names", "Actual Cost", "Story Points", "Notes", "Forecast Start",
                     "Forecast Finish", "Late Finish", "Total Slack", "Work", "Cost", "Status", "Critical"]
             blank = (None, "", 0)
             diffs = [(w["UID"], k, w[k], g[k]) for w, g in zip(want, got) for k in keys
@@ -393,9 +391,6 @@ class ImportRecalcTest(unittest.TestCase):
             people = lambda w: [(r["Resource Name"], r["Max Units"], r["Std Rate"], r["Type"])
                                 for r in table_rows(w, "Resources", "ResourceTable") if r["Resource Name"]]
             self.assertEqual(people(wb), people(original))
-            extra = lambda w: [(r["Task UID"], r["Resource"], r["Units"], r["Work"])
-                               for r in table_rows(w, "Assignments", "AssignmentTable") if r["Task UID"]]
-            self.assertEqual(extra(wb), extra(original))
 
     def test_ms_project_file_builds_a_working_workbook(self):
         with tempfile.TemporaryDirectory() as tmp:

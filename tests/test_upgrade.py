@@ -39,7 +39,8 @@ class ReadTest(unittest.TestCase):
         self.assertEqual(len(project.tasks), 30)
         uat = project.tasks[21]
         self.assertEqual((uat["Name"], uat["Cons"]), ("User acceptance testing", dt.datetime(2026, 12, 7)))
-        self.assertEqual((project.tasks[8]["P1"], project.tasks[8]["P2"]), (7, 8))
+        self.assertEqual(project.tasks[8]["PredIn"], "7, 8")                    # Pred1 / Pred2 UID -> one cell
+        self.assertEqual((project.tasks[6]["PredIn"], project.tasks[17]["PredIn"]), ("6SS+3d", "17FF+1d"))
         self.assertEqual(project.settings["ProjectName"], "Customer Portal Implementation")
         self.assertNotIn("ProjectFinish", project.settings)             # calculated settings stay the template's
         self.assertEqual(project.resources[0][:2], ("Priya Sharma", "PS"))
@@ -121,8 +122,9 @@ class UpgradeRecalcTest(unittest.TestCase):
 
     def test_from_v1_6(self):
         new = self.check("planner_v1.6.xlsx")
-        extra = [(r["Task UID"], r["Resource"]) for r in table_rows(new, "Assignments", "AssignmentTable") if r["Task UID"]]
-        self.assertEqual(extra, [(7, "Jordan Lee"), (17, "Casey Kim"), (21, "Sam Rivera"), (22, "Taylor Morgan")])
+        people = {r["UID"]: r["Resources"] for r in table_rows(new, "Tasks", "Tasks") if r["UID"] in (7, 17, 21, 22)}
+        self.assertEqual(people, {7: "Alex Chen, Jordan Lee[50%]", 17: "Sam Rivera, Casey Kim[50%]",   # Assignments rows
+                                  21: "Taylor Morgan, Sam Rivera[50%]", 22: "Morgan Patel, Taylor Morgan"})
         self.assertEqual(new.sheetnames.count("MSP_Tasks"), 0)
 
 

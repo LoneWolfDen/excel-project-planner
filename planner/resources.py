@@ -2,6 +2,7 @@
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from .core import Col, Tab, add_table, col_range, name, title
+from .tasks import people
 
 RESOURCES = [("Priya Sharma", "PS", "Project Manager", 0.5, 95, "priya@example.com"),
              ("Morgan Patel", "MP", "Business Analyst", 1, 70, "morgan@example.com"),
@@ -15,9 +16,16 @@ NAMES = {"Resource Name": "res_Name", "Initials": "res_Initials", "Group": "res_
          "Max Units": "res_MaxUnits", "Std Rate": "res_Rate", "Email": "res_Email"}
 
 
-def by_resource(task_col, assignment_col, resource):
-    """A per-resource total: the tasks whose Resource is this person plus their rows on the Assignments sheet."""
-    return f"SUMIFS({task_col},tsk_Resource,{resource})+SUMIFS({assignment_col},asg_Resource,{resource})"
+def by_resource(field, resource):
+    """A per-resource total of one per-person value (tasks.PERSON_FIELDS): one SUMIFS per person on a task."""
+    parts = [f"SUMIFS({value},{who},{resource})" for value, who in zip(people(field), people("Name"))]
+    return "+".join([parts[0]] + [f"IF(MaxPeople>={k},{p},0)" for k, p in enumerate(parts[1:], start=2)])
+
+
+def count_by_resource(resource, criteria=""):
+    """Tasks this resource is on (any of a task's people), with extra COUNTIFS criteria such as ',tsk_IsLeaf,1'."""
+    parts = [f"COUNTIFS({who},{resource}{criteria})" for who in people("Name")]
+    return "+".join([parts[0]] + [f"IF(MaxPeople>={k},{p},0)" for k, p in enumerate(parts[1:], start=2)])
 
 
 def build_resources(wb, blank, n_rows=50, resources=None):
@@ -37,15 +45,14 @@ def build_resources(wb, blank, n_rows=50, resources=None):
         Col("Max Units", "in", 10, "0%", values=[d[3] for d in data], note="Availability: 100% = full time."),
         Col("Std Rate", "in", 12, "#,##0.00", values=[d[4] for d in data], note="Standard rate per hour."),
         Col("Email", "in", 26, values=[d[5] for d in data]),
-        Col("Tasks", "calc", 9, "0", f'IF({nm}="","",COUNTIFS(tsk_Resource,{nm},tsk_IsLeaf,1)'
-                                     f'+COUNTIFS(asg_Resource,{nm},asg_Valid,1))',
-            note="Detail tasks assigned to this resource (Tasks > Resource, and the Assignments sheet)."),
-        Col("Work", "calc", 13, "#,##0.0", f'IF({nm}="","",{by_resource("tsk_LeafWork", "asg_Work", nm)})',
+        Col("Tasks", "calc", 9, "0", f'IF({nm}="","",{count_by_resource(nm, ",tsk_IsLeaf,1")})',
+            note="Detail tasks this resource is on (Tasks > Resources)."),
+        Col("Work", "calc", 13, "#,##0.0", f'IF({nm}="","",{by_resource("Work", nm)})',
             note="Assigned work (hours)."),
-        Col("Cost", "calc", 13, "#,##0.00", f'IF({nm}="","",{by_resource("tsk_LeafCost", "asg_Cost", nm)})',
+        Col("Cost", "calc", 13, "#,##0.00", f'IF({nm}="","",{by_resource("Cost", nm)})',
             note="Assigned cost."),
         Col("Actual Cost", "calc", 13, "#,##0.00",
-            f'IF({nm}="","",{by_resource("tsk_ResourceAC", "asg_ActualCost", nm)})',
+            f'IF({nm}="","",{by_resource("AC", nm)})',
             note="Cost to date: Actual Cost entered on Tasks (shared by cost between the task's people), or Cost x "
                  "Progress where blank."),
         Col("Notes", "in", 30),

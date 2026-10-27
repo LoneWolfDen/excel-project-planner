@@ -18,7 +18,7 @@ How the workbook is put together, and the rules every change follows. These rule
    Gantt header dates) also use one formula per grid, located by `ROW()`/`COLUMN()` offsets.
 3. **Inputs and formulas never mix.** Blue text = input, grey fill = formula, light-grey header = hidden helper.
    Summaries roll up rather than reading inputs.
-4. **Readable formulas.** Columns have short, plain names (`Forecast Finish`, `Pred1 UID`); helper columns start
+4. **Readable formulas.** Columns have short, plain names (`Forecast Finish`, `Predecessors`); helper columns start
    with `_` (`_CalcStart`, `_Pred1Pos`). Each helper does one job so the visible formulas stay short. Header comments
    explain units and meaning.
 5. **Cheap to recalculate.** Volatile functions (`OFFSET`, `INDIRECT`, `TODAY`, `NOW`, `RAND`, `CELL`, `INFO`) make
@@ -147,18 +147,24 @@ The plan moves by the same number of days as the forecast, so an ALAP task adds 
 - Bar labels and colours from a Settings table are not built: conditional formatting can't show per-row text or take
   a colour from a cell, so both would need a formula in every timeline cell (30,000 on the sample Gantt).
 
-## Assignments (several people on a task)
+## Text inputs: Predecessors and Resources
 
-A task's first person stays on Tasks (Resource, Units), so the common case is still one row; the Assignments sheet
-(AssignmentTable) holds one row per extra person. Each row looks its task up once (`_TaskPos`, a MATCH on UID) and
-works out its own work, cost and time-phasing (`_StartWD`, `_FinishWD`, `_WorkPerWD`, `_WorkBeforeStart`: the same
-columns Tasks has), from Tasks columns that never read the Assignments sheet back, so it can't be circular or move a
-date. Per-resource figures are therefore two SUMIFS, one over Tasks (`tsk_Resource`) and one over this table
-(`asg_Resource`): `resources.by_resource` and `sprints.work_upto` write both. Tasks adds the rows' work and cost to the
-task (`_LeafTotalWork`, `_LeafTotalCost`) while `_LeafWork` / `_LeafCost` stay the first person's share. Resource Names
-lists the extra people by `_Key` = Task UID x 1000 + n (the n-th valid row of the task), one MATCH per name, because
-Excel 2019 has no TEXTJOIN-free way to join a filtered list; past four names it adds "+n more". A task's Actual Cost is
-shared between its people by cost.
+A task's links and people are each one cell, as in MS Project: Predecessors `12, 14SS+2d` (by UID: Excel can't
+rewrite typed text when rows move, so typed links can't use the row ID) and Resources `Alex Chen, JL[50%]` (names or
+initials, optional units). Formulas split each cell into hidden per-link / per-person columns
+(`_Pred1Text`, `_Pred1UID`, `_Pred1Type`, `_Pred1Lag` ...; `_Res2Text`, `_Res2`, `_Res2Units`, `_Res2Work` ...), with
+`TRIM(MID(SUBSTITUTE(text, ",", REPT(" ", 99)), (k-1) x 99 + 1, 99))` for the k-th item: no array formulas, no
+TEXTSPLIT. Each slot looks only once the one before it found something, so empty cells cost almost nothing. These
+read inputs only, so they are not volatile; the scheduling and reports read the parsed columns exactly as they read
+the old input columns.
+
+The first person uses `_Resource1` / `_Units1` and the `_Leaf...` columns; people 2-4 have their own work, cost,
+time-phasing, work done and actual cost columns (`tasks.PERSON_FIELDS`). Per-resource figures sum one SUMIFS per person
+slot (`resources.by_resource`, `sprints.work_upto`), and each slot beyond the first is wrapped in
+`IF(MaxPeople >= k, ...)`: MaxPeople (Settings) is the most people on any task, so a plan with one person per task pays
+for one slot only. Week and sprint boundaries are turned into working-day numbers once (`rw_CumWD`, SprintTable
+`_FirstWD` / `_LastWD`) instead of inside every grid cell's SUMIFS. A task's Actual Cost is shared between its
+people by cost.
 
 ## Reports
 

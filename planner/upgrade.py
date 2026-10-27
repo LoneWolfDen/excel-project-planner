@@ -80,7 +80,7 @@ def read_planner(data):
     input tables, {table: (headers, rows)}, for copy_inputs."""
     from .build import ProjectData, Sizes
     from .settings import settings_rows, week_preset
-    from .tasks import LAYOUT, N
+    from .tasks import LAYOUT, N, take_links
     try:
         wb = openpyxl.load_workbook(io.BytesIO(data))
     except Exception as e:                                   # not a zip / not a workbook
@@ -101,10 +101,14 @@ def read_planner(data):
         settings["WorkingWeek"] = week_preset(settings)
 
     key_of = {N[k]: k for k, kind, *_ in LAYOUT if kind == "in"}
+    # before v1.7 each link was three inputs (Pred1 UID / Type / Lag ...): they become the Predecessors text
+    key_of.update({f"Pred{k} {label}": f"{x}{k}" for k in range(1, 10) for x, label in (("P", "UID"), ("T", "Type"),
+                                                                                       ("L", "Lag"))})
+    key_of.update({"Resource": "Res", "Units": "Units"})      # before v1.7: one person + the Assignments sheet
     tasks = []
     for rec in _records(tables, "Tasks", RENAMED["Tasks"]):
         row = {key_of[h]: v for h, v in rec.items() if h in key_of and v not in (None, "")}
-        tasks.append(row)
+        tasks.append(take_links(row))
     while tasks and not tasks[-1].get("Name"):
         tasks.pop()
 
@@ -124,8 +128,7 @@ def read_planner(data):
     copies = {name: (head, rows) for name, (_, head, rows) in tables.items() if name not in BUILT}
     default = Sizes()
     sizes = Sizes(tasks=max(default.tasks, len(tasks)), resources=max(default.resources, len(resources)),
-                  sprints=max(default.sprints, len(tables.get("SprintTable", (None, None, []))[2])),
-                  assignments=max(default.assignments, len(assignments)))
+                  sprints=max(default.sprints, len(tables.get("SprintTable", (None, None, []))[2])))
     project = ProjectData(settings=settings, tasks=tasks, resources=resources, holidays=holidays, leave=leave,
                           leave_months=months, assignments=assignments)
     return project, copies, sizes, warnings, version

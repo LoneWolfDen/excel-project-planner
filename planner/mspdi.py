@@ -206,7 +206,7 @@ def read_plan(data):
         "holidays": sorted({d for d in (_date(h.get("Date")) for h in wb.table("HolidayTable")) if d}),
         "tasks": tasks,
         "resources": [r for r in wb.table("ResourceTable") if _text(r.get("Resource Name")).strip()],
-        # more people on tasks (workbooks before v1.5 have no Assignments sheet); _Valid = 1 for the rows Tasks uses
+        # v1.5 / v1.6: more people on the Assignments sheet; _Valid = 1 for the rows Tasks used
         "assignments": [a for a in (wb.table("AssignmentTable") if "AssignmentTable" in wb.tables else [])
                         if _num(a.get("_Valid")) == 1],
     }
@@ -363,12 +363,12 @@ def to_mspdi(plan):
             _sub(e, "Notes", t["Notes"])
         if not summary:
             for k in _links(t):
-                pred = _num(t.get(f"Pred{k} UID"))
+                pred = _num(_link(t, k, "UID"))
                 if pred and not _text(t.get(f"_Pred{k}Problem")):
                     link = _sub(e, "PredecessorLink")
                     _sub(link, "PredecessorUID", int(pred))
-                    _sub(link, "Type", LINK_TYPES.get(_text(t.get(f"Pred{k} Type")) or "FS", 1))
-                    _sub(link, "LinkLag", round(_num(t.get(f"Pred{k} Lag")) * hours * 600))  # tenths of a minute
+                    _sub(link, "Type", LINK_TYPES.get(_text(_link(t, k, "Type")) or "FS", 1))
+                    _sub(link, "LinkLag", round(_num(_link(t, k, "Lag")) * hours * 600))  # tenths of a minute
                     _sub(link, "LagFormat", 7)
         _sub(e, "Active", 1)
         _sub(e, "Manual", flag(manual))
@@ -388,14 +388,13 @@ def to_mspdi(plan):
             _sub(b, "DurationFormat", 7)
             _sub(b, "Work", _hours_text(_num(t.get("Baseline Work"))))
             _sub(b, "Cost", _num(t.get("Baseline Cost")))
-        name = _text(t.get("Resource"))
-        if name and not summary:
+        for name, units, hours_of in _people(t, work):
+            if summary or not name:
+                continue
             if name not in resources:
                 raise ExportError(f"Task {t['UID']} ({t['Task Name']}) uses resource '{name}', which isn't on the "
                                   "Resources sheet.")
-            units = _num(t.get("Units"), None)
-            assignments.append((int(t["UID"]), resources[name], plan["units"] if units is None else units,
-                                _num(t.get("_LeafWork"), work)))
+            assignments.append((int(t["UID"]), resources[name], plan["units"] if units is None else units, hours_of))
     for a in plan["assignments"]:                # checked by the sheet: a detail task, a resource on Resources
         units = _num(a.get("Units"), None)
         assignments.append((int(a["Task UID"]), resources[a["Resource"]], plan["units"] if units is None else units,
@@ -439,16 +438,35 @@ def _put_in_order(element):
         _put_in_order(child)
 
 
+def _link(t, k, field):
+    """Link k's UID / Type / Lag: hidden _Pred1UID ... columns since v1.7 (parsed from the Predecessors text),
+    Pred1 UID ... inputs before."""
+    return t.get(f"_Pred{k}{field}", t.get(f"Pred{k} {field}"))
+
+
+def _people(t, work):
+    """(resource, units or None, work hours) for everyone on a task: since v1.7 the parsed Resources cell
+    (_Resource1, _Res2 ...); before, the Resource / Units inputs (more people were on the Assignments sheet)."""
+    if "_Resource1" in t:
+        out = [(_text(t.get("_Resource1")), _num(t.get("_Units1"), None), _num(t.get("_LeafWork"), work))]
+        k = 2
+        while f"_Res{k}" in t:
+            out.append((_text(t.get(f"_Res{k}")), _num(t.get(f"_Res{k}Units"), None), _num(t.get(f"_Res{k}Work"))))
+            k += 1
+        return out
+    return [(_text(t.get("Resource")), _num(t.get("Units"), None), _num(t.get("_LeafWork"), work))]
+
+
 def _links(t):
     """The link numbers the workbook has (Pred1 ... PredN): read from its headers, so any LINKS setting works."""
     k = 1
-    while f"Pred{k} UID" in t:
+    while f"_Pred{k}UID" in t or f"Pred{k} UID" in t:
         yield k
         k += 1
 
 
 def _has_links(t):
-    return any(_num(t.get(f"Pred{k} UID")) and not _text(t.get(f"_Pred{k}Problem")) for k in _links(t))
+    return any(_num(_link(t, k, "UID")) and not _text(t.get(f"_Pred{k}Problem")) for k in _links(t))
 
 
 def convert(data):

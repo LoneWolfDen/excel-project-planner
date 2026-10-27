@@ -18,7 +18,6 @@ from pathlib import Path
 import openpyxl
 
 from . import sample
-from .assignments import build_assignments
 from .dashboard import build_dashboard
 from .gantt import build_gantt
 from .instructions import build_instructions
@@ -37,15 +36,15 @@ from .roadmap import build_roadmap
 from .resources import build_resources
 from .settings import build_holidays, build_lists, build_settings
 from .sprints import build_sprints
-from .tasks import build_tasks
+from .tasks import build_tasks, take_people
 
 ORDER = ["Start", "Dashboard", "Roadmap", "Status Report", "Schedule Report", "Resource Report", "Agile Report", "RAID",
-         "Decisions", "Changes", "History", "Settings", "Tasks", "Gantt", "Resources", "Assignments", "Sprints", "Holidays", "Leave", "MSP_Tasks",
+         "Decisions", "Changes", "History", "Settings", "Tasks", "Gantt", "Resources", "Sprints", "Holidays", "Leave", "MSP_Tasks",
          "MSP_Resources", "Lists"]
 TAB_COLOURS = {"Start": "1F4E78", "Dashboard": "548235", "Roadmap": "548235", "Status Report": "548235",
                "Schedule Report": "548235", "Resource Report": "548235", "Agile Report": "548235", "RAID": "C55A11",
                "Decisions": "C55A11", "Changes": "C55A11", "History": "C55A11", "Settings": "BF8F00", "Tasks": "2F75B5",
-               "Gantt": "2F75B5", "Resources": "7030A0", "Assignments": "7030A0", "Sprints": "7030A0", "Holidays": "BF8F00", "Leave": "7030A0",
+               "Gantt": "2F75B5", "Resources": "7030A0", "Sprints": "7030A0", "Holidays": "BF8F00", "Leave": "7030A0",
                "MSP_Tasks": "595959", "MSP_Resources": "595959", "Lists": "A6A6A6"}
 @dataclass(frozen=True)
 class Sizes:
@@ -57,12 +56,10 @@ class Sizes:
     sprints: int = 26            # SprintTable rows (SprintCount can be at most this)
     gantt_columns: int = 150     # Gantt timeline columns (days or weeks, Settings > GanttPeriod)
     weeks: int = 26              # Resource Report weekly grids
-    assignments: int = 100       # AssignmentTable rows (extra people on tasks)
 
     def check(self):
         limits = {"tasks": (1, 20000), "resources": (1, 2000), "grid_resources": (1, 500), "sprints": (1, 520),
-                  "gantt_columns": (7, 1000), "weeks": (1, 260),
-                  "assignments": (1, 20000)}
+                  "gantt_columns": (7, 1000), "weeks": (1, 260)}
         for field, (low, high) in limits.items():
             value = getattr(self, field)
             if not low <= value <= high:
@@ -81,7 +78,7 @@ class ProjectData:
     holidays: list = field(default_factory=list)       # (date, description)
     leave: dict = field(default_factory=dict)          # {person: {"Nov-26": "16, 17(0.5)"}}
     leave_months: list = None                          # month headers for the Leave sheet
-    assignments: list = field(default_factory=list)    # (task UID, resource, units): people beyond Tasks > Resource
+    assignments: list = field(default_factory=list)    # (task UID, resource, units): people beyond the first
 
 
 VERSION = "1.7"          # PlannerVersion in every workbook: planner/upgrade.py reads it to know what to convert
@@ -106,9 +103,11 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
     build_holidays(wb, blank, holidays=data.holidays if data else None)
     build_leave(wb, blank, sizes.resources, data.leave_months if data else None, data.leave if data else None)
     build_resources(wb, blank, sizes.resources, data.resources if data else None)
+    more = {}                                          # people beyond the first: into each task's Resources text
+    for uid, resource, units in (data.assignments if data is not None else sample.assignments(blank, stress)):
+        more.setdefault(uid, []).append((resource, units))
+    rows = [take_people(dict(r), more.get(r.get("UID"), [])) for r in rows]
     build_tasks(wb, rows, n_tasks)
-    extra = data.assignments if data is not None else sample.assignments(blank, stress)
-    build_assignments(wb, max(sizes.assignments, len(extra)), extra)
     sprints_ws, sprint_letters = build_sprints(wb, blank, sizes.sprints, sizes.grid_resources)
     build_gantt(wb, n_tasks, sizes.gantt_columns, [r.get("Level") for r in rows])
     if import_wizard:
@@ -194,14 +193,12 @@ def main(argv=None):
     p.add_argument("--sprints", type=int, default=d.sprints, help="rows in the Sprints table")
     p.add_argument("--gantt-columns", type=int, default=d.gantt_columns, help="columns in the Gantt timeline")
     p.add_argument("--weeks", type=int, default=d.weeks, help="weeks in the Resource Report grids")
-    p.add_argument("--assignments", type=int, default=d.assignments,
-                   help="rows in the Assignments table (more people on a task)")
     p.add_argument("--stress", type=int, default=0, help="repeat the sample project N times (performance tests)")
     p.add_argument("--import-wizard-sheets", action="store_true",
                    help="also build MSP_Tasks / MSP_Resources for MS Project's Import Wizard (the XML converter "
                         "is the better route)")
     a = p.parse_args(argv)
-    sizes = Sizes(a.tasks, a.resources, a.grid_resources, a.sprints, a.gantt_columns, a.weeks, a.assignments)
+    sizes = Sizes(a.tasks, a.resources, a.grid_resources, a.sprints, a.gantt_columns, a.weeks)
     save(make_workbook(a.blank, stress=a.stress, sizes=sizes, import_wizard=a.import_wizard_sheets), a.out, a.recalc)
     print("saved", a.out)
 

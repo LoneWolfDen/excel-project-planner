@@ -22,7 +22,7 @@ from test_planner import SOFFICE, build, errors_in, recalc  # noqa: E402
 from test_mspdi import table_rows  # noqa: E402
 
 FIXTURES = ROOT / "tests" / "fixtures"
-SCHEDULE = ["Task Name", "Level", "Duration", "Forecast Start", "Forecast Finish", "Planned Start", "Late Finish",
+SCHEDULE = ["Task Name", "Level", "Duration", "Start", "Finish", "Planned Start", "Late Finish",
             "Total Slack", "Work", "Cost", "Status", "Critical", "Progress"]
 OLD_LOGS = {"RAIDLog": "RAID", "DecisionLog": "Decisions", "ChangeLog": "Changes"}      # sheets before v1.7
 
@@ -117,7 +117,9 @@ class UpgradeRecalcTest(unittest.TestCase):
         before = {r["UID"]: r for r in table_rows(old, "Tasks", "Tasks") if r["Task Name"]}
         after = {r["UID"]: r for r in table_rows(new, "Tasks", "Tasks") if r["Task Name"]}
         self.assertEqual(sorted(after), sorted(before))
-        diffs = [(u, k, before[u][k], after[u][k]) for u in before for k in SCHEDULE if before[u][k] != after[u][k]]
+        was = {"Start": "Forecast Start", "Finish": "Forecast Finish"}             # their names before v1.7
+        diffs = [(u, k, before[u][was.get(k, k)], after[u][k]) for u in before for k in SCHEDULE
+                 if before[u][was.get(k, k)] != after[u][k]]
         self.assertEqual(diffs, [])
         self.assertEqual(log(new, "History", "StatusHistory", "Status Date"),
                          log(old, "History", "StatusHistory", "Status Date"))

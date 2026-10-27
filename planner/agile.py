@@ -180,7 +180,7 @@ def _backlog(ws, top):
     ranked_table(ws, "SprintBacklog", top, 1, "tsk_CurrentSprintKey", BACKLOG_ROWS, [
         Show("UID", "tsk_UID", "num", width=WIDTHS["B"]),
         Show("Story Points", "tsk_StoryPoints", "num", width=WIDTHS["C"], fmt="0.#;;-"),
-        Show("Task", "tsk_Name", width=WIDTHS["D"]), Show("Forecast Finish", "tsk_FcFinish", "date", WIDTHS["E"], DATE),
+        Show("Task", "tsk_Name", width=WIDTHS["D"]), Show("Finish", "tsk_FcFinish", "date", WIDTHS["E"], DATE),
         Show("Progress", "tsk_Progress", "num", WIDTHS["F"], "0%"), Show("Status", "tsk_Status", width=WIDTHS["G"]),
         Show("Resources", "tsk_ResourceNames", width=WIDTHS["H"]),
     ], label='"CURRENT SPRINT BACKLOG ("&agl_Current&")"')

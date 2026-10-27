@@ -18,7 +18,7 @@ How the workbook is put together, and the rules every change follows. These rule
    Gantt header dates) also use one formula per grid, located by `ROW()`/`COLUMN()` offsets.
 3. **Inputs and formulas never mix.** Blue text = input, grey fill = formula, light-grey header = hidden helper.
    Summaries roll up rather than reading inputs.
-4. **Readable formulas.** Columns have short, plain names (`Forecast Finish`, `Predecessors`); helper columns start
+4. **Readable formulas.** Columns have short, plain names (`Finish`, `Predecessors`); helper columns start
    with `_` (`_CalcStart`, `_Pred1Pos`). Each helper does one job so the visible formulas stay short. Header comments
    explain units and meaning.
 5. **Cheap to recalculate.** Volatile functions (`OFFSET`, `INDIRECT`, `TODAY`, `NOW`, `RAND`, `CELL`, `INFO`) make
@@ -128,7 +128,7 @@ forecast still never starts unstarted work before the status date when Reschedul
 
 **As Late As Possible** needs the backward pass, which reads the early dates, so it can't move them without a
 circular reference. Instead the early dates stay as calculated (`_Leaf...`: links, slack and `ProjectFinish` read
-them) and the shown dates (`_Shown...`, rolled up into Planned / Forecast Start and Finish) move later by the task's
+them) and the shown dates (`_Shown...`, rolled up into Planned Start / Finish and Start / Finish) move later by the task's
 free slack. The task then finishes just in time for its successors (or the project finish) and moves nothing else.
 The plan moves by the same number of days as the forecast, so an ALAP task adds no finish variance.
 

@@ -11,7 +11,7 @@ from openpyxl.styles import Alignment, Border, Font, Side
 from openpyxl.utils import get_column_letter
 
 from .core import (HEADER_FILLS, NOTE_FONT, SHORT_DATE, Col, Tab, add_table, fill, font, name)
-from .tasks import group_outline
+from .tasks import group_columns, group_outline
 
 TABLE = "GanttView"
 HEADER_ROW = 5
@@ -50,20 +50,21 @@ def build_gantt(wb, n_rows, n_days, levels=()):
     task = lambda col: f"INDEX({col},{n})"
     show = lambda col: f'IF({blank},"",{task(col)})'
     pct = g.row("%")
-    fs, ff = g.row("Forecast Start"), g.row("Forecast Finish")
+    fs, ff = g.row("Start"), g.row("Finish")
+    # the panel's essentials, then the rest in a collapsed column group (+ above it), so more timeline fits
     cols = [
         Col("ID", width=5, formula=show("tsk_ID"), center=True),
-        Col("WBS", width=7, formula=show("tsk_WBS"), center=True),
         Col("Task", width=34, formula=f'IF({blank},"",REPT("    ",{task("tsk_Level")}-1)&{task("tsk_Name")})'),
+        Col("Start", width=10, fmt=SHORT_DATE, formula=show("tsk_FcStart")),
+        Col("Finish", width=10, fmt=SHORT_DATE, formula=show("tsk_FcFinish")),
+        Col("%", width=6, fmt="0%", center=True, formula=show("tsk_Progress")),
+        Col("Resources", width=13, formula=f'IF({blank},"",{task("tsk_ResourceNames")}&"")'),
+        Col("WBS", width=7, formula=show("tsk_WBS"), center=True),
         Col("Dur", width=5, center=True, formula=(
             f'IF({blank},"",IF({task("tsk_IsSummary")},NETWORKDAYS.INTL({task("tsk_FcStart")},{task("tsk_FcFinish")},{WD}),'
             f'N({task("tsk_Duration")})))')),
         Col("Planned Start", width=10, fmt=SHORT_DATE, formula=show("tsk_PlanStart")),
         Col("Planned Finish", width=10, fmt=SHORT_DATE, formula=show("tsk_PlanFinish")),
-        Col("Forecast Start", width=10, fmt=SHORT_DATE, formula=show("tsk_FcStart")),
-        Col("Forecast Finish", width=10, fmt=SHORT_DATE, formula=show("tsk_FcFinish")),
-        Col("%", width=6, fmt="0%", center=True, formula=show("tsk_Progress")),
-        Col("Resource", width=13, formula=f'IF({blank},"",{task("tsk_ResourceNames")}&"")'),
         Col("Status", width=11, center=True, formula=show("tsk_Status")),
         Col("Show", width=6, center=True, formula=f'IF({blank},"",{task("tsk_Show")}&"")',
             note="Yes down to Settings > OutlineShowLevel: filter on Yes to collapse the outline."),
@@ -90,6 +91,8 @@ def build_gantt(wb, n_rows, n_days, levels=()):
             ws[f"{L[c.name]}{r}"].font = font(size=9)
     ws.row_dimensions[HEADER_ROW].height = 30
     ws.column_dimensions.group(L["_Row"], L["_Critical"], hidden=True, outline_level=1)
+    ws.sheet_properties.outlinePr.summaryRight = False             # the + sits above Resources, left of the group
+    group_columns(ws, L["WBS"], L["Status"], 1)                    # Show stays visible between the two groups
 
     origin_col = len(cols) + 1                       # narrow spacer column; the timeline starts after it
     ws.column_dimensions[get_column_letter(origin_col)].width = 1
@@ -131,9 +134,9 @@ def _timeline_rules(ws, L, first, last, n_rows):
     thin = lambda colour: Side(style="thin", color=colour)
     rules = [
         FormulaRule(formula=[in_period(at("_Deadline"))], fill=fill(COLOURS["deadline"])),
-        FormulaRule(formula=[f"AND({at('_IsSummary')},{overlaps(at('Forecast Start'), at('Forecast Finish'))})"],
+        FormulaRule(formula=[f"AND({at('_IsSummary')},{overlaps(at('Start'), at('Finish'))})"],
                     fill=fill(COLOURS["summary"])),
-        FormulaRule(formula=[f"AND({at('_IsMilestone')},{in_period(at('Forecast Start'))})"], fill=fill(COLOURS["milestone"])),
+        FormulaRule(formula=[f"AND({at('_IsMilestone')},{in_period(at('Start'))})"], fill=fill(COLOURS["milestone"])),
         FormulaRule(formula=[overlaps(at("_DoneFrom"), at("_DoneTo"))], fill=fill(COLOURS["done"])),
         FormulaRule(formula=[f"AND({at('_Critical')},{overlaps(at('_RemFrom'), at('_RemTo'))})"], fill=fill(COLOURS["critical"])),
         FormulaRule(formula=[f"AND({at('_Late')},{overlaps(at('_RemFrom'), at('_RemTo'))})"], fill=fill(COLOURS["late"])),

@@ -86,8 +86,8 @@ class ExportTest(unittest.TestCase):
             self.assertEqual(int(text(t, "ID")), row["ID"], uid)
             self.assertEqual(text(t, "WBS"), str(row["WBS"]), uid)
             self.assertEqual(int(text(t, "OutlineLevel")), row["Level"], uid)
-            self.assertEqual(day(text(t, "Start")), row["Forecast Start"].date(), uid)
-            self.assertEqual(day(text(t, "Finish")), row["Forecast Finish"].date(), uid)
+            self.assertEqual(day(text(t, "Start")), row["Start"].date(), uid)
+            self.assertEqual(day(text(t, "Finish")), row["Finish"].date(), uid)
             self.assertEqual(text(t, "Summary"), "1" if row["_IsSummary"] else "0", uid)
             self.assertEqual(int(text(t, "PercentComplete")), round(row["Progress"] * 100), uid)
 
@@ -376,8 +376,8 @@ class ImportRecalcTest(unittest.TestCase):
             keys = ["UID", "Level", "Task Name", "Mode", "Duration", "Predecessors",
                     *[f"_Pred{k}{x}" for k in tasks.LINK_NUMBERS for x in ("UID", "Type", "Lag")],
                     "Constraint", "Constraint Date", "Deadline", "Actual Start", "Actual Finish",
-                    "% Complete", "Resources", "Resource Names", "Actual Cost", "Story Points", "Notes", "Forecast Start",
-                    "Forecast Finish", "Late Finish", "Total Slack", "Work", "Cost", "Status", "Critical"]
+                    "% Complete", "Resources", "Resource Names", "Actual Cost", "Story Points", "Notes", "Start",
+                    "Finish", "Late Finish", "Total Slack", "Work", "Cost", "Status", "Critical"]
             blank = (None, "", 0)
             diffs = [(w["UID"], k, w[k], g[k]) for w, g in zip(want, got) for k in keys
                      if w[k] != g[k] and not (w[k] in blank and g[k] in blank)]
@@ -400,10 +400,10 @@ class ImportRecalcTest(unittest.TestCase):
             wb = recalc(path, tmp, status_date=False)
             self.assertEqual(errors_in(wb), [])
             rows = {r["UID"]: r for r in table_rows(wb, "Tasks", "Tasks") if r["Task Name"]}
-            self.assertEqual(rows[11]["Forecast Finish"], dt.date(2027, 3, 3))       # actual finish
+            self.assertEqual(rows[11]["Finish"], dt.date(2027, 3, 3))       # actual finish
             self.assertEqual((rows[13]["Constraint"], rows[13]["Constraint Date"]), ("Must Start On", dt.date(2027, 3, 10)))
             # Must Start On pins book movers to 10-Mar (over its FF link); unstarted work then moves to the status date
-            self.assertEqual((rows[13]["Forecast Start"], rows[13]["Total Slack"]), (dt.date(2027, 3, 12), -2))
+            self.assertEqual((rows[13]["Start"], rows[13]["Total Slack"]), (dt.date(2027, 3, 12), -2))
             self.assertEqual(rows[13]["Link Check"], "Pred 3: UID 40 is below this task: move it above.")
             self.assertEqual((rows[20]["Constraint"], rows[20]["Late Finish"]), ("Finish No Later Than", dt.date(2027, 3, 15)))
             leave = {r["Resource Name"]: r["Mar-27"] for r in table_rows(wb, "Resources", "ResourceTable") if r["Mar-27"]}

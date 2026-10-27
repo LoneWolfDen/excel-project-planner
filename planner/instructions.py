@@ -52,14 +52,15 @@ def text(sizes, wizard=False):
         ("5. Track progress", "Pick each task's Stage (Not Started, Design, In Development, Test Ready, In Testing, "
                               "Complete; each stage's % is on Settings > Stages, editable) and enter Actual Start once "
                               "it starts and Actual Finish when it's done; Issues asks for the dates the Stage calls "
-                              "for. % Complete (DETAIL section) overrides the stage's % when typed. Forecast Start/Finish then use actuals and push "
+                              "for. % Complete (DETAIL section) overrides the stage's % when typed. Start / Finish (the current schedule) then use actuals and push "
                               "every dependent task. Start / Finish / Duration / Work / Cost Var and Status flag slippage. "
                               "Optionally enter Actual Cost (cost to date) on detail tasks; blank = Cost x Progress."),
         ("Critical path", "Late Start / Late Finish come from a backward pass from the forecast project finish (and any "
                           "deadline). Total Slack = how far a task can slip before it delays the project or a deadline; Free "
                           "Slack = before it delays a successor. Critical = slack <= Settings > CriticalSlackDays on an "
                           "unfinished task. A missed deadline gives negative slack to the task and the chain feeding it."),
-        ("6. Gantt", "Read-only view: dark outline = planned dates, green = done, blue = remaining on track, red = remaining "
+        ("6. Gantt", "Read-only view. The panel shows ID, Task, Start, Finish, % and Resources; click + above it for WBS, "
+                     "duration, planned dates and status. Timeline: dark outline = planned dates, green = done, blue = remaining on track, red = remaining "
                      "on the critical path, orange = remaining but late vs plan, dark grey = summary, purple = milestone, red cell = deadline, red border = status date. "
                      "Change GanttStart / GanttPeriod (1 = days, 7 = weeks, 30 = months, 91 = quarters) on Settings to "
                      "scroll or zoom. Collapse the outline with the 1 2 3 buttons at the top left (rows are grouped by "

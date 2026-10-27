@@ -50,7 +50,7 @@ Tick each one and note anything odd (a screenshot is ideal).
 
 **Baseline**
 - [ ] On Tasks, select the 5 "BL Source" columns for rows 6–35, Copy, tap the first "Baseline Start" cell, Paste Special → Values. Status > KEY FIGURES "Baseline" shows "Set on 30 tasks".
-- [ ] Change Task 21's Duration from 8 to 10: Planned Finish stays put, Forecast Finish moves 2 days, Finish Variance shows 2.
+- [ ] Change Task 21's Duration from 8 to 10: Planned Finish stays put, Finish moves 2 days, Finish Variance shows 2.
 
 **Inserting a task**
 - [ ] On Tasks, long-press row 19's number → Insert (row above). The new row fills in its grey formula cells by itself, and its UID cell turns red until you type the number shown at the top of the sheet ("Next free UID").

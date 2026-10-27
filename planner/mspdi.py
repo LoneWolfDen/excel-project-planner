@@ -317,7 +317,8 @@ def to_mspdi(plan):
         manual = t.get("Mode") == "Manual"
         cons = _date(t.get("Constraint Date", t.get("Start No Earlier Than")))     # (the column's name before v1.5)
         code = int(_num(t.get("_ConstraintCode"), 4 if cons else 0))
-        fs, ff = _date(t.get("Forecast Start")), _date(t.get("Forecast Finish"))
+        fs = _date(t.get("Start", t.get("Forecast Start")))               # "Forecast ..." before v1.7
+        ff = _date(t.get("Finish", t.get("Forecast Finish")))
         if manual and cons:
             fs = _date(t.get("_ConstraintStart")) or cons
         work = 0 if summary else _num(t.get("Work"))

@@ -35,7 +35,7 @@ CONSTRAINTS = ["As Soon As Possible", "As Late As Possible", "Must Start On", "M
 
 # key -> column name (= header text = structured-reference name)
 N = {
-    "ID": "ID", "UID": "UID", "WBS": "WBS", "Level": "Level", "Name": "Task Name", "Mode": "Mode", "Dur": "Duration",
+    "ID": "ID", "UID": "UID", "WBS": "WBS", "Level": "Level", "Show": "Show", "Name": "Task Name", "Mode": "Mode", "Dur": "Duration",
     **{f"{x}{k}": f"Pred{k} {label}" for k in LINK_NUMBERS for x, label in (("P", "UID"), ("T", "Type"), ("L", "Lag"))},
     "CType": "Constraint", "Cons": "Constraint Date", "DL": "Deadline",
     "PS": "Planned Start", "PF": "Planned Finish", "AS": "Actual Start", "AF": "Actual Finish",
@@ -75,7 +75,7 @@ N = {
 
 # defined names used by every other sheet (tsk_Duration = Tasks[Duration], ...)
 NAMES = {
-    "ID": "tsk_ID", "UID": "tsk_UID", "WBS": "tsk_WBS", "Lvl": "tsk_Level", "Name": "tsk_Name", "Mode": "tsk_Mode",
+    "ID": "tsk_ID", "UID": "tsk_UID", "WBS": "tsk_WBS", "Lvl": "tsk_Level", "Show": "tsk_Show", "Name": "tsk_Name", "Mode": "tsk_Mode",
     "Dur": "tsk_Duration", "CType": "tsk_ConstraintType", "CT": "tsk_ConstraintCode", "Cons": "tsk_Constraint", "DL": "tsk_Deadline", "PS": "tsk_PlanStart",
     "PF": "tsk_PlanFinish", "AS": "tsk_ActStart", "AF": "tsk_ActFinish", "FS": "tsk_FcStart", "FF": "tsk_FcFinish",
     "SVar": "tsk_StartVariance", "Var": "tsk_Variance", "LS": "tsk_LateStart", "LF": "tsk_LateFinish",
@@ -202,6 +202,7 @@ def formulas():
     # outline
     f["ID"] = f'IF({blank},"",COUNTA({T.upto(N["Name"])})-1)'
     f["Lvl"] = f'IF({blank},"",MAX(1,N({R("Level")})))'
+    f["Show"] = f'IF({blank},"",IF({R("Lvl")}<=OutlineShowLevel,"Yes","No"))'
     f["Idx"] = f"ROW()-ROW({H('ID')})"
     f["Parent"] = (f'IF(OR({blank},{R("Lvl")}<=1),0,IFERROR(LOOKUP(2,1/({T.upto(N["Lvl"])}={R("Lvl")}-1),'
                    f'ROW({T.upto(N["Lvl"])})),0))')
@@ -401,6 +402,8 @@ LAYOUT = [
     ("UID", "in", 6, None, True, "Permanent number that predecessors refer to. Each task needs a different one."),
     ("WBS", "calc", 8, None, True, "Outline number, generated from Level."),
     ("Level", "in", 6, None, True, "Outline level: 1 = phase, 2 = task, 3 = sub-task ... (at most 1 more than the row above)."),
+    ("Show", "calc", 6, None, True, "Yes when Level <= Settings > OutlineShowLevel: filter on Yes to collapse the "
+                                    "outline to that level (or use the 1 2 3 outline buttons at the top left)."),
     ("Name", "in", 36, None, False, None),
     ("Mode", "in", 8, None, True, "Auto = scheduled from predecessors and the constraint. Manual = starts on the "
                                   "Constraint Date (finish constraints: finishes on it)."),
@@ -513,10 +516,24 @@ def build_tasks(wb, rows, n_rows):
     for key, defined in NAMES.items():
         name(wb, defined, C(key))
     ws.freeze_panes = f"{L['Mode']}{HEADER_ROW + 1}"
+    group_outline(ws, [r.get("Level") for r in rows], HEADER_ROW + 1)
     ws.column_dimensions.group(L["Lvl"], L["CurKey"], hidden=True, outline_level=1)
     _validation_and_formatting(ws, L, n_rows)
     ws.sheet_view.zoomScale = 90
     return ws
+
+
+def group_outline(ws, levels, first_row):
+    """Excel row groups by outline level (summary above its tasks), so the 1 2 3 ... buttons at the top left expand
+    and collapse the plan as in MS Project. Grouping is part of the sheet, not a formula: it is set for the rows the
+    workbook is built with; rows added later are grouped with Data > Group (or use the Show filter)."""
+    ws.sheet_properties.outlinePr.summaryBelow = False
+    deepest = 0
+    for i, level in enumerate(levels):
+        if level and level > 1:
+            ws.row_dimensions[first_row + i].outline_level = depth = min(int(level) - 1, 7)
+            deepest = max(deepest, depth)
+    ws.sheet_format.outlineLevelRow = deepest          # Excel shows that many outline buttons
 
 
 def _validation_and_formatting(ws, L, n_rows):

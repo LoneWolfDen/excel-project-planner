@@ -109,15 +109,16 @@ Legend: ✅ equivalent · 🟡 partial / simplified · ❌ missing · ⛔ not pr
 
 | MS Project feature | Planner | Notes |
 |---|---|---|
-| Gantt Chart / Tracking Gantt | ✅ | 150 columns, daily or weekly. |
+| Gantt Chart / Tracking Gantt | ✅ | 150 columns: days, weeks, months or quarters. Bar labels and user-chosen colours are not possible without formulas in every timeline cell. |
+| Timeline view | ✅ | v1.6: Roadmap sheet (phases and milestones by month, one printed page). |
 | Timescale zoom (days, weeks, months, quarters) | 🟡 | Days or weeks. |
 | Critical path / deadline / baseline formatting on bars | ❌ | |
 | Bar text (resource names beside bars) | ❌ | |
-| Expand / collapse outline | ❌ | AutoFilter only. |
+| Expand / collapse outline | ✅ | v1.6: rows grouped by Level on Tasks and Gantt (1 2 3 buttons) for the rows built in; Settings > OutlineShowLevel + Show filter for any rows. |
 | Indented task names | 🟡 | Indented on Gantt, not on Tasks. |
 | Filters, groups, highlight filters | 🟡 | AutoFilter. |
 | Custom fields (Text1–30, Number, Flag) | ❌ | Notes only. |
-| Network Diagram, Calendar view, Timeline view | ❌ | |
+| Network Diagram, Calendar view | ❌ | |
 | Task Inspector / change highlighting / undo | ⛔ | |
 
 ### Reports (~30%)

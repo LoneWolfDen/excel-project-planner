@@ -119,11 +119,11 @@ flowchart LR
 
 | ID | Item | Pri | Size | How | Acceptance criteria |
 |---|---|---|---|---|---|
-| [B-501](https://github.com/LoneWolfDen/excel-project-planner/issues/43) | Expand / collapse outline | P1 | S | Py + F | Rows grouped by outline level on Tasks and Gantt; "Show to level N" setting through a helper filter. |
+| [B-501](https://github.com/LoneWolfDen/excel-project-planner/issues/43) | ✅ Expand / collapse outline | P1 | S | Py + F | v1.6: rows grouped by outline level on Tasks and Gantt; "Show to level N" setting (OutlineShowLevel) through the Show filter column. |
 | [B-502](https://github.com/LoneWolfDen/excel-project-planner/issues/44) | Indented names on Tasks | P2 | S | F | Display column with indentation, or conditional number format, verified in Excel. |
-| [B-503](https://github.com/LoneWolfDen/excel-project-planner/issues/45) | Gantt enhancements | P1 | M | F | Critical (B-105) and deadline (B-104) formatting; resource name label after bar; month / quarter scales; colours from a theme table in Settings. |
+| [B-503](https://github.com/LoneWolfDen/excel-project-planner/issues/45) | ✅ Gantt enhancements | P1 | M | F | v1.6: critical and deadline formatting; month / quarter scales. Not built: a label after each bar and colours from a Settings table: both need a formula in every timeline cell (conditional formatting can't show per-row text or read a colour), which the performance rule rules out; the resource is in the panel's Resource column. |
 | [B-504](https://github.com/LoneWolfDen/excel-project-planner/issues/46) | Calendar view | P3 | M | F | Month grid listing tasks active each day. |
-| [B-505](https://github.com/LoneWolfDen/excel-project-planner/issues/47) | Roadmap / timeline view | P1 | M | F | One-page view of phases and milestones by month for executives. |
+| [B-505](https://github.com/LoneWolfDen/excel-project-planner/issues/47) | ✅ Roadmap / timeline view | P1 | M | F | v1.6: Roadmap sheet, one landscape page of phases and milestones by month. |
 | [B-506](https://github.com/LoneWolfDen/excel-project-planner/issues/48) | Network diagram | P3 | M | Py | Script exports links to Mermaid / Graphviz image. |
 | [B-507](https://github.com/LoneWolfDen/excel-project-planner/issues/49) | Saved views and filters | P2 | S | F | Helper columns + slicers (with B-006) for Late, This week, Milestones, By resource. |
 | [B-508](https://github.com/LoneWolfDen/excel-project-planner/issues/50) | Print layouts | P2 | S | Py | Gantt and Tasks print on A3 landscape with repeated headers. |

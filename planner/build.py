@@ -32,15 +32,16 @@ from .report_agile import build_agile_report
 from .report_resources import build_resource_report
 from .report_schedule import build_schedule_report
 from .report_status import build_status_report
+from .roadmap import build_roadmap
 from .resources import build_resources
 from .settings import build_holidays, build_lists, build_settings
 from .sprints import build_sprints
 from .tasks import build_tasks
 
-ORDER = ["Instructions", "Dashboard", "Status Report", "Schedule Report", "Resource Report", "Agile Report", "RAID",
+ORDER = ["Instructions", "Dashboard", "Roadmap", "Status Report", "Schedule Report", "Resource Report", "Agile Report", "RAID",
          "Decisions", "Changes", "History", "Settings", "Tasks", "Gantt", "Resources", "Assignments", "Sprints", "Holidays", "Leave", "MSP_Tasks",
          "MSP_Resources", "Lists"]
-TAB_COLOURS = {"Instructions": "1F4E78", "Dashboard": "548235", "Status Report": "548235",
+TAB_COLOURS = {"Instructions": "1F4E78", "Dashboard": "548235", "Roadmap": "548235", "Status Report": "548235",
                "Schedule Report": "548235", "Resource Report": "548235", "Agile Report": "548235", "RAID": "C55A11",
                "Decisions": "C55A11", "Changes": "C55A11", "History": "C55A11", "Settings": "BF8F00", "Tasks": "2F75B5",
                "Gantt": "2F75B5", "Resources": "7030A0", "Assignments": "7030A0", "Sprints": "7030A0", "Holidays": "BF8F00", "Leave": "7030A0",
@@ -103,7 +104,7 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None):
     extra = data.assignments if data is not None else sample.assignments(blank, stress)
     build_assignments(wb, max(sizes.assignments, len(extra)), extra)
     sprints_ws, sprint_letters = build_sprints(wb, blank, sizes.sprints, sizes.grid_resources)
-    build_gantt(wb, n_tasks, sizes.gantt_columns)
+    build_gantt(wb, n_tasks, sizes.gantt_columns, [r.get("Level") for r in rows])
     build_msp_tasks(wb, n_tasks)
     build_msp_resources(wb, sizes.resources)
     charted = min(12, sizes.sprints)                 # sprints shown on the Dashboard and Agile Report charts
@@ -113,6 +114,7 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None):
     build_changes(wb, blank)
     build_status_report(wb)
     build_schedule_report(wb)
+    build_roadmap(wb)
     build_resource_report(wb, sizes.grid_resources, sizes.weeks)
     build_agile_report(wb, sprints_ws, sprint_letters, charted)
     build_history(wb, blank)

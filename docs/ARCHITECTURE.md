@@ -133,6 +133,19 @@ them) and the shown dates (`_Shown...`, rolled up into Planned / Forecast Start 
 free slack. The task then finishes just in time for its successors (or the project finish) and moves nothing else.
 The plan moves by the same number of days as the forecast, so an ALAP task adds no finish variance.
 
+## Views: outline, timeline scales, Roadmap
+
+- **Outline.** Excel row groups (one level per outline level, summary rows above) give the 1 2 3 buttons on Tasks
+  and Gantt. Grouping is sheet structure, not a formula, so it covers the rows the workbook is built with; the Show
+  column (`Level <= OutlineShowLevel`) works for any row through the table's filter.
+- **Timeline scales.** Each Gantt column's date is a formula of its position (`column_start` in `planner/gantt.py`:
+  `GanttStart + k x days`, or `EDATE` of the month / quarter start for GanttPeriod 30 / 91), and the bar rules use
+  `period_end(date)`, so months keep their real lengths and the timeline cells still hold no formulas.
+- **Roadmap.** Two ranked lists (phases, milestones) and an 18-month timeline drawn by conditional formatting only;
+  the month header is its only formula. It prints on one landscape page.
+- Bar labels and colours from a Settings table are not built: conditional formatting can't show per-row text or take
+  a colour from a cell, so both would need a formula in every timeline cell (30,000 on the sample Gantt).
+
 ## Assignments (several people on a task)
 
 A task's first person stays on Tasks (Resource, Units), so the common case is still one row; the Assignments sheet

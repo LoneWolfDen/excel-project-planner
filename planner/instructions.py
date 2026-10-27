@@ -60,8 +60,11 @@ def text(sizes, wizard=False):
                           "Slack = before it delays a successor. Critical = slack <= Settings > CriticalSlackDays on an "
                           "unfinished task. A missed deadline gives negative slack to the task and the chain feeding it."),
         ("6. Gantt", "Read-only view. The panel shows ID, Task, Start, Finish, % and Resources; click + above it for WBS, "
-                     "duration, planned dates and status. Timeline: dark outline = planned dates, green = done, blue = remaining on track, red = remaining "
-                     "on the critical path, orange = remaining but late vs plan, dark grey = summary, purple = milestone, red cell = deadline, red border = status date. "
+                     "duration, planned dates and status. Timeline: black outline = planned dates (the baseline once set; a "
+                     "task added after the baseline has no outline), pale blue-grey = planned days no work is on now, "
+                     "green = done, blue = remaining on track, red = remaining past the planned finish (slip), orange = "
+                     "remaining on the critical path, dark grey = summary, purple = milestone, red cell = deadline, red "
+                     "line = status date. "
                      "Change GanttStart / GanttPeriod (1 = days, 7 = weeks, 30 = months, 91 = quarters) on Settings to "
                      "scroll or zoom. Collapse the outline with the 1 2 3 buttons at the top left (rows are grouped by "
                      "Level), or set Settings > OutlineShowLevel and filter Show = Yes (also on Tasks)."),
@@ -142,6 +145,9 @@ def text(sizes, wizard=False):
         ("Speed", "An edit recalculates in well under a second for typical plans (about 0.05 s for 200 tasks). Each change "
                   "to the build is timed in CI; see docs/ARCHITECTURE.md in the repository. Keep the status date typed "
                   "(not =TODAY()), which would recalculate everything after every edit."),
+        ("Views not updating?", "Formulas > Calculation Options must be Automatic. Excel takes the mode from the first "
+                                "workbook opened in a session, so another workbook in Manual mode makes this one manual "
+                                "too: switch back to Automatic, or press F9 to recalculate."),
         ("MOVING TO MICROSOFT PROJECT", None),
         ("Best: MS Project XML", "Save this workbook, then convert it with the browser page docs/export.html in the "
                                  "repository (nothing to install; works on a phone; the file stays on your device) or "

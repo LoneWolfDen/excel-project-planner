@@ -77,6 +77,17 @@ def build_agile(wb, blank, n_sprints, n_chart_sprints=12):
     return ws, L
 
 
+def sprint_start(s):
+    """A sprint's start: its Set Start if typed; else the day after the nearest sprint above with a Set End, plus
+    whole sprints for those in between; else the Settings cadence. It reads only typed columns of other rows (and
+    their No), so there is no circular reference and no OFFSET."""
+    r = s.row
+    last_end = f'_xlfn.MAXIFS({s.col("Set End")},{s.col("No")},"<"&{r("No")})'
+    last_no = f'_xlfn.MAXIFS({s.col("No")},{s.col("Set End")},{last_end},{s.col("No")},"<"&{r("No")})'
+    return (f'IF(N({r("Set Start")})>0,{r("Set Start")},IF({last_end}>0,'
+            f'{last_end}+1+({r("No")}-{last_no}-1)*SprintLength,Sprint1Start+({r("No")}-1)*SprintLength))')
+
+
 def _sprint_table(wb, ws, blank, n_sprints):
     ws.cell(HEADER_ROW - 1, 2, "SPRINTS").font = font(bold=True, color="1F4E78")
     s = Tab("SprintTable")
@@ -86,8 +97,11 @@ def _sprint_table(wb, ws, blank, n_sprints):
         Col("No", width=WIDTHS["B"], formula=f"ROW()-ROW({s.head('No')})", center=True),
         Col("Sprint", width=WIDTHS["C"], formula=f'IF({r("No")}<=SprintCount,SprintPrefix&{r("No")},"")'),
         Col("Goal", "in", WIDTHS["D"], values=[] if blank else GOALS),
-        Col("Start", width=WIDTHS["E"], fmt=DATE, formula=f"Sprint1Start+({r('No')}-1)*SprintLength"),
-        Col("End", width=WIDTHS["F"], fmt=DATE, formula=f"{r('Start')}+SprintLength-1"),
+        Col("Start", width=WIDTHS["E"], fmt=DATE, formula=sprint_start(s),
+            note="Set Start if typed; otherwise the day after the last sprint above with a Set End (plus whole "
+                 "sprints since), or the Settings cadence (Sprint1Start, SprintLength)."),
+        Col("End", width=WIDTHS["F"], fmt=DATE,
+            formula=f"IF(N({r('Set End')})>0,{r('Set End')},{r('Start')}+SprintLength-1)"),
         Col("Working Days", width=WIDTHS["G"], formula=f"NETWORKDAYS.INTL({r('Start')},{r('End')},{WD})", center=True),
         Col("Tasks Starting", width=WIDTHS["H"], formula=f'IF({has},"",COUNTIF(tsk_Sprint,{r("Sprint")}))', center=True),
         Col("Planned Work", width=11, fmt="#,##0.0", formula=f'IF({has},"",{work_between(r("_FirstWD"), r("_LastWD"))})',
@@ -127,6 +141,10 @@ def _sprint_table(wb, ws, blank, n_sprints):
             formula=f'IF({has},"",TotalPoints*MAX(0,1-{r("No")}/SprintCount))',
             note="Straight line from the total scope to zero at the last sprint."),
         # charts plot "" as zero; #N/A leaves a gap, so the burndown chart reads this copy (hidden)
+        # optional: move a sprint by typing its dates; the sprints below follow it
+        Col("Set Start", "in", 11, DATE, note="Optional: this sprint's start, when it doesn't follow the one above "
+                                              "(type a Set End too if the sprints below should follow it)."),
+        Col("Set End", "in", 11, DATE, note="Optional: this sprint's end. Later sprints follow on from it."),
         Col("_ChartRemaining", "help", 8, formula=f'IF({r("Remaining Points")}="",NA(),{r("Remaining Points")})'),
         Col("_FirstWD", "help", 6, formula=f"NETWORKDAYS.INTL(ProjectStart,{r('Start')},{WD})",
             note="The sprint's first day as a working-day number from the project start (for the work totals)."),
@@ -196,7 +214,7 @@ def _burndown(ws, top):
         font(bold=True, color="1F4E78")
     L = add_table(ws, "SprintBurndown", top, 4, [
         Col("Day", width=WIDTHS["D"], fmt=DATE,
-            formula=f'IF(OR(CurrentSprint="",{k}>SprintLength),"",CurrentSprintStart+{k}-1)'),
+            formula=f'IF(OR(CurrentSprint="",{k}>CurrentSprintEnd-CurrentSprintStart+1),"",CurrentSprintStart+{k}-1)'),
         Col("Remaining", width=WIDTHS["E"], fmt="0.#", formula=(
             f'IF(OR({day}="",{day}>StatusDate),"",agl_CurCommitted-SUMIFS(tsk_LeafPoints,tsk_Sprint,CurrentSprint,'
             f'tsk_DoneDate,"<="&{day}))'),

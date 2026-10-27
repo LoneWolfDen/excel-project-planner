@@ -17,7 +17,7 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 - `scripts/perf_check.py` and `perf_budget.json` – performance and structure checks run on every PR.
 - `scripts/build_planner.py` – generates the workbooks (needs `openpyxl`; `--recalc` also needs LibreOffice):
   ```
-  python scripts/build_planner.py Project_Planner.xlsx --recalc
+  python scripts/build_planner.py Project_Planner.xlsx --baselined --recalc
   python scripts/build_planner.py Project_Planner_Blank.xlsx --blank --recalc
   ```
   `--recalc` saves the file with calculated values so previews (GitHub, phone file viewers) show numbers; Excel recalculates on open either way.
@@ -35,7 +35,7 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 | History | Status history (paste the Status sheet's snapshot row as values each reporting date) and trend charts: finish, earned value S-curve, SPI / CPI, burn-up |
 | Settings | Everything else, with defaults: rescheduling, units, custom working days, View from (scrolls the Gantt and Resource Report together), Gantt scale, sprint calendar, RAG thresholds; the holiday table below; the dropdown lists in a collapsed group to the right |
 | Tasks | Entry table. Shown: UID, Level, Task Name, Duration, Predecessors (`12, 14SS+2d`, by UID), Resources (`Alex Chen, JL[50%]`), Stage (Not Started … Complete, each with a % on Settings > Stages), actual start / finish, notes, Start and Finish (the current schedule), status, critical, and **Issues** (everything wrong on the row, in words). Collapsed sections (click + above): scheduling (deadline, mode, constraints), schedule detail (planned dates, variances, late dates, slack, checks, a % Complete override), cost (work, over-allocation, cost, actual cost), agile (sprint, story points), baseline (set and compare), earned value. Each input shows what to type when selected |
-| Gantt | Panel: ID, Task (indented), Start, Finish, %, Resources (WBS, duration, planned dates and status behind +). Timeline: planned outline, done / remaining / critical / late bars, summaries, milestones, deadlines, status-date line (conditional formatting only, no formulas); day, week, month or quarter scale; outline grouping (1 2 3 buttons) and a Show-to-level filter |
+| Gantt | Panel: ID, Task (indented), Start, Finish, %, Resources (WBS, duration, planned dates and status behind +). Timeline: planned dates as a black outline (the baseline once set), the current schedule as fill (done, remaining, critical, red slip past the planned finish), planned days with no work on them now, summaries, milestones, deadlines, status-date line (conditional formatting only, no formulas); day, week, month or quarter scale; outline grouping (1 2 3 buttons) and a Show-to-level filter |
 | Roadmap | One-page view for sponsors: phases and milestones with dates on an 18-month timeline (forecast, done, late, planned, missed deadlines) |
 | Resources | One row per person: max units, rate, assigned tasks, hours and cost, then their leave by month (`16, 17(0.5)` under `Nov-26`), which lowers weekly and sprint capacity, utilisation and over-allocation (task dates don't move) |
 

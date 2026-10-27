@@ -108,7 +108,9 @@ class ExportTest(unittest.TestCase):
         self.assertEqual(text(t[19], "Deadline"), "2026-11-06T17:00:00")
         self.assertEqual((text(t[2], "ActualStart"), text(t[2], "ActualFinish"), text(t[2], "ActualCost")),
                          ("2026-09-07T08:00:00", "2026-09-10T17:00:00", "3040"))
-        self.assertIsNone(t[2].find(NS + "Baseline"))                             # no baseline in the sample
+        base = t[2].find(NS + "Baseline")                                       # the committed sample is baselined
+        self.assertEqual((day(text(base, "Start")), day(text(base, "Finish")), text(base, "Duration")),
+                         (dt.date(2026, 9, 7), dt.date(2026, 9, 9), "PT24H0M0S"))   # planned 3 days, took 4
 
     def test_custom_fields(self):
         values = lambda uid: {text(a, "FieldID"): text(a, "Value") for a in self.tasks[uid].findall(NS + "ExtendedAttribute")}

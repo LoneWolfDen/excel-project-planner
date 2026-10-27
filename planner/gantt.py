@@ -16,8 +16,10 @@ from .tasks import group_columns, group_outline
 TABLE = "GanttView"
 HEADER_ROW = 5
 WD = "WorkWeek,Holidays"
-COLOURS = {"critical": "E06666", "summary": "404040", "done": "70AD47", "remaining": "9DC3E6", "late": "F4B183", "milestone": "7030A0",
-           "deadline": "C00000", "planned": "1F3864", "status": "FF0000", "nonworking": "EDEDED"}
+# planned (baseline) = border, current schedule = fill (docs/REAL_WORLD_FIT.md): red is kept for slip
+COLOURS = {"critical": "F4B183", "summary": "404040", "done": "70AD47", "remaining": "9DC3E6", "slip": "E06666",
+           "milestone": "7030A0", "deadline": "C00000", "planned": "000000", "planned_gap": "C9D5E8", "status": "FF0000",
+           "nonworking": "EDEDED"}
 
 
 def period_end(d):
@@ -80,7 +82,9 @@ def build_gantt(wb, n_rows, n_days, levels=()):
             f"IF({blank},0,IF(OR({task('tsk_IsLeaf')}<>1,{g.row('_IsMilestone')},N({pct})>=1),0,"
             f"IF({g.row('_DoneTo')}>0,{g.row('_DoneTo')}+1,{fs})))")),
         Col("_RemTo", "help", 8, "dd-mmm;;-", formula=f"IF({g.row('_RemFrom')}=0,0,{ff})"),
-        Col("_Late", "help", 5, formula=f"IF({blank},FALSE(),N({task('tsk_Variance')})>0)"),
+        Col("_ShowPlan", "help", 5, formula=f"IF({blank},FALSE(),OR(NOT(BaselineSet),N({task('tsk_BaseStart')})>0))",
+            note="Draw the planned outline: every task until a baseline is set, then only tasks that have one (a task "
+                 "added after the baseline shows its bar without an outline)."),
         Col("_Deadline", "help", 8, "dd-mmm;;-", formula=f"IF({blank},0,N({task('tsk_Deadline')}))"),
         Col("_Critical", "help", 5, formula=f'IF({blank},FALSE(),{task("tsk_Critical")}="Yes")'),
     ]
@@ -132,17 +136,29 @@ def _timeline_rules(ws, L, first, last, n_rows):
     in_period = lambda x: f"AND({x}>0,{x}>={d},{x}<{end})"
     overlaps = lambda a, b: f"AND({a}>0,{d}<={b},{end}-1>={a})"
     thin = lambda colour: Side(style="thin", color=colour)
+    ps, pf = at("Planned Start"), at("Planned Finish")
+    planned = f"AND({at('_ShowPlan')},ISNUMBER({ps}),{overlaps(ps, pf)})"
+    first_day, last_day = in_period(ps), f"AND({pf}>0,{pf}>={d},{pf}<{end})"
+    edge = lambda *sides: Border(**{s: thin(COLOURS["planned"]) for s in sides})
+    # Excel applies every rule that is true and, for each property, the first one listed wins
     rules = [
         FormulaRule(formula=[in_period(at("_Deadline"))], fill=fill(COLOURS["deadline"])),
         FormulaRule(formula=[f"AND({at('_IsSummary')},{overlaps(at('Start'), at('Finish'))})"],
                     fill=fill(COLOURS["summary"])),
         FormulaRule(formula=[f"AND({at('_IsMilestone')},{in_period(at('Start'))})"], fill=fill(COLOURS["milestone"])),
         FormulaRule(formula=[overlaps(at("_DoneFrom"), at("_DoneTo"))], fill=fill(COLOURS["done"])),
+        # slip: remaining work after the planned finish (only where the outline is drawn)
+        FormulaRule(formula=[f"AND({at('_ShowPlan')},ISNUMBER({pf}),{d}>{pf},{overlaps(at('_RemFrom'), at('_RemTo'))})"],
+                    fill=fill(COLOURS["slip"])),
         FormulaRule(formula=[f"AND({at('_Critical')},{overlaps(at('_RemFrom'), at('_RemTo'))})"], fill=fill(COLOURS["critical"])),
-        FormulaRule(formula=[f"AND({at('_Late')},{overlaps(at('_RemFrom'), at('_RemTo'))})"], fill=fill(COLOURS["late"])),
         FormulaRule(formula=[overlaps(at("_RemFrom"), at("_RemTo"))], fill=fill(COLOURS["remaining"])),
-        FormulaRule(formula=[f"AND(ISNUMBER({at('Planned Start')}),{overlaps(at('Planned Start'), at('Planned Finish'))})"],
-                    border=Border(top=thin(COLOURS["planned"]), bottom=thin(COLOURS["planned"]))),
+        # planned days the current bar has left (work moved later or earlier): a pale gap inside the outline
+        FormulaRule(formula=[planned], fill=fill(COLOURS["planned_gap"])),
+        # the planned outline: top and bottom on every planned day, closed on its first and last day
+        FormulaRule(formula=[f"AND({planned},{first_day},{last_day})"], border=edge("top", "bottom", "left", "right")),
+        FormulaRule(formula=[f"AND({planned},{first_day})"], border=edge("top", "bottom", "left")),
+        FormulaRule(formula=[f"AND({planned},{last_day})"], border=edge("top", "bottom", "right")),
+        FormulaRule(formula=[planned], border=edge("top", "bottom")),
         FormulaRule(formula=[in_period("StatusDate")],
                     border=Border(left=thin(COLOURS["status"]), right=thin(COLOURS["status"]))),
         FormulaRule(formula=[f"AND(GanttPeriod=1,NETWORKDAYS.INTL({d},{d},{WD})=0)"], fill=fill(COLOURS["nonworking"])),
@@ -164,15 +180,15 @@ def _timeline_rules(ws, L, first, last, n_rows):
 
 def _legend(ws, first):
     planned = Side(style="thin", color=COLOURS["planned"])
-    items = [("Planned (outline)", None, Border(top=planned, bottom=planned)),
+    items = [("Planned (outline)", None, Border(top=planned, bottom=planned, left=planned, right=planned)),
              ("Done (% complete)", COLOURS["done"], None), ("Remaining - on track", COLOURS["remaining"], None),
-             ("Remaining - late vs plan", COLOURS["late"], None), ("Remaining - critical", COLOURS["critical"], None),
-             ("Summary (forecast)", COLOURS["summary"], None),
+             ("Slip: past the planned finish", COLOURS["slip"], None), ("Remaining - critical", COLOURS["critical"], None),
+             ("Planned, no work now", COLOURS["planned_gap"], None), ("Summary (forecast)", COLOURS["summary"], None),
              ("Milestone (forecast)", COLOURS["milestone"], None), ("Deadline", COLOURS["deadline"], None),
              ("Status date", None, Border(left=Side(style="medium", color=COLOURS["status"]))),
              ("Non-working day", COLOURS["nonworking"], None)]
     for i, (text, colour, border) in enumerate(items):
-        row, col = 1 + i // 5, first + (i % 5) * 12
+        row, col = 1 + i // 6, first + (i % 6) * 11      # rows 1-2 only: rows 3-4 carry the month / year scale
         swatch = ws.cell(row, col)
         if colour:
             swatch.fill = fill(colour)

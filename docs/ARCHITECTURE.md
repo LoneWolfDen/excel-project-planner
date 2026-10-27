@@ -145,6 +145,25 @@ The plan moves by the same number of days as the forecast, so an ALAP task adds 
 - Bar labels and colours from a Settings table are not built: conditional formatting can't show per-row text or take
   a colour from a cell, so both would need a formula in every timeline cell (30,000 on the sample Gantt).
 
+## Gantt: planned = outline, current = fill
+
+The timeline holds no formulas; each cell's look comes from conditional-format rules over the panel's helper
+columns. Excel applies every rule that is true and, for each property (fill, border, font), the first one listed
+wins, so a fill rule (done, slip, critical, remaining, a planned gap) and a border rule (the planned outline) combine
+in one cell. The outline is four rules (closed box on a one-day plan, start, end, middle) so the box closes on the
+first and last planned day. `_ShowPlan` draws it for every task until a baseline is set (`BaselineSet`), then only
+for tasks that have one: scope added after the baseline shows its bar without an outline. Slip is remaining work
+after the planned finish. LibreOffice applies only the first true rule per cell, so its renderings show the fills
+but not the outline; Excel shows both. The committed sample is built with `--baselined` (`sample.BASELINE`, the
+plan as first estimated) so the comparison shows on first open; the scheduling tests use the sample without it.
+
+## Sprint calendar
+
+SprintTable's Start and End follow the Settings cadence (Sprint1Start, SprintLength) until a sprint is moved: a
+typed **Set End** moves that sprint's end and every later sprint follows on from it; a **Set Start** moves one
+sprint's start. Start finds the nearest sprint above with a Set End using `MAXIFS` over the typed column and No, so
+it never reads another row's calculated value (no OFFSET, no circular reference).
+
 ## Progress by stage
 
 A free % Complete means something different to everyone, so a task's progress comes from its **Stage**, picked from

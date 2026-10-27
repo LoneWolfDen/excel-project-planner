@@ -23,7 +23,7 @@ jobs:
       - name: Build workbooks
         run: |
           mkdir -p dist
-          python3 scripts/build_planner.py dist/Project_Planner.xlsx --recalc
+          python3 scripts/build_planner.py dist/Project_Planner.xlsx --baselined --recalc
           python3 scripts/build_planner.py dist/Project_Planner_Blank.xlsx --blank --recalc
           python3 scripts/build_planner.py dist/Stress_1000_tasks.xlsx --tasks 1000 --stress 33
 

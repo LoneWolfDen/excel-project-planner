@@ -78,7 +78,7 @@ class ProjectData:
 VERSION = "1.7"          # PlannerVersion in every workbook: planner/upgrade.py reads it to know what to convert
 
 
-def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, import_wizard=False):
+def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, import_wizard=False, baselined=False):
     """import_wizard: also build MSP_Tasks / MSP_Resources, formula copies of Tasks and Resources under MS Project's
     field names for its Import Wizard. Off by default: the XML converter (docs/export.html) carries more."""
     """The planner workbook: the sample project, a blank template (blank=True), or a given project (data)."""
@@ -89,7 +89,7 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
         blank = True                                   # no sample RAID, decisions, history ...
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
-    rows = data.tasks if data is not None else sample.tasks(blank, stress)
+    rows = data.tasks if data is not None else sample.tasks(blank, stress, baselined)
     if len(rows) > n_tasks:
         raise SystemExit(f"{len(rows)} tasks do not fit in {n_tasks} rows; raise --tasks")
     build_settings(wb, blank, sizes.sprints, data.settings if data else None)
@@ -123,6 +123,7 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
         ws.sheet_properties.tabColor = TAB_COLOURS[ws.title]
     wb.active = wb.sheetnames.index("Tasks")
     wb.calculation.fullCalcOnLoad = True
+    wb.calculation.calcMode = "auto"                   # B-1001: views follow every edit
     return wb
 
 
@@ -136,9 +137,14 @@ def _tables(z):
     return out
 
 
+CALC_PR = '<calcPr calcId="191029" calcMode="auto" fullCalcOnLoad="1"/>'
+
+
 def restore_tables(original, recalculated):
     """LibreOffice drops each table's calculated-column formulas when it saves. Excel needs them to fill formulas
-    into newly inserted rows, so put the original table definitions back (keeping LibreOffice's part ids)."""
+    into newly inserted rows, so put the original table definitions back (keeping LibreOffice's part ids).
+    It also drops fullCalcOnLoad, so put automatic calculation and a recalculation on open back (B-1001): without
+    them a file opened while Excel is in manual mode shows stale views until F9."""
     with zipfile.ZipFile(original) as z:
         source = _tables(z)
     tmp = Path(str(recalculated) + ".tmp")
@@ -150,6 +156,8 @@ def restore_tables(original, recalculated):
                 lo_id = re.search(r'<table[^>]*\sid="(\d+)"', data.decode("utf-8")).group(1)
                 xml = source[target[item.filename]][1]
                 data = re.sub(r'(<table[^>]*\s)id="\d+"', rf'\g<1>id="{lo_id}"', xml, count=1).encode("utf-8")
+            elif item.filename == "xl/workbook.xml":
+                data = re.sub(r"<calcPr[^>]*/>", CALC_PR, data.decode("utf-8"), count=1).encode("utf-8")
             zout.writestr(item, data)
     tmp.replace(recalculated)
 
@@ -186,12 +194,16 @@ def main(argv=None):
     p.add_argument("--gantt-columns", type=int, default=d.gantt_columns, help="columns in the Gantt timeline")
     p.add_argument("--weeks", type=int, default=d.weeks, help="weeks in the Resource Report grids")
     p.add_argument("--stress", type=int, default=0, help="repeat the sample project N times (performance tests)")
+    p.add_argument("--baselined", action="store_true",
+                   help="the sample with its baseline set (the committed Project_Planner.xlsx), so the Gantt shows "
+                        "planned against current")
     p.add_argument("--import-wizard-sheets", action="store_true",
                    help="also build MSP_Tasks / MSP_Resources for MS Project's Import Wizard (the XML converter "
                         "is the better route)")
     a = p.parse_args(argv)
     sizes = Sizes(a.tasks, a.resources, a.grid_resources, a.sprints, a.gantt_columns, a.weeks)
-    save(make_workbook(a.blank, stress=a.stress, sizes=sizes, import_wizard=a.import_wizard_sheets), a.out, a.recalc)
+    save(make_workbook(a.blank, stress=a.stress, sizes=sizes, import_wizard=a.import_wizard_sheets,
+                       baselined=a.baselined), a.out, a.recalc)
     print("saved", a.out)
 
 

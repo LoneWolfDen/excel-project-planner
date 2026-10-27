@@ -38,9 +38,9 @@ How the workbook is put together, and the rules every change follows. These rule
 | Settings | (named cells) | The other settings, calendar mask (`WorkWeek`, from the Working week preset or the seven day rows), Gantt and sprint settings |
 | Tasks | `Tasks` | All scheduling: WBS, summaries, links, planned / forecast dates, variances, progress, work, cost. Columns are in `SECTIONS`: the essentials, then one collapsed Excel column group per optional section, each with one visible key column (Excel merges groups that touch); the helpers are a level-2 group |
 | Gantt | `GanttView` + timeline | Task panel reads Tasks by position; timeline = conditional formatting only |
-| Resources | `ResourceTable` | Assigned tasks, work, cost per resource |
+| Resources | `ResourceTable` | Assigned tasks, work, cost per resource, then one leave column per month (`leave_Grid` / `leave_Months` name only the month columns, so the leave look-ups never depend on the calculated columns) |
 | Sprints | `SprintTable` + 2 grids | Sprint calendar, capacity, load and utilisation per resource |
-| Holidays | `HolidayTable` | Non-working dates (`Holidays` = `HolidayTable[Date]`) |
+| Settings (below the settings) | `HolidayTable` | Non-working dates (`Holidays` = `HolidayTable[Date]`) |
 | MSP_Tasks / MSP_Resources | `MSPTasks`, `MSPResources` | MS Project field names, for the Import Wizard; only with `--import-wizard-sheets` |
 | Dashboard | `KPIs`, `StatusSummary`, `NextMilestones` | Project KPIs |
 | Status Report | `OverallStatus`, `StatusRAG`, `EarnedValue`, `StatusNotes` | RAG by area, earned value (`evm_*` names) |
@@ -49,7 +49,7 @@ How the workbook is put together, and the rules every change follows. These rule
 | Agile Report | `AgileKPIs`, `SprintBacklog`, `SprintBurndown` | Velocity forecast (`agl_*` names), current sprint |
 | RAID / Decisions / Changes | `RAIDLog`, `DecisionLog`, `ChangeLog` | Score, rating, overdue, linked task (`raid_*`, `dec_*`, `chg_*` names) |
 | History | `SnapshotNow`, `StatusHistory` | This status date's numbers; pasted history for trend charts |
-| Lists | `List*` | Dropdown values (`L_DepType`, `L_Mode`, ...) |
+| Settings (columns G onward, collapsed) | `List*` | Dropdown values (`L_DepType`, `L_Mode`, ...) |
 
 Code: `planner/core.py` (styles, `add_table`, structured-reference helpers), one module per sheet, `planner/build.py`
 (command line, LibreOffice recalculation). `scripts/build_planner.py` is the entry point.

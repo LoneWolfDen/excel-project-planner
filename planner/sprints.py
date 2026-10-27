@@ -65,7 +65,7 @@ def build_sprints(wb, blank, n_sprints, n_resources):
             note="Hours of task work falling in the sprint."),
         Col("Capacity", width=11, fmt="#,##0.0",
             note="Sum of Work resources' Max Units x HoursPerDay x working days, less the leave of the people in the "
-                 "grids below (Leave sheet).",
+                 "grids below (Resources sheet, leave months).",
             formula=(f'IF({has},"",SUMIFS(res_MaxUnits,res_Type,"Work")*HoursPerDay*{r("Working Days")}'
                      f'-{team_leave_hours("spr_LeaveGrid", r("No"))})')),
         Col("Utilisation", width=10, fmt="0%",
@@ -193,7 +193,7 @@ def _grid(wb, ws, kind, top, n_sprints, n_resources, heading, util_offset=0):
 
 
 def _leave_grid(wb, ws, top, n_sprints, n_resources):
-    """Hidden grid: working days of leave per person per sprint (Leave sheet), read by the utilisation grid. Each
+    """Hidden grid: working days of leave per person per sprint (Resources sheet, leave months), read by the utilisation grid. Each
     person's LeaveTable row is looked up once, in column C; each sprint's month columns come from SprintTable."""
     origin = "spr_LeaveOrigin"
     name(wb, origin, f"Sprints!$B${top}")

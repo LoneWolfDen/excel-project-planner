@@ -83,9 +83,9 @@ class ReadTest(unittest.TestCase):
         old = io.BytesIO()
         wb.save(old)
         new = openpyxl.load_workbook(io.BytesIO(upgrade.convert(old.getvalue())[0]))
-        values = [r["RAID Type"] for r in table_rows(new, "Lists", "ListRAIDType") if r["RAID Type"]]
+        values = [r["RAID Type"] for r in table_rows(new, "Settings", "ListRAIDType") if r["RAID Type"]]
         self.assertEqual(values, ["Risk", "Assumption", "Issue", "Dependency", "Escalation"])
-        periods = [r["Gantt Days per Column"] for r in table_rows(new, "Lists", "ListPeriod")]
+        periods = [r["Gantt Days per Column"] for r in table_rows(new, "Settings", "ListPeriod")]
         self.assertEqual(periods, [1, 7, 30, 91])                       # v1.6 values the v1.4 list didn't have
 
 
@@ -109,8 +109,10 @@ class UpgradeRecalcTest(unittest.TestCase):
         self.assertEqual(diffs, [])
         for sheet, table, column in LOGS:
             self.assertEqual(log(new, sheet, table, column), log(old, sheet, table, column), table)
-        leave = lambda wb: [(r["Resource"], r["Nov-26"]) for r in table_rows(wb, "Leave", "LeaveTable") if r["Resource"]]
-        self.assertEqual(leave(new), leave(old))
+        before = {r["Resource"]: r["Nov-26"] for r in table_rows(old, "Leave", "LeaveTable") if r["Resource"]}
+        after = {r["Resource Name"]: r["Nov-26"] for r in table_rows(new, "Resources", "ResourceTable")
+                 if r["Resource Name"] in before}                       # the Leave sheet's rows, now on Resources
+        self.assertEqual(after, before)
         rag = lambda wb: [(r["Area"], r["PM RAG"], r["Comment"]) for r in table_rows(wb, "Status Report", "StatusRAG")]
         self.assertEqual(rag(new), rag(old))
         goals = lambda wb: [r["Goal"] for r in table_rows(wb, "Sprints", "SprintTable")]

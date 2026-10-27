@@ -8,6 +8,7 @@ Needs openpyxl and LibreOffice (`soffice` on PATH); recalculation tests are skip
 """
 import datetime as dt
 import io
+import re
 import shutil
 import subprocess
 import sys
@@ -137,7 +138,7 @@ class StructureTest(Tmp):
         self.assertEqual(self.wb.sheetnames, ["Start", "Dashboard", "Roadmap", "Status Report", "Schedule Report",
                                               "Resource Report", "Agile Report", "RAID", "Decisions", "Changes",
                                               "History", "Settings", "Tasks", "Gantt", "Resources", "Sprints",
-                                              "Holidays", "Leave", "Lists"])
+                                              ])
 
     def test_named_ranges(self):
         names = set(self.wb.defined_names)
@@ -157,7 +158,7 @@ class StructureTest(Tmp):
         self.assertIn("Forecast Finish", calculated)
         self.assertNotIn("Duration", calculated)                 # inputs are not calculated columns
         for sheet, table in (("Resources", "ResourceTable"), ("Sprints", "SprintTable"), ("Gantt", "GanttView"),
-                             ("Holidays", "HolidayTable")):
+                             ("Settings", "HolidayTable"), ("Settings", "ListRAG")):
             self.assertIn(table, self.wb[sheet].tables)
 
     def test_no_a1_references_in_formulas(self):
@@ -472,7 +473,7 @@ class ReportTest(Tmp):
         return [r for r in table_rows(wb, "Tasks", "Tasks") if r["_IsLeaf"] == 1]
 
     def expected_evm(self, wb):
-        holidays = {d(r["Date"]) for r in table_rows(wb, "Holidays", "HolidayTable") if r["Date"]}
+        holidays = {d(r["Date"]) for r in table_rows(wb, "Settings", "HolidayTable") if r["Date"]}
         bac = pv = ev = ac = 0
         for t in self.leaves(wb):
             budget = t["Cost"] if t["Baseline Cost"] is None else t["Baseline Cost"]
@@ -670,7 +671,7 @@ class ResourceReportTest(Tmp):
                 for i, n in enumerate(names) if n}
 
     def expected(self, wb):
-        holidays = {d(r["Date"]) for r in table_rows(wb, "Holidays", "HolidayTable") if r["Date"]}
+        holidays = {d(r["Date"]) for r in table_rows(wb, "Settings", "HolidayTable") if r["Date"]}
         hours = {}
         tasks = {t["UID"]: t for t in table_rows(wb, "Tasks", "Tasks") if t["_IsLeaf"] == 1}
         people = [(t, t["_Resource1"], t["_LeafWork"]) for t in tasks.values() if t["_Resource1"]]
@@ -785,10 +786,11 @@ class ViewsTest(Tmp):
 
     def test_month_and_quarter_scales(self):
         for period, months, letters, years in (
-                (30, [(2026, m) for m in (9, 10, 11, 12)] + [(2027, 1)], ["S", "O", "N", "D", "J"],
-                 ["2026", "", "", "", "2027"]),
-                (91, [(2026, 7), (2026, 10), (2027, 1), (2027, 4), (2027, 7)], ["Q3", "Q4", "Q1", "Q2", "Q3"],
-                 ["2026", "", "2027", "", ""])):
+                # View from = two weeks before the 25-Oct status date: the Gantt starts in the week of 05-Oct
+                (30, [(2026, 10), (2026, 11), (2026, 12), (2027, 1), (2027, 2)], ["O", "N", "D", "J", "F"],
+                 ["2026", "", "", "2027", ""]),
+                (91, [(2026, 10), (2027, 1), (2027, 4), (2027, 7), (2027, 10)], ["Q4", "Q1", "Q2", "Q3", "Q4"],
+                 ["2026", "2027", "", "", ""])):
             wb = recalc(self.path, self.dir, lambda wb: setattr(named_cell(wb, "GanttPeriod"), "value", period))
             self.assertEqual(errors_in(wb), [])
             row3, row4, dates = self.gantt_header(wb, 5)
@@ -980,7 +982,7 @@ class ImportWizardTest(unittest.TestCase):
         cls.tmp.cleanup()
 
     def test_sheets_built_on_request(self):
-        self.assertEqual(self.wb.sheetnames[-3:], ["MSP_Tasks", "MSP_Resources", "Lists"])
+        self.assertEqual(self.wb.sheetnames[-2:], ["MSP_Tasks", "MSP_Resources"])
         self.assertEqual(errors_in(self.wb), [])
 
     def test_msp_headers_match_project_fields(self):
@@ -1232,19 +1234,19 @@ MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "O
 
 def leave_by_day(wb):
     """{(person, date): working days of leave}, worked out in Python from the Leave sheet, working days only."""
-    holidays = {d(r["Date"]) for r in table_rows(wb, "Holidays", "HolidayTable") if r["Date"]}
+    holidays = {d(r["Date"]) for r in table_rows(wb, "Settings", "HolidayTable") if r["Date"]}
     out = {}
-    for row in table_rows(wb, "Leave", "LeaveTable"):
-        if not row["Resource"]:
+    for row in table_rows(wb, "Resources", "ResourceTable"):
+        if not row["Resource Name"]:
             continue
         for header, text in row.items():
-            if header == "Resource" or not text:
+            if not re.match(r"^[A-Z][a-z]{2}-\d\d$", str(header)) or not text:      # the leave month columns
                 continue
             month, year = MONTH_NAMES.index(header[:3]) + 1, 2000 + int(header[-2:])
             for day, fraction in parse_leave(text).items():
                 when = dt.date(year, month, day)
                 if when.weekday() < 5 and when not in holidays:
-                    out[(row["Resource"], when)] = fraction
+                    out[(row["Resource Name"], when)] = fraction
     return out
 
 
@@ -1320,12 +1322,12 @@ class LeaveTest(Tmp):
 
     def test_leave_entries(self):
         def edit(wb):
-            ws = wb["Leave"]
-            head = {c.value: c.column for c in ws[4]}
-            ws.cell(5, head["Nov-26"]).value = "16;17 (0.25) , 21, 22"     # 21-22 Nov is a weekend
-            ws.cell(6, head["Dec-26"]).value = "24, 25, 28(0.5)"         # 24-25 Dec are holidays
-            ws.cell(9, head["Resource"]).value = "Taylor Morgan"
-            ws.cell(9, head["Nov-26"]).value = "9,10,11,12,13"
+            ws = wb["Resources"]
+            head = {c.value: c.column for c in ws[5]}
+            row = {ws.cell(r, head["Resource Name"]).value: r for r in range(6, 20)}
+            ws.cell(row["Casey Kim"], head["Nov-26"]).value = "16;17 (0.25) , 21, 22"     # 21-22 Nov is a weekend
+            ws.cell(row["Jordan Lee"], head["Dec-26"]).value = "24, 25, 28(0.5)"         # 24-25 Dec are holidays
+            ws.cell(row["Taylor Morgan"], head["Nov-26"]).value = "9,10,11,12,13"
         wb = recalc(self.path, self.dir, edit)
         leave, weekly = self.check(wb)
         self.assertEqual(weekly["Casey Kim"][6], 1.25)
@@ -1392,7 +1394,7 @@ class BlankTemplateTest(unittest.TestCase):
             t = Tasks(wb)
             self.assertTrue(all(t.ws.cell(r, t.col[H["Name"]]).value is None for r in range(FIRST, FIRST + 200)))
             self.assertIsNone(wb["Resources"]["B6"].value)
-            self.assertIsNone(wb["Holidays"]["B5"].value)
+            self.assertEqual([r["Date"] for r in table_rows(wb, "Settings", "HolidayTable") if r["Date"]], [])
             self.assertIsNone(named_cell(wb, "ProjectStartDate").value)      # required input, highlighted yellow
             self.assertIsNone(named_cell(wb, "StatusDateInput").value)
             dash = {wb["Dashboard"].cell(r, 2).value: wb["Dashboard"].cell(r, 3).value for r in range(5, 20)}

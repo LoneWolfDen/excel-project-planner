@@ -28,7 +28,7 @@ def build_resource_report(wb, n_resources, n_weeks=DEFAULT_WEEKS):
     ws["A1"] = '=ProjectName&"  -  Resource Report"'
     ws["A2"] = ('="Weeks from "&TEXT(ResourceWeekStart,"ddd dd-mmm-yyyy")&" (Settings > ResourceWeekStart). Hours are '
                 'each task\'s work spread over its forecast working days; red = more than Max Units x HoursPerDay x '
-                'working days in the week, less leave (Leave sheet)."')
+                'working days in the week, less leave (Resources sheet, leave months)."')
     ws.column_dimensions["A"].width = 3
 
     summary_top = 5
@@ -79,7 +79,7 @@ def _summary(ws, top, n_resources):
             formula=f'IF({blank},"",COUNTIF({week_row("rw_Util")},">1"))',
             note="Weeks in the grid above 100% of capacity (after leave)."),
         Col("Leave Days", width=10, fmt="0.#", center=True, formula=f'IF({blank},"",SUM({week_row("rw_Leave")}))',
-            note="Working days of leave in the weeks shown below (Leave sheet)."),
+            note="Working days of leave in the weeks shown below (Resources sheet, leave months)."),
     ], n_resources, autofilter=False)
     first, last = top + 1, top + n_resources
     over = f"N{first}:N{last}"
@@ -162,10 +162,10 @@ def _week_months(week, j):
 
 
 def _leave_grid(wb, ws, top, n_resources, n_weeks):
-    """Working days of leave per person per week (Leave sheet). Two helper rows hold the LeaveTable column of the
+    """Working days of leave per person per week (Resources sheet, leave months). Two helper rows hold the leave column of the
     week's month and the next month, and a helper column holds each person's LeaveTable row, so every cell reuses
     them instead of repeating the look-ups."""
-    ws.cell(top - 2, 2, "Leave by resource (working days, from the Leave sheet)").font = font(bold=True, size=12,
+    ws.cell(top - 2, 2, "Leave by resource (working days, from the Resources sheet)").font = font(bold=True, size=12,
                                                                                                color="1F4E78")
     origin = "rw_LeaveOrigin"
     name(wb, origin, f"'{SHEET}'!$B${top}")

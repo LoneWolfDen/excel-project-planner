@@ -21,7 +21,6 @@ from . import sample
 from .dashboard import build_dashboard
 from .gantt import build_gantt
 from .instructions import build_instructions
-from .leave import build_leave
 from .msp import build_msp_resources, build_msp_tasks
 from .changes import build_changes
 from .core import name
@@ -39,13 +38,13 @@ from .sprints import build_sprints
 from .tasks import build_tasks, take_people
 
 ORDER = ["Start", "Dashboard", "Roadmap", "Status Report", "Schedule Report", "Resource Report", "Agile Report", "RAID",
-         "Decisions", "Changes", "History", "Settings", "Tasks", "Gantt", "Resources", "Sprints", "Holidays", "Leave", "MSP_Tasks",
-         "MSP_Resources", "Lists"]
+         "Decisions", "Changes", "History", "Settings", "Tasks", "Gantt", "Resources", "Sprints", "MSP_Tasks",
+         "MSP_Resources"]
 TAB_COLOURS = {"Start": "1F4E78", "Dashboard": "548235", "Roadmap": "548235", "Status Report": "548235",
                "Schedule Report": "548235", "Resource Report": "548235", "Agile Report": "548235", "RAID": "C55A11",
                "Decisions": "C55A11", "Changes": "C55A11", "History": "C55A11", "Settings": "BF8F00", "Tasks": "2F75B5",
-               "Gantt": "2F75B5", "Resources": "7030A0", "Sprints": "7030A0", "Holidays": "BF8F00", "Leave": "7030A0",
-               "MSP_Tasks": "595959", "MSP_Resources": "595959", "Lists": "A6A6A6"}
+               "Gantt": "2F75B5", "Resources": "7030A0", "Sprints": "7030A0",
+               "MSP_Tasks": "595959", "MSP_Resources": "595959"}
 @dataclass(frozen=True)
 class Sizes:
     """How many rows / columns each table and grid starts with. Tables grow when users add rows; the fixed grids
@@ -77,7 +76,7 @@ class ProjectData:
     resources: list = field(default_factory=list)      # (name, initials, group, max units, rate, email, type)
     holidays: list = field(default_factory=list)       # (date, description)
     leave: dict = field(default_factory=dict)          # {person: {"Nov-26": "16, 17(0.5)"}}
-    leave_months: list = None                          # month headers for the Leave sheet
+    leave_months: list = None                          # leave month headers (Resources sheet columns)
     assignments: list = field(default_factory=list)    # (task UID, resource, units): people beyond the first
 
 
@@ -98,11 +97,11 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
     rows = data.tasks if data is not None else sample.tasks(blank, stress)
     if len(rows) > n_tasks:
         raise SystemExit(f"{len(rows)} tasks do not fit in {n_tasks} rows; raise --tasks")
-    build_lists(wb)
     build_settings(wb, blank, sizes.sprints, data.settings if data else None)
+    build_lists(wb)
     build_holidays(wb, blank, holidays=data.holidays if data else None)
-    build_leave(wb, blank, sizes.resources, data.leave_months if data else None, data.leave if data else None)
-    build_resources(wb, blank, sizes.resources, data.resources if data else None)
+    build_resources(wb, blank, sizes.resources, data.resources if data else None, data.leave if data else None,
+                    data.leave_months if data else None)
     more = {}                                          # people beyond the first: into each task's Resources text
     for uid, resource, units in (data.assignments if data is not None else sample.assignments(blank, stress)):
         more.setdefault(uid, []).append((resource, units))

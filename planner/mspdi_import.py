@@ -250,7 +250,7 @@ def _task(t, uid, hours, assignments, warnings):
 
 
 def _leave_months(start, leave):
-    """Leave sheet headers: from the project's first month for three years, and any month that has leave."""
+    """Leave month headers (Resources sheet): from the project's first month for three years, and any month that has leave."""
     from .leave import month_labels
     first = (start.year, start.month) if start else (2026, 1)
     labels = month_labels(first, 36)

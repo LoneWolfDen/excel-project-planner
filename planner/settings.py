@@ -2,6 +2,7 @@
 import datetime as dt
 
 from openpyxl.formatting.rule import FormulaRule
+from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from .core import (BOX, CALC_FILL, CALC_FONT, DATE, INPUT_FONT, NOTE_FONT, Col, add_table, fill, font, header_cell,
@@ -80,8 +81,11 @@ def settings_rows(blank, max_sprints):
         ("WorkSun", "Sunday is a working day", "No", "@", True, ""),
         ("WorkWeek", "Weekend mask (calculated)", f"={work_week}", "@", False,
          "7-character Mon..Sun string used by WORKDAY.INTL (1 = non-working)."),
-        ("GanttStart", "Gantt timeline start", "=ProjectStart-WEEKDAY(ProjectStart,3)", DATE, True,
-         "Defaults to the Monday of the project start week. Overwrite with any date to scroll the timeline."),
+        ("ViewFrom", "Show the Gantt and Resource Report from", "=MAX(ProjectStart,StatusDate-14)", DATE, True,
+         "Defaults to two weeks before the status date (the project start until then). Overwrite with any date to "
+         "scroll both views at once; GanttStart and ResourceWeekStart below follow it unless you overwrite them."),
+        ("GanttStart", "Gantt timeline start", "=ViewFrom-WEEKDAY(ViewFrom,3)", DATE, True,
+         "Defaults to the Monday of the View from week. Overwrite with any date to scroll the timeline alone."),
         ("GanttPeriod", "Gantt days per column", 1, "0", True,
          "1 = daily timeline, 7 = weekly, 30 = monthly (calendar months), 91 = quarterly (calendar quarters)."),
         ("OutlineShowLevel", "Show tasks down to outline level", 9, "0", True,
@@ -131,8 +135,8 @@ def settings_rows(blank, max_sprints):
         ("RAIDHighScore", "RAID: high rating from score", 15, "0", True,
          "Score = probability x impact (1-25). At or above this a risk or issue is rated High."),
         ("RAIDMediumScore", "RAID: medium rating from score", 8, "0", True, ""),
-        ("ResourceWeekStart", "Resource Report first week", "=MAX(2,StatusDate-WEEKDAY(StatusDate,3)-14)", DATE, True,
-         "Defaults to the Monday two weeks before the status date. Overwrite with any Monday to scroll the weekly grids."),
+        ("ResourceWeekStart", "Resource Report first week", "=MAX(2,ViewFrom-WEEKDAY(ViewFrom,3))", DATE, True,
+         "Defaults to the Monday of the View from week. Overwrite with any Monday to scroll the weekly grids alone."),
         ("NextFreeUID", "Next free task UID (calculated)", "=MAX(tsk_UID)+1", "0", False,
          "Give a newly inserted task row this UID (see Start > Inserting tasks)."),
     ]
@@ -201,13 +205,25 @@ def build_settings(wb, blank, max_sprints, values=None):
     return st
 
 
+LISTS_COL = 7                      # Settings column G: the dropdown lists, side by side, in a collapsed group
+
+
 def build_lists(wb):
-    ws = wb.create_sheet("Lists")
+    """The dropdown lists, on Settings to the right of the settings, in a collapsed column group (+ above column F)."""
+    ws = wb["Settings"]
+    ws.sheet_properties.outlinePr.summaryRight = False
+    header = ws.cell(4, LISTS_COL - 1, "Dropdown lists (+)")
+    header.font = font(bold=True, color="1F4E78")
+    ws.column_dimensions[get_column_letter(LISTS_COL - 1)].width = 18
     for i, (n, (table, column, values)) in enumerate(LISTS.items()):
-        col = 1 + i * 2
-        add_table(ws, table, 1, col, [Col(column, "in", 16, values=values)], len(values), autofilter=False)
+        col = LISTS_COL + i * 2
+        add_table(ws, table, 4, col, [Col(column, "in", 16, values=values)], len(values), autofilter=False)
         name(wb, n, f"{table}[{column}]")
-    ws.cell(len(max((v[2] for v in LISTS.values()), key=len)) + 3, 1,
+    last = LISTS_COL + 2 * len(LISTS) - 1
+    for c in range(LISTS_COL, last + 1):
+        dim = ws.column_dimensions[get_column_letter(c)]
+        dim.outlineLevel, dim.hidden = 1, True
+    ws.cell(len(max((v[2] for v in LISTS.values()), key=len)) + 6, LISTS_COL,
             "Dropdown sources. Add a value by typing it in the row under a list: the table and its named range grow."
             ).font = NOTE_FONT
     return ws
@@ -220,15 +236,16 @@ HOLIDAYS = [(dt.date(2026, 12, 24), "Christmas Eve (example - replace with your 
 
 
 def build_holidays(wb, blank, n_rows=100, holidays=None):
-    """holidays: (date, description) rows replacing the sample (an import)."""
-    ws = wb.create_sheet("Holidays")
-    title(ws, "Holidays & Non-Working Days",
-          "Every date in this table is skipped by all scheduling formulas (named range: Holidays). Add rows to the table as needed.")
+    """The holiday table on Settings, below the settings. holidays: (date, description) rows replacing the sample."""
+    ws = wb["Settings"]
+    top = ws.max_row + 3
+    ws.cell(top - 1, 2, "HOLIDAYS: every date here is skipped by all scheduling formulas (named range: Holidays). "
+                        "Add rows to the table as needed.").font = font(bold=True, color="1F4E78")
     data = holidays if holidays is not None else [] if blank else HOLIDAYS
     n_rows = max(n_rows, len(data) + 20)
-    add_table(ws, "HolidayTable", 4, 2, [
-        Col("Date", "in", 18, DATE, values=[d for d, _ in data]),
-        Col("Description", "in", 50, values=[t for _, t in data]),
+    add_table(ws, "HolidayTable", top, 2, [
+        Col("Date", "in", 34, DATE, values=[d for d, _ in data]),          # the settings' column widths
+        Col("Description", "in", 24, values=[t for _, t in data]),
     ], n_rows)
     name(wb, "Holidays", "HolidayTable[Date]")
     return ws

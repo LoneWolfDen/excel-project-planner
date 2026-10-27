@@ -35,14 +35,12 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 | RAID | Risks, assumptions, issues, dependencies: owner, due, probability x impact score and rating, overdue flag, linked task |
 | Decisions / Changes | Decision log; change request log with schedule and cost impact (totals on the Status Report) |
 | History | Status snapshot (copy, paste as values each reporting date) and trend charts: finish, earned value S-curve, SPI / CPI, burn-up |
-| Settings | Everything else, with defaults: rescheduling, units, custom working days, Gantt scale, sprint calendar, RAG thresholds |
+| Settings | Everything else, with defaults: rescheduling, units, custom working days, View from (scrolls the Gantt and Resource Report together), Gantt scale, sprint calendar, RAG thresholds; the holiday table below; the dropdown lists in a collapsed group to the right |
 | Tasks | Entry table. Shown: UID, Level, Task Name, Duration, Predecessors (`12, 14SS+2d`, by UID), Resources (`Alex Chen, JL[50%]`), % complete, actual start / finish, notes, the forecast dates, status, critical, and **Issues** (everything wrong on the row, in words). Collapsed sections (click + above): scheduling (deadline, mode, constraints), schedule detail (planned dates, variances, late dates, slack, checks), cost (work, over-allocation, cost, actual cost), agile (sprint, story points), baseline (set and compare), earned value. Each input shows what to type when selected |
 | Gantt | Planned outline, done / remaining / critical / late bars, summaries, milestones, deadlines, status-date line (conditional formatting only, no formulas); day, week, month or quarter scale; outline grouping (1 2 3 buttons) and a Show-to-level filter |
 | Roadmap | One-page view for sponsors: phases and milestones with dates on an 18-month timeline (forecast, done, late, planned, missed deadlines) |
-| Resources | Resource sheet with max units and rates; assigned hours and cost |
+| Resources | One row per person: max units, rate, assigned tasks, hours and cost, then their leave by month (`16, 17(0.5)` under `Nov-26`), which lowers weekly and sprint capacity, utilisation and over-allocation (task dates don't move) |
 | Sprints | Sprint calendar, capacity vs planned hours, committed / done story points, velocity, release burndown, per-person load with over-allocation flags |
-| Holidays | Non-working dates used by every date formula |
-| Leave | Each person's leave by month (`16, 17(0.5)` under `Nov-26`): lowers weekly and sprint capacity, utilisation and over-allocation (task dates don't move) |
 
 ## Moving to Microsoft Project
 **Recommended: Microsoft Project XML.** Save the workbook, then convert it:

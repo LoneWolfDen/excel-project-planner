@@ -386,7 +386,7 @@ class ImportRecalcTest(unittest.TestCase):
                 sheet, ref = wb.defined_names[n].attr_text.split("!")
                 a = original[sheet.strip("'")][ref.replace("$", "")].value
                 self.assertEqual(wb[sheet.strip("'")][ref.replace("$", "")].value, a, n)
-            holidays = lambda w: [r["Date"] for r in table_rows(w, "Holidays", "HolidayTable") if r["Date"]]
+            holidays = lambda w: [r["Date"] for r in table_rows(w, "Settings", "HolidayTable") if r["Date"]]
             self.assertEqual(holidays(wb), holidays(original))
             people = lambda w: [(r["Resource Name"], r["Max Units"], r["Std Rate"], r["Type"])
                                 for r in table_rows(w, "Resources", "ResourceTable") if r["Resource Name"]]
@@ -406,7 +406,7 @@ class ImportRecalcTest(unittest.TestCase):
             self.assertEqual((rows[13]["Forecast Start"], rows[13]["Total Slack"]), (dt.date(2027, 3, 12), -2))
             self.assertEqual(rows[13]["Link Check"], "Pred 3: UID 40 is below this task: move it above.")
             self.assertEqual((rows[20]["Constraint"], rows[20]["Late Finish"]), ("Finish No Later Than", dt.date(2027, 3, 15)))
-            leave = {r["Resource"]: r["Mar-27"] for r in table_rows(wb, "Leave", "LeaveTable") if r["Resource"]}
+            leave = {r["Resource Name"]: r["Mar-27"] for r in table_rows(wb, "Resources", "ResourceTable") if r["Mar-27"]}
             self.assertEqual(leave, {"Ben Okafor": "15, 16, 17"})
 
 

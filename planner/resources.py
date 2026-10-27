@@ -2,6 +2,7 @@
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from .core import Col, Tab, add_table, col_range, name, title
+from .leave import leave_columns, month_labels, name_leave
 from .tasks import people
 
 RESOURCES = [("Priya Sharma", "PS", "Project Manager", 0.5, 95, "priya@example.com"),
@@ -28,11 +29,15 @@ def count_by_resource(resource, criteria=""):
     return "+".join([parts[0]] + [f"IF(MaxPeople>={k},{p},0)" for k, p in enumerate(parts[1:], start=2)])
 
 
-def build_resources(wb, blank, n_rows=50, resources=None):
-    """resources: (name, initials, group, max units, rate, email[, type]) rows replacing the sample (an import)."""
+def build_resources(wb, blank, n_rows=50, resources=None, leave=None, months=None):
+    """resources: (name, initials, group, max units, rate, email[, type]) rows replacing the sample (an import);
+    leave: {person: {month header: days text}}; months: the month headers (one column each, after the details)."""
     ws = wb.create_sheet("Resources")
-    title(ws, "Resource Sheet", "Like MS Project's Resource Sheet. Names here feed the Resource dropdown on Tasks. "
-                                "Add rows to the table for more people.")
+    title(ws, "Resource Sheet", "One row per person: who they are, their availability and rate, then their leave by "
+                                'month, e.g. "16, 17(0.5)" under Nov-26 = all of 16 November and half of the 17th. '
+                                "Leave lowers capacity (Resource Report, Sprints) but doesn't move tasks. Add rows for "
+                                'more people; add a month by inserting a column among the months (right-click a month > Insert > Table Columns '
+                                'to the Left) and typing its name, e.g. "Jan-29".')
     ws.column_dimensions["A"].width = 3
     data = resources if resources is not None else [] if blank else RESOURCES
     t = Tab("ResourceTable")
@@ -56,7 +61,8 @@ def build_resources(wb, blank, n_rows=50, resources=None):
             note="Cost to date: Actual Cost entered on Tasks (shared by cost between the task's people), or Cost x "
                  "Progress where blank."),
         Col("Notes", "in", 30),
-    ], n_rows)
+    ] + leave_columns(data, blank, leave, months), n_rows)
+    name_leave(wb, months or month_labels())
     for column, defined in NAMES.items():
         name(wb, defined, f"ResourceTable[{column}]")
     dv = DataValidation(type="list", formula1="=L_ResType")

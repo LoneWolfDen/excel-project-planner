@@ -10,7 +10,8 @@ from .settings import ESSENTIAL, START, START_ROW
 QUICK_START = [
     ("1. Your project", "Fill in the blue cells above: name, manager, start date, status date, working week and "
                         "hours per day. Everything else has a sensible default on Settings.", None),
-    ("2. People", "List the people (or roles) with their availability and hourly rate.", "Resources"),
+    ("2. People", "List the people (or roles) with their availability, hourly rate and any leave (by month, on the "
+                  "same row).", "Resources"),
     ("3. Tasks", "One row per task: Level (1 = phase, 2 = task ...), Task Name, Duration in working days, the UID of "
                  "the tasks that must come first (Predecessors, e.g. 12 or 12, 14SS+2d) and who does it (Resources). That's a plan: dates, the "
                  "critical path, the Gantt and the reports follow. Optional columns are grouped: click + above "
@@ -35,7 +36,7 @@ def text(sizes, wizard=False):
         ("HOW IT WORKS", None),
         ("1. Settings", "Project start and status date (both typed dates; Ctrl+; enters today), working week and "
                         "hours/day are at the top of this sheet. Settings holds the rest (Gantt scale, sprint calendar, "
-                        "RAG thresholds ...). Add holidays on 'Holidays'. Update the status date whenever you report "
+                        "RAG thresholds ...). Holidays are listed on Settings, below the settings. Update the status date whenever you report "
                         "progress."),
         ("2. Resources", "List people/roles with Max Units and hourly rate. Type their names (or initials) in the "
                          "Resources column on Tasks: several people are comma-separated, with an optional share of "
@@ -85,8 +86,8 @@ def text(sizes, wizard=False):
         ("12. Agile Report", "Story points: scope, done, remaining, velocity (last 3 closed sprints) and the sprint it "
                              "forecasts finishing in; the current sprint's backlog and daily burndown; release burndown "
                              "and committed vs done charts."),
-        ("Leave", "Leave sheet: one row per person, one column per month (Jan-26 ... Dec-28; add a month by typing e.g. "
-                  "Jan-29 in the next header cell). Type the days off: '16, 17(0.5)' under Nov-26 = all of 16 November "
+        ("Leave", "On Resources, to the right of each person's details: one column per month (Jan-26 ... Dec-28; add a month by inserting a column "
+                  "among the months and typing e.g. Jan-29). Type the days off: '16, 17(0.5)' under Nov-26 = all of 16 November "
                   "and half of the 17th. Weekends and holidays are ignored. Leave lowers capacity on the Resource "
                   "Report and Sprints and can make a task Over-allocated; it does not move task dates."),
         ("13. RAID", "Risks, assumptions, issues and dependencies: owner, due date, probability and impact (1-5). Score "

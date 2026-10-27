@@ -13,6 +13,7 @@ their version in the PlannerVersion name (absent before v1.7). The same code run
 (scripts/upgrade_planner.py) and in the browser page docs/export.html.
 """
 import io
+import re
 
 import openpyxl
 from openpyxl.utils import get_column_letter
@@ -25,6 +26,7 @@ RENAMED = {"Tasks": {"Start No Earlier Than": "Constraint Date"}}
 # tables the builder fills from ProjectData; everything else with inputs is copied by header
 BUILT = {"Tasks", "HolidayTable", "LeaveTable", "AssignmentTable"}
 INPUT_FILL = HEADER_FILLS["in"].start_color.rgb[-6:]
+MONTH = re.compile(r"^[A-Z][a-z]{2}-\d\d$")          # a leave month header: Nov-26
 
 
 class UpgradeError(Exception):
@@ -117,11 +119,18 @@ def read_planner(data):
                  for r in _records(tables, "ResourceTable") if r.get("Resource Name")]
     holidays = [(r["Date"], r.get("Description")) for r in _records(tables, "HolidayTable") if r.get("Date")]
     leave, months = {}, None
-    if "LeaveTable" in tables:
-        months = [h for h in tables["LeaveTable"][1] if h and h != "Resource"]
-        for r in _records(tables, "LeaveTable"):
-            if r.get("Resource"):
-                leave[r["Resource"]] = {m: str(r[m]) for m in months if r.get(m) not in (None, "")}
+    # leave: a Leave sheet before v1.7, month columns on Resources (Nov-26 ...) since
+    source, key = ("LeaveTable", "Resource") if "LeaveTable" in tables else ("ResourceTable", "Resource Name")
+    if source in tables:
+        months = [h for h in tables[source][1] if isinstance(h, str) and MONTH.match(h)] or None
+        for r in _records(tables, source):
+            entries = {m: str(r[m]) for m in months or [] if r.get(m) not in (None, "")}
+            if r.get(key) and entries:
+                leave[r[key]] = entries
+    people = {r[0] for r in resources}
+    for person in sorted(set(leave) - people):
+        warnings.append(f"Leave for {person} was not carried: {person} is not on the Resources sheet.")
+        del leave[person]
     assignments = [(r["Task UID"], r.get("Resource"), r.get("Units"))
                    for r in _records(tables, "AssignmentTable") if r.get("Task UID")]
 

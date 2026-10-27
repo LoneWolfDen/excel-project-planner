@@ -19,7 +19,7 @@ import openpyxl
 
 from . import sample
 from .agile import build_agile
-from .gantt import build_gantt
+from .gantt import build_timeline
 from .instructions import build_instructions
 from .msp import build_msp_resources, build_msp_tasks
 from .core import name
@@ -35,8 +35,8 @@ from .status import build_status
 from .tasks import build_tasks, take_people, take_stage
 
 ORDER = ["Start", "Status", "Roadmap", "Schedule Report", "Resource Report", "Agile", "Log", "History", "Settings",
-         "Tasks", "Gantt", "Resources", "Cost", "MSP_Tasks", "MSP_Resources"]
-TAB_COLOURS = {"Start": "1F4E78", "Status": "548235", "Tasks": "2F75B5", "Gantt": "2F75B5", "Roadmap": "548235",
+         "Tasks", "Resources", "Cost", "MSP_Tasks", "MSP_Resources"]
+TAB_COLOURS = {"Start": "1F4E78", "Status": "548235", "Tasks": "2F75B5", "Roadmap": "548235",
                "Resources": "7030A0", "Log": "C55A11", "Agile": "548235", "Schedule Report": "548235",
                "Resource Report": "548235", "History": "C55A11", "Settings": "BF8F00", "Cost": "806000",
                "MSP_Tasks": "595959", "MSP_Resources": "595959"}
@@ -105,10 +105,10 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
         more.setdefault(uid, []).append((resource, units))
     rows = [take_stage(take_people(dict(r), more.get(r.get("UID"), [])), data.stages if data else None)
             for r in rows]
-    build_tasks(wb, rows, n_tasks)
+    tasks_ws, letters = build_tasks(wb, rows, n_tasks)
+    build_timeline(wb, tasks_ws, letters, n_tasks, sizes.gantt_columns)
     charted = min(12, sizes.sprints)                 # sprints shown on the Status and Agile charts
     agile_ws, sprint_letters = build_agile(wb, blank, sizes.sprints, charted)
-    build_gantt(wb, n_tasks, sizes.gantt_columns, [r.get("Level") for r in rows])
     if import_wizard:
         build_msp_tasks(wb, n_tasks)
         build_msp_resources(wb, sizes.resources)
@@ -189,12 +189,12 @@ def main(argv=None):
     p.add_argument("--recalc", action="store_true",
                    help="recalculate with LibreOffice so the saved file carries values (for previews)")
     d = Sizes()
-    p.add_argument("--tasks", type=int, default=d.tasks, help="rows in the Tasks table (and Gantt / MSP_Tasks)")
+    p.add_argument("--tasks", type=int, default=d.tasks, help="rows in the Tasks table (and MSP_Tasks)")
     p.add_argument("--resources", type=int, default=d.resources, help="rows in the Resources table")
     p.add_argument("--grid-resources", type=int, default=d.grid_resources,
                    help="resources shown in the per-resource grids (Resource Report)")
     p.add_argument("--sprints", type=int, default=d.sprints, help="rows in the sprint table (Agile sheet)")
-    p.add_argument("--gantt-columns", type=int, default=d.gantt_columns, help="columns in the Gantt timeline")
+    p.add_argument("--gantt-columns", type=int, default=d.gantt_columns, help="columns in the Gantt timeline (right of the Tasks table)")
     p.add_argument("--weeks", type=int, default=d.weeks, help="weeks in the Resource Report grids")
     p.add_argument("--stress", type=int, default=0, help="repeat the sample project N times (performance tests)")
     p.add_argument("--baselined", action="store_true",

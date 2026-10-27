@@ -1,20 +1,21 @@
-"""Gantt sheet: a task panel (Excel Table "GanttView") and a timeline drawn purely with conditional formatting.
+"""The Gantt timeline, drawn to the right of the Tasks table on the same rows (B-1005: one plan sheet).
 
 The timeline cells hold no formulas at all: bars, the planned outline, milestones, deadlines, the status date and
-non-working days are conditional-format rules, which Excel only evaluates for the cells on screen. That keeps the
-calculation chain small (see docs/ARCHITECTURE.md).
+non-working days are conditional-format rules reading the Tasks row's own helper columns (_DoneFrom, _RemFrom,
+_ShowPlan, ...), and Excel only evaluates them for the cells on screen. Only the header rows (dates, month and year
+labels) are formulas, so the timeline adds a few hundred cells to the calculation chain whatever the plan's size
+(see docs/ARCHITECTURE.md). Planned dates are a border, the current schedule is the fill.
 """
 from openpyxl.formatting.rule import FormulaRule, Rule
 from openpyxl.styles.differential import DifferentialStyle
 from openpyxl.styles.numbers import NumberFormat
-from openpyxl.styles import Alignment, Border, Font, Side
-from openpyxl.utils import get_column_letter
+from openpyxl.styles import Alignment, Border, Side
+from openpyxl.utils import column_index_from_string, get_column_letter
+from openpyxl.worksheet.hyperlink import Hyperlink
 
-from .core import (HEADER_FILLS, NOTE_FONT, SHORT_DATE, Col, Tab, add_table, fill, font, name)
-from .tasks import group_columns, group_outline
+from .core import HEADER_FILLS, fill, font, name
+from .tasks import HEADER_ROW, LAYOUT
 
-TABLE = "GanttView"
-HEADER_ROW = 5
 WD = "WorkWeek,Holidays"
 # planned (baseline) = border, current schedule = fill (docs/REAL_WORLD_FIT.md): red is kept for slip
 COLOURS = {"critical": "F4B183", "summary": "404040", "done": "70AD47", "remaining": "9DC3E6", "slip": "E06666",
@@ -36,71 +37,13 @@ def column_start(k):
             f"EDATE({first_month},({k}-1)*IF(GanttPeriod>=90,3,1)))")
 
 
-def build_gantt(wb, n_rows, n_days, levels=()):
-    """levels: the Level of each task the workbook is built with, for the Excel outline grouping."""
-    ws = wb.create_sheet("Gantt")
-    ws["A1"] = '=ProjectName&"  -  Gantt Chart"'
-    ws["A1"].font = font(size=16, bold=True, color="1F4E78")
-    ws["A2"] = ('="Status date: "&TEXT(StatusDate,"ddd dd-mmm-yyyy")&"   |   Forecast finish: "&TEXT(MAX(tsk_FcFinish),'
-                '"dd-mmm-yyyy")&"   |   Planned finish: "&TEXT(MAX(tsk_PlanFinish),"dd-mmm-yyyy")&IF(COUNTA(tsk_Name)>ROWS('
-                'GanttView[ID]),"   |   Showing the first "&ROWS(GanttView[ID])&" tasks","")')
-    ws["A2"].font = font(bold=True, color="404040")
-
-    g = Tab(TABLE)
-    n = g.row("_Row")
-    blank = f'IFERROR(INDEX(tsk_Name,{n})="",TRUE())'          # also true past the end of the Tasks table
-    task = lambda col: f"INDEX({col},{n})"
-    show = lambda col: f'IF({blank},"",{task(col)})'
-    pct = g.row("%")
-    fs, ff = g.row("Start"), g.row("Finish")
-    # the panel's essentials, then the rest in a collapsed column group (+ above it), so more timeline fits
-    cols = [
-        Col("ID", width=5, formula=show("tsk_ID"), center=True),
-        Col("Task", width=34, formula=f'IF({blank},"",REPT("    ",{task("tsk_Level")}-1)&{task("tsk_Name")})'),
-        Col("Start", width=10, fmt=SHORT_DATE, formula=show("tsk_FcStart")),
-        Col("Finish", width=10, fmt=SHORT_DATE, formula=show("tsk_FcFinish")),
-        Col("%", width=6, fmt="0%", center=True, formula=show("tsk_Progress")),
-        Col("Resources", width=13, formula=f'IF({blank},"",{task("tsk_ResourceNames")}&"")'),
-        Col("WBS", width=7, formula=show("tsk_WBS"), center=True),
-        Col("Dur", width=5, center=True, formula=(
-            f'IF({blank},"",IF({task("tsk_IsSummary")},NETWORKDAYS.INTL({task("tsk_FcStart")},{task("tsk_FcFinish")},{WD}),'
-            f'N({task("tsk_Duration")})))')),
-        Col("Planned Start", width=10, fmt=SHORT_DATE, formula=show("tsk_PlanStart")),
-        Col("Planned Finish", width=10, fmt=SHORT_DATE, formula=show("tsk_PlanFinish")),
-        Col("Status", width=11, center=True, formula=show("tsk_Status")),
-        Col("Show", width=6, center=True, formula=f'IF({blank},"",{task("tsk_Show")}&"")',
-            note="Yes down to Settings > OutlineShowLevel: filter on Yes to collapse the outline."),
-        # helpers read by the timeline's conditional formatting
-        Col("_Row", "help", 5, formula=f"ROW()-ROW({g.head('ID')})"),
-        Col("_IsSummary", "help", 5, formula=f"IF({blank},FALSE(),{task('tsk_IsSummary')})"),
-        Col("_IsMilestone", "help", 5, formula=f"IF({blank},FALSE(),AND({task('tsk_IsLeaf')}=1,N({task('tsk_Duration')})=0))"),
-        Col("_DoneFrom", "help", 8, "dd-mmm;;-", formula=(
-            f"IF({blank},0,IF(AND({task('tsk_IsLeaf')}=1,NOT({g.row('_IsMilestone')}),N({pct})>0),{fs},0))")),
-        Col("_DoneTo", "help", 8, "dd-mmm;;-", formula=(
-            f"IF({g.row('_DoneFrom')}=0,0,IF({pct}>=1,{ff},MAX({g.row('_DoneFrom')},{fs}+ROUND(({ff}-{fs}+1)*{pct},0)-1)))")),
-        Col("_RemFrom", "help", 8, "dd-mmm;;-", formula=(
-            f"IF({blank},0,IF(OR({task('tsk_IsLeaf')}<>1,{g.row('_IsMilestone')},N({pct})>=1),0,"
-            f"IF({g.row('_DoneTo')}>0,{g.row('_DoneTo')}+1,{fs})))")),
-        Col("_RemTo", "help", 8, "dd-mmm;;-", formula=f"IF({g.row('_RemFrom')}=0,0,{ff})"),
-        Col("_ShowPlan", "help", 5, formula=f"IF({blank},FALSE(),OR(NOT(BaselineSet),N({task('tsk_BaseStart')})>0))",
-            note="Draw the planned outline: every task until a baseline is set, then only tasks that have one (a task "
-                 "added after the baseline shows its bar without an outline)."),
-        Col("_Deadline", "help", 8, "dd-mmm;;-", formula=f"IF({blank},0,N({task('tsk_Deadline')}))"),
-        Col("_Critical", "help", 5, formula=f'IF({blank},FALSE(),{task("tsk_Critical")}="Yes")'),
-    ]
-    L = add_table(ws, TABLE, HEADER_ROW, 1, cols, n_rows)
-    group_outline(ws, levels, HEADER_ROW + 1)
-    for c in cols:
-        for r in range(HEADER_ROW + 1, HEADER_ROW + n_rows + 1):
-            ws[f"{L[c.name]}{r}"].font = font(size=9)
-    ws.row_dimensions[HEADER_ROW].height = 30
-    ws.column_dimensions.group(L["_Row"], L["_Critical"], hidden=True, outline_level=1)
-    ws.sheet_properties.outlinePr.summaryRight = False             # the + sits above Resources, left of the group
-    group_columns(ws, L["WBS"], L["Status"], 1)                    # Show stays visible between the two groups
-
-    origin_col = len(cols) + 1                       # narrow spacer column; the timeline starts after it
+def build_timeline(wb, ws, L, n_rows, n_days):
+    """Header rows and conditional formatting for n_days timeline columns after the Tasks table (L: its letters).
+    A narrow spacer column keeps the table from growing into the timeline when someone types next to it."""
+    last_table_col = column_index_from_string(L[LAYOUT[-1][0]])
+    origin_col = last_table_col + 1
     ws.column_dimensions[get_column_letter(origin_col)].width = 1
-    name(wb, "gantt_Origin", f"Gantt!${get_column_letter(origin_col)}${HEADER_ROW}")
+    name(wb, "gantt_Origin", f"Tasks!${get_column_letter(origin_col)}${HEADER_ROW}")
     first, last = origin_col + 1, origin_col + n_days
     k = "(COLUMN()-COLUMN(gantt_Origin))"
     for col in range(first, last + 1):
@@ -118,12 +61,15 @@ def build_gantt(wb, n_rows, n_days, levels=()):
             c.font = font(size=size, bold=(r == 4), color=colour)
             c.alignment = Alignment(horizontal="left" if r == 4 else "center", vertical="center")
         ws.cell(HEADER_ROW, col).fill = HEADER_FILLS["calc"]
-
     _timeline_rules(ws, L, first, last, n_rows)
     _legend(ws, first)
-    ws.freeze_panes = f"{get_column_letter(first)}{HEADER_ROW + 1}"
-    ws.sheet_view.zoomScale = 90
-    return ws
+    # a link from the top of the table to the timeline (it sits past the collapsed column groups)
+    cell = f"{L['ResIn']}3"                      # clear of the next-free-UID note in A3
+    jump = ws[cell]
+    jump.value = "Gantt timeline >>"
+    jump.hyperlink = Hyperlink(ref=cell, location=f"Tasks!{get_column_letter(first)}{HEADER_ROW}")
+    jump.font = font(color="0563C1", bold=True)
+    return first, last
 
 
 def _timeline_rules(ws, L, first, last, n_rows):
@@ -136,22 +82,22 @@ def _timeline_rules(ws, L, first, last, n_rows):
     in_period = lambda x: f"AND({x}>0,{x}>={d},{x}<{end})"
     overlaps = lambda a, b: f"AND({a}>0,{d}<={b},{end}-1>={a})"
     thin = lambda colour: Side(style="thin", color=colour)
-    ps, pf = at("Planned Start"), at("Planned Finish")
-    planned = f"AND({at('_ShowPlan')},ISNUMBER({ps}),{overlaps(ps, pf)})"
+    ps, pf = at("PS"), at("PF")
+    planned = f"AND({at('ShowPlan')},ISNUMBER({ps}),{overlaps(ps, pf)})"
     first_day, last_day = in_period(ps), f"AND({pf}>0,{pf}>={d},{pf}<{end})"
     edge = lambda *sides: Border(**{s: thin(COLOURS["planned"]) for s in sides})
     # Excel applies every rule that is true and, for each property, the first one listed wins
     rules = [
-        FormulaRule(formula=[in_period(at("_Deadline"))], fill=fill(COLOURS["deadline"])),
-        FormulaRule(formula=[f"AND({at('_IsSummary')},{overlaps(at('Start'), at('Finish'))})"],
+        FormulaRule(formula=[in_period(f"N({at('DL')})")], fill=fill(COLOURS["deadline"])),
+        FormulaRule(formula=[f"AND({at('IsSum')},{overlaps(at('FS'), at('FF'))})"],
                     fill=fill(COLOURS["summary"])),
-        FormulaRule(formula=[f"AND({at('_IsMilestone')},{in_period(at('Start'))})"], fill=fill(COLOURS["milestone"])),
-        FormulaRule(formula=[overlaps(at("_DoneFrom"), at("_DoneTo"))], fill=fill(COLOURS["done"])),
+        FormulaRule(formula=[f"AND({at('IsMile')},{in_period(at('FS'))})"], fill=fill(COLOURS["milestone"])),
+        FormulaRule(formula=[overlaps(at("GDoneFrom"), at("GDoneTo"))], fill=fill(COLOURS["done"])),
         # slip: remaining work after the planned finish (only where the outline is drawn)
-        FormulaRule(formula=[f"AND({at('_ShowPlan')},ISNUMBER({pf}),{d}>{pf},{overlaps(at('_RemFrom'), at('_RemTo'))})"],
+        FormulaRule(formula=[f"AND({at('ShowPlan')},ISNUMBER({pf}),{d}>{pf},{overlaps(at('GRemFrom'), at('GRemTo'))})"],
                     fill=fill(COLOURS["slip"])),
-        FormulaRule(formula=[f"AND({at('_Critical')},{overlaps(at('_RemFrom'), at('_RemTo'))})"], fill=fill(COLOURS["critical"])),
-        FormulaRule(formula=[overlaps(at("_RemFrom"), at("_RemTo"))], fill=fill(COLOURS["remaining"])),
+        FormulaRule(formula=[f"AND({at('Crit')}=\"Yes\",{overlaps(at('GRemFrom'), at('GRemTo'))})"], fill=fill(COLOURS["critical"])),
+        FormulaRule(formula=[overlaps(at("GRemFrom"), at("GRemTo"))], fill=fill(COLOURS["remaining"])),
         # planned days the current bar has left (work moved later or earlier): a pale gap inside the outline
         FormulaRule(formula=[planned], fill=fill(COLOURS["planned_gap"])),
         # the planned outline: top and bottom on every planned day, closed on its first and last day
@@ -170,12 +116,6 @@ def _timeline_rules(ws, L, first, last, n_rows):
     # month / quarter scales: rows 3-4 name the month and year, so the header's day number (always 1) is hidden
     hide = DifferentialStyle(numFmt=NumberFormat(numFmtId=200, formatCode=";;;"))
     ws.conditional_formatting.add(header, Rule(type="expression", formula=["GanttPeriod>=28"], dxf=hide))
-    panel = f"A{top}:{L['Status']}{bottom}"
-    ws.conditional_formatting.add(panel, FormulaRule(formula=[at("_IsSummary")], font=Font(bold=True), fill=fill("DDEBF7")))
-    from .tasks import STATUS_COLOURS
-    for status, colour in STATUS_COLOURS.items():
-        ws.conditional_formatting.add(f"{L['Status']}{top}:{L['Status']}{bottom}",
-                                      FormulaRule(formula=[f'{at("Status")}="{status}"'], font=Font(color=colour, bold=True)))
 
 
 def _legend(ws, first):
@@ -195,4 +135,3 @@ def _legend(ws, first):
         if border:
             swatch.border = border
         ws.cell(row, col + 1, text).font = font(size=9)
-    ws.cell(3, 1, "Timeline: conditional formatting only (no formulas), so it costs no recalculation.").font = NOTE_FONT

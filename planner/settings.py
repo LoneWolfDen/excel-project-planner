@@ -92,7 +92,7 @@ def settings_rows(blank, max_sprints):
         ("GanttPeriod", "Gantt days per column", 1, "0", True,
          "1 = daily timeline, 7 = weekly, 30 = monthly (calendar months), 91 = quarterly (calendar quarters)."),
         ("OutlineShowLevel", "Show tasks down to outline level", 9, "0", True,
-         "Tasks and Gantt > Show is Yes for rows at this level or above: filter Show = Yes to see only phases (1), "
+         "Tasks > Show (DETAIL section) is Yes for rows at this level or above: filter Show = Yes to see only phases (1), "
          "phases and tasks (2) ... Reapply the filter (Data > Reapply) after changing it."),
         ("RoadmapStart", "Roadmap first month", "=DATE(YEAR(ProjectStart),MONTH(ProjectStart),1)", "mmm-yy", True,
          "The Roadmap sheet's first month. Overwrite with the first of any month to scroll it."),

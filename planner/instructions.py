@@ -16,7 +16,8 @@ QUICK_START = [
                  "the tasks that must come first (Predecessors, e.g. 12 or 12, 14SS+2d) and who does it (Resources). That's a plan: dates, the "
                  "critical path, the Gantt and the reports follow. Optional columns are grouped: click + above "
                  "a section to show them.", "Tasks"),
-    ("4. Check", "Fix anything in the Issues column (red), then look at the Gantt and the Roadmap.", "Gantt"),
+    ("4. Check", "Fix anything in the Issues column (red), then look at the Gantt timeline to the right of the "
+                 "table (the link at the top of Tasks) and the Roadmap.", "Tasks"),
     ("5. Baseline", "When the plan is agreed, freeze it: on Tasks open the BASELINE section (+), copy the 4 'BL "
                     "Source' columns and Paste Special > Values onto the 4 Baseline columns.", "Tasks"),
 ]
@@ -61,15 +62,16 @@ def text(sizes, wizard=False):
                           "deadline). Total Slack = how far a task can slip before it delays the project or a deadline; Free "
                           "Slack = before it delays a successor. Critical = slack <= Settings > CriticalSlackDays on an "
                           "unfinished task. A missed deadline gives negative slack to the task and the chain feeding it."),
-        ("6. Gantt", "Read-only view. The panel shows ID, Task, Start, Finish, % and Resources; click + above it for WBS, "
-                     "duration, planned dates and status. Timeline: black outline = planned dates (the baseline once set; a "
+        ("6. Gantt", "The timeline is on the Tasks sheet, to the right of the table, on the same rows (the link "
+                     "'Gantt timeline >>' at the top jumps there; ID and Task stay frozen on the left). It is "
+                     "conditional formatting only. Timeline: black outline = planned dates (the baseline once set; a "
                      "task added after the baseline has no outline), pale blue-grey = planned days no work is on now, "
                      "green = done, blue = remaining on track, red = remaining past the planned finish (slip), orange = "
                      "remaining on the critical path, dark grey = summary, purple = milestone, red cell = deadline, red "
                      "line = status date. "
                      "Change GanttStart / GanttPeriod (1 = days, 7 = weeks, 30 = months, 91 = quarters) on Settings to "
                      "scroll or zoom. Collapse the outline with the 1 2 3 buttons at the top left (rows are grouped by "
-                     "Level), or set Settings > OutlineShowLevel and filter Show = Yes (also on Tasks)."),
+                     "Level), or set Settings > OutlineShowLevel and filter Show = Yes (DETAIL section)."),
         ("6b. Roadmap", "One landscape page for sponsors: phases and milestones with their dates, drawn by month (blue "
                         "= forecast, green = done, amber = late vs plan, outline = planned, purple = milestone, red = "
                         "deadline missed). Settings > RoadmapStart scrolls the 18 months shown."),
@@ -149,8 +151,8 @@ def text(sizes, wizard=False):
         ("Rescheduling", "Settings > RescheduleAfterStatus = Yes moves incomplete work to after the status date (like MS "
                          "Project 'Update Project'), so late tasks push successors."),
         ("Capacity", f"Tables grow when you add rows: Tasks starts with {sizes.tasks} rows, Resources {sizes.resources}, "
-                     f"SprintTable {sizes.sprints}, Log 150, Holidays 100. The Gantt shows the first {sizes.tasks} "
-                     f"tasks (the Gantt says so when there are more); the Gantt timeline has {sizes.gantt_columns} columns; "
+                     f"SprintTable {sizes.sprints}, Log 150, Holidays 100. The Gantt timeline has "
+                     f"{sizes.gantt_columns} columns; "
                      f"the per-resource grids on the Resource Report show the first {sizes.grid_resources} "
                      f"resources and the Resource Report {sizes.weeks} weeks. To change these sizes, rebuild with "
                      "scripts/build_planner.py --tasks / --resources / --grid-resources / --sprints / "
@@ -177,8 +179,8 @@ def text(sizes, wizard=False):
                       "scripts/upgrade_planner.py old.xlsx new.xlsx). Everything you typed is carried over."),
     ] + (WIZARD if wizard else []) + [
         ("NAMES AND TABLES (Formulas > Name Manager)", None),
-        ("Tables", "Tasks, ResourceTable, SprintTable, HolidayTable, GanttView, KPIs, StatusSummary, "
-                   "NextMilestones, OverallStatus, StatusRAG, EarnedValue, StatusNotes, PhaseSummary, MilestoneReport, "
+        ("Tables", "Tasks, ResourceTable, SprintTable, HolidayTable, KPIs, StatusSummary, "
+                   "NextMilestones, OverallStatus, StatusRAG, StatusNotes, PhaseSummary, MilestoneReport, "
                    "LateTasks, StartingSoon, DueSoon, CriticalTasks, ResourceSummary, AgileKPIs, SprintBacklog, SprintBurndown, "
                    "Log, TopRAID, ChangeControl, SnapshotNow, StatusHistory and the List* "
                    "dropdown tables. Inside a table, formulas read [@Column] (this row)."),

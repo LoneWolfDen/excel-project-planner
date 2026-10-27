@@ -136,7 +136,7 @@ class StructureTest(Tmp):
 
     def test_sheets(self):
         self.assertEqual(self.wb.sheetnames, ["Start", "Status", "Roadmap", "Schedule Report", "Resource Report",
-                                              "Agile", "Log", "History", "Settings", "Tasks", "Gantt", "Resources", "Cost"])
+                                              "Agile", "Log", "History", "Settings", "Tasks", "Resources", "Cost"])
 
     def test_named_ranges(self):
         names = set(self.wb.defined_names)
@@ -156,7 +156,7 @@ class StructureTest(Tmp):
         calculated = {c.name for c in tasks.tableColumns if c.calculatedColumnFormula is not None}
         self.assertIn("Finish", calculated)
         self.assertNotIn("Duration", calculated)                 # inputs are not calculated columns
-        for sheet, table in (("Resources", "ResourceTable"), ("Agile", "SprintTable"), ("Gantt", "GanttView"),
+        for sheet, table in (("Resources", "ResourceTable"), ("Agile", "SprintTable"),
                              ("Settings", "HolidayTable"), ("Settings", "ListRAG")):
             self.assertIn(table, self.wb[sheet].tables)
 
@@ -194,7 +194,7 @@ class StructureTest(Tmp):
                         self.fail(f"{ws.title}!{c.coordinate} is in a hidden column")
 
     def test_gantt_timeline_has_no_formulas(self):
-        ws = self.wb["Gantt"]
+        ws = self.wb["Tasks"]                                       # the timeline is right of the Tasks table
         origin = named_cell(self.wb, "gantt_Origin")
         for row in ws.iter_rows(min_row=origin.row + 1, max_row=origin.row + 30, min_col=origin.column + 1,
                                 max_col=origin.column + 150):
@@ -219,8 +219,8 @@ class StructureTest(Tmp):
         self.assertEqual([ws.cell(r, c).value for r in range(FIRST, FIRST + 200)], list(range(1, 201)))
 
     def test_views_read_tasks_by_name_not_row(self):
-        # Gantt and the reports use INDEX(tsk_..., n), so rows inserted on Tasks still show up
-        for sheet in ("Gantt", "Status", "Schedule Report", "Resource Report", "Agile", "Log", "History"):
+        # the reports use INDEX(tsk_..., n), so rows inserted on Tasks still show up
+        for sheet in ("Status", "Schedule Report", "Resource Report", "Agile", "Log", "History"):
             for row in self.wb[sheet].iter_rows(max_row=120, max_col=25):
                 for c in row:
                     if isinstance(c.value, str) and c.value.startswith("="):
@@ -350,9 +350,7 @@ class ScheduleTest(Tmp):
         self.assertIsNone(self.val(2, "DLChk"))
         rag = {r["Area"]: r for r in table_rows(self.wb, "Status", "StatusRAG")}
         self.assertEqual(rag["Deadlines"]["Value"], 1)
-        gantt = self.wb["Gantt"]
-        col = {c.value: c.column for c in gantt[5] if c.value}
-        self.assertEqual(d(gantt.cell(self.t.row_of(19), col["_Deadline"]).value), dt.date(2026, 11, 6))
+        self.assertEqual(self.val(19, "Deadline"), dt.date(2026, 11, 6))    # the timeline marks this day
 
     def test_critical_path(self):
         # hand-worked: UAT's Start No Earlier Than (07-Dec) drives the finish; everything after it is critical
@@ -783,20 +781,17 @@ class ViewsTest(Tmp):
 
     def test_outline_grouping_and_show_filter(self):
         raw = openpyxl.load_workbook(self.path)
-        for sheet in ("Tasks", "Gantt"):
-            ws = raw[sheet]
-            self.assertFalse(ws.sheet_properties.outlinePr.summaryBelow, sheet)       # summary rows above
-            self.assertEqual([ws.row_dimensions[FIRST + i].outline_level for i in range(13)],
-                             [0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 2, 2], sheet)          # sample levels 1, 2, 2, 2, 1 ...
+        ws = raw["Tasks"]
+        self.assertFalse(ws.sheet_properties.outlinePr.summaryBelow)                 # summary rows above
+        self.assertEqual([ws.row_dimensions[FIRST + i].outline_level for i in range(13)],
+                         [0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 2, 2])                    # sample levels 1, 2, 2, 2, 1 ...
         wb = recalc(self.path, self.dir, lambda wb: setattr(named_cell(wb, "OutlineShowLevel"), "value", 1))
         self.assertEqual(errors_in(wb), [])
         shown = [r["Task Name"] for r in table_rows(wb, "Tasks", "Tasks") if r["Show"] == "Yes"]
         self.assertEqual(shown, ["Initiation", "Requirements & Design", "Build", "Test & Release", "Project Close"])
-        gantt = [r["Show"] for r in table_rows(wb, "Gantt", "GanttView")[:4]]
-        self.assertEqual(gantt, ["Yes", "No", "No", "No"])
 
     def gantt_header(self, wb, n):
-        ws, origin = wb["Gantt"], named_cell(wb, "gantt_Origin")
+        ws, origin = wb["Tasks"], named_cell(wb, "gantt_Origin")
         return [[ws.cell(r, origin.column + 1 + k).value for k in range(n)] for r in (3, 4, origin.row)]
 
     def test_month_and_quarter_scales(self):
@@ -861,14 +856,17 @@ class EssentialsTest(Tmp):
         notes = openpyxl.utils.cell.range_boundaries(ws.tables["StatusNotes"].ref)
         self.assertGreater(snapshot[1], notes[3])                       # below the printed page
 
-    def test_gantt_panel_shows_the_essentials(self):
-        ws = self.raw["Gantt"]
-        head = {c.value: c.column_letter for c in ws[5] if c.value}
+    def test_plan_sheet_shows_the_agreed_columns(self):
+        # B-1005: one plan sheet; these are always visible, then each collapsed section's key column
+        ws = self.raw["Tasks"]
+        head = {c.value: c.column_letter for c in ws[5] if c.value and c.column <= ws.max_column}
         hidden = lambda h: bool(ws.column_dimensions[head[h]].hidden)
-        self.assertEqual([h for h in head if not h.startswith("_") and not hidden(h)][:7],
-                         ["ID", "Task", "Start", "Finish", "%", "Resources", "Show"])
-        self.assertTrue(all(hidden(h) for h in ("WBS", "Dur", "Planned Start", "Planned Finish", "Status")))
-        self.assertEqual(ws.column_dimensions[head["Planned Start"]].width, 10)   # widths kept inside the group
+        shown = [h for h in head if not h.startswith("_") and not hidden(h) and not isinstance(h, (int, float))]
+        self.assertEqual(shown[:15], ["ID", "UID", "Level", "Task Name", "Duration", "Predecessors", "Resources",
+                                      "Stage", "Actual Start", "Actual Finish", "Start", "Finish", "Sprint", "Notes",
+                                      "Issues"])
+        self.assertNotIn("Gantt", self.raw.sheetnames)
+        self.assertEqual(ws.column_dimensions[head["Planned Start"]].width, 15)   # widths kept inside the group
 
     def test_optional_columns_are_grouped_and_collapsed(self):
         ws = self.raw["Tasks"]
@@ -876,9 +874,10 @@ class EssentialsTest(Tmp):
         state = lambda header: (ws.column_dimensions[openpyxl.utils.get_column_letter(col[header])].outlineLevel,
                                 bool(ws.column_dimensions[openpyxl.utils.get_column_letter(col[header])].hidden))
         for header in ("Task Name", "Duration", "Predecessors", "Resources", "Stage", "Actual Start", "Finish",
-                       "Status", "Critical", "Issues", "Deadline", "Finish Var", "Work", "Sprint", "Duration Var"):
+                       "Sprint", "Notes", "Issues", "Deadline", "Finish Var", "Work", "Story Points", "Duration Var"):
             self.assertEqual(state(header), (0, False), header)          # essentials and each section's key column
-        for header in ("Mode", "Constraint", "Late Start", "Total Slack", "% Complete", "Resource Names", "Story Points",
+        for header in ("Mode", "Constraint", "Status", "Critical", "WBS", "Show", "Late Start", "Total Slack",
+                       "% Complete", "Resource Names", "Planned Sprint",
                        "BL Source Start", "Baseline Start", "Baseline Work"):
             self.assertEqual(state(header), (1, True), header)           # collapsed sections
         self.assertEqual(state("_Row"), (2, True))                       # helpers: one level deeper
@@ -1045,13 +1044,13 @@ class PlannedVsCurrentTest(unittest.TestCase):
         self.assertEqual((serial(t[13]["Planned Start"]), serial(t[13]["Planned Finish"])),
                          (dt.date(2026, 10, 9), dt.date(2026, 10, 20)))            # first estimate: 8 days
         self.assertGreater(t[30]["Finish Var"], 0)                                 # the project has slipped
-        g = {r["ID"]: r for r in table_rows(wb, "Gantt", "GanttView") if r["ID"]}
+        g = {r["ID"]: r for r in table_rows(wb, "Tasks", "Tasks") if r["ID"]}
         self.assertTrue(g[13]["_ShowPlan"])
         self.assertFalse(g[31]["_ShowPlan"])                          # added after the baseline: no outline
         self.assertEqual(key_figures(wb)["Baseline"], "Set on 30 tasks")
 
     def test_outline_rules(self):
-        ws = openpyxl.load_workbook(self.path)["Gantt"]
+        ws = openpyxl.load_workbook(self.path)["Tasks"]
         borders = [r.dxf.border for cf in ws.conditional_formatting for r in cf.rules if r.dxf and r.dxf.border]
         edges = {tuple(bool(getattr(b, s) and getattr(b, s).style) for s in ("left", "right", "top", "bottom"))
                  for b in borders}
@@ -1414,9 +1413,8 @@ class InsertRowTest(Tmp):
         self.assertEqual(t.get(20, "Pred"), "15,19")                  # by ID: shifted
         self.assertEqual(t.get(18, "Pred"), "17,13SS+2d")             # Feature screens now ID 18
         self.assertEqual(t.get(11, "Work"), 168 + 0)                  # no resource on new task
-        gantt = wb["Gantt"]
-        task = next(c.column for c in gantt[5] if c.value == "Task")
-        self.assertEqual(gantt.cell(14 + FIRST - 1, task).value.strip(), "Security review")
+        # the timeline is on the same row: the inserted task's bar starts at its start
+        self.assertEqual(serial(t.get(14, "_RemFrom")), t.get(14, "FS"))
 
 
 import lo_session  # noqa: E402
@@ -1463,9 +1461,8 @@ class RealRowEditTest(Tmp):
         self.assertIsNone(t.get(15, "Link"))
         self.assertEqual(t.get(15, "PS"), dt.date(2026, 10, 27))   # follows the new task
         self.assertEqual(t.get(20, "Pred"), "15,19")                 # IDs renumbered in the MSP text
-        gantt = wb["Gantt"]
-        task = next(c.column for c in gantt[5] if c.value == "Task")
-        self.assertEqual(gantt.cell(14 + FIRST - 1, task).value.strip(), "Security review")
+        # the timeline is on the same row: the inserted task's bar starts at its start
+        self.assertEqual(serial(t.get(14, "_RemFrom")), t.get(14, "FS"))
 
     def test_delete_a_predecessor(self):
         def delete(calc, cols):
@@ -1639,7 +1636,7 @@ class BuildOptionsTest(unittest.TestCase):
             self.assertEqual((rows("Resources", "ResourceTable"), rows("MSP_Resources", "MSPResources"),
                               rows("Agile", "SprintTable")), (resources, resources, sprints))
             origin = named_cell(raw, "gantt_Origin")
-            gantt_ws = raw["Gantt"]
+            gantt_ws = raw["Tasks"]
             self.assertIsNotNone(gantt_ws.cell(origin.row, origin.column + gantt).value)    # last timeline date
             self.assertIsNone(gantt_ws.cell(origin.row, origin.column + gantt + 1).value)
             for grid_name in ("load_Grid", "rw_Load", "rw_Util"):

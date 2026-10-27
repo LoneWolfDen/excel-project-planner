@@ -17,7 +17,7 @@ import openpyxl
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from planner import upgrade  # noqa: E402
+from planner import settings, upgrade  # noqa: E402
 from test_planner import SOFFICE, build, errors_in, recalc  # noqa: E402
 from test_mspdi import table_rows  # noqa: E402
 
@@ -53,6 +53,17 @@ class ReadTest(unittest.TestCase):
             path = Path(tmp) / "new.xlsx"
             build(path)
             self.assertEqual(upgrade.read_planner(path.read_bytes())[4], "1.7")
+
+    def test_a_custom_week_becomes_custom(self):
+        wb = openpyxl.load_workbook(FIXTURES / "planner_v1.4.xlsx")
+        sheet, ref = wb.defined_names["WorkMon"].attr_text.split("!")
+        wb[sheet][ref.replace("$", "")].value = "No"                     # Tue-Fri: no preset matches
+        old = io.BytesIO()
+        wb.save(old)
+        self.assertEqual(upgrade.read_planner(old.getvalue())[0].settings["WorkingWeek"], "Custom")
+        fixture = upgrade.read_planner((FIXTURES / "planner_v1.4.xlsx").read_bytes())[0]
+        self.assertEqual(fixture.settings["WorkingWeek"], "Mon-Fri")
+        self.assertEqual(settings.week_preset({"WorkSat": "Yes"}), "Mon-Sat")
 
     def test_not_a_planner(self):
         with self.assertRaisesRegex(upgrade.UpgradeError, "isn't an Excel workbook"):

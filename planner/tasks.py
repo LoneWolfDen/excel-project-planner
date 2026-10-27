@@ -16,8 +16,12 @@ Everything else avoids volatile functions:
   * look-ups of INPUT columns (UID, Task Name, ID) use INDEX/MATCH over the whole column.
 A predecessor must be a detail task listed above its successor (the critical path's backward pass relies on it).
 """
+import copy
+
 from openpyxl.formatting.rule import FormulaRule
-from openpyxl.styles import Font
+from openpyxl.styles import Alignment, Font
+from openpyxl.utils import column_index_from_string, get_column_letter
+from openpyxl.worksheet.cell_range import MultiCellRange
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from .assignments import KEY_STEP, MAX_LISTED, over_allocated
@@ -41,7 +45,7 @@ N = {
     "PS": "Planned Start", "PF": "Planned Finish", "AS": "Actual Start", "AF": "Actual Finish",
     "FS": "Forecast Start", "FF": "Forecast Finish", "SVar": "Start Var", "Var": "Finish Var",
     "LS": "Late Start", "LF": "Late Finish", "TS": "Total Slack", "FSl": "Free Slack", "Crit": "Critical",
-    "DLChk": "Deadline Check", "LinkChk": "Link Check", "Pct": "% Complete", "Prog": "Progress", "Status": "Status",
+    "DLChk": "Deadline Check", "LinkChk": "Link Check", "Issues": "Issues", "Pct": "% Complete", "Prog": "Progress", "Status": "Status",
     "Res": "Resource", "Units": "Units", "OverAlloc": "Over-allocated", "Work": "Work", "Cost": "Cost", "ACin": "Actual Cost", "SprIn": "Planned Sprint",
     "Sprint": "Sprint", "SP": "Story Points",
     "PredTxt": "Predecessors", "Notes": "Notes",
@@ -79,7 +83,7 @@ NAMES = {
     "Dur": "tsk_Duration", "CType": "tsk_ConstraintType", "CT": "tsk_ConstraintCode", "Cons": "tsk_Constraint", "DL": "tsk_Deadline", "PS": "tsk_PlanStart",
     "PF": "tsk_PlanFinish", "AS": "tsk_ActStart", "AF": "tsk_ActFinish", "FS": "tsk_FcStart", "FF": "tsk_FcFinish",
     "SVar": "tsk_StartVariance", "Var": "tsk_Variance", "LS": "tsk_LateStart", "LF": "tsk_LateFinish",
-    "TS": "tsk_TotalSlack", "FSl": "tsk_FreeSlack", "Crit": "tsk_Critical", "DLChk": "tsk_DeadlineCheck", "LinkChk": "tsk_LinkCheck",
+    "TS": "tsk_TotalSlack", "FSl": "tsk_FreeSlack", "Crit": "tsk_Critical", "DLChk": "tsk_DeadlineCheck", "LinkChk": "tsk_LinkCheck", "Issues": "tsk_Issues",
     "Pct": "tsk_PctInput", "Prog": "tsk_Progress", "Status": "tsk_Status", "Res": "tsk_Resource",
     "Units": "tsk_Units", "Work": "tsk_Work", "Cost": "tsk_Cost", "Sprint": "tsk_Sprint",
     "PredTxt": "tsk_Predecessors", "Notes": "tsk_Notes", "BS": "tsk_BaseStart", "BF": "tsk_BaseFinish",
@@ -386,6 +390,15 @@ def formulas():
     f["OverAlloc"] = (f'IF(OR(NOT({leaf}),{R("LProg")}>=1),"",IF(OR({own_over},'
                       f'COUNTIFS(asg_TaskUID,{R("UID")},asg_OverAllocated,"Yes")>0),"Yes",""))')
     f["CurKey"] = f'IF(AND({leaf},CurrentSprint<>"",{R("Sprint")}=CurrentSprint),{R("Idx")},"")'
+    # everything wrong on the row, in words, so a user looks in one place (the check columns keep the detail)
+    uid, res = R("UID"), R("Res")
+    f["Issues"] = (f'IF({blank},"",TRIM(IF({R("LinkChk")}<>"",{R("LinkChk")}&" ","")'
+                   f'&IF(N({uid})=0,"No UID: give the row Settings > NextFreeUID. ",'
+                   f'IF(COUNTIF({C("UID")},{uid})>1,"UID "&{uid}&" is used twice. ",""))'
+                   f'&IF({R("WBS")}="?","Level is more than 1 below the row above. ","")'
+                   f'&IF({res}="","",IF(ISNA(MATCH({res},res_Name,0)),{res}&" is not on Resources. ",""))'
+                   f'&IF({R("OverAlloc")}="Yes","Over-allocated: see the Resource Report. ","")'
+                   f'&IF(LEFT({R("DLChk")},4)="Late","Misses its deadline ("&LOWER({R("DLChk")})&"). ","")))')
     return f
 
 
@@ -431,6 +444,8 @@ LAYOUT = [
     ("Crit", "calc", 8, None, True, "Yes when Total Slack <= CriticalSlackDays (Settings) and the task isn't complete."),
     ("DLChk", "calc", 12, None, True, None),
     ("LinkChk", "calc", 24, None, False, "Explains predecessor links and constraints that are ignored."),
+    ("Issues", "calc", 34, None, False, "Everything wrong on this row, in words: links, UID, outline level, resource, "
+                                        "over-allocation, missed deadline. Blank = fine."),
     ("Pct", "in", 9, "0%", False, "Enter 0-100%. An Actual Finish counts as 100%."),
     ("Prog", "calc", 9, "0%", False, "% Complete, rolled up to summaries (duration-weighted)."),
     ("Status", "calc", 12, None, True, None),
@@ -476,11 +491,25 @@ LAYOUT = [
                "PlanPct", "LBud", "LPV", "LEV", "LAC", "Phase", "PhaseKey", "MsKey", "LateKey", "StartKey", "DueKey", "CritKey",
                "LWDone", "DoneDate", "LPts", "CurKey")]
 
-GROUPS = [("ID", "IDENTITY"), ("Mode", "SCHEDULING INPUTS"), ("PS", "PLAN / ACTUAL / FORECAST"), ("SVar", "VARIANCE"),
-          ("LS", "CRITICAL PATH"), ("DLChk", "CHECKS"),
-          ("Pct", "PROGRESS"), ("Res", "RESOURCES & SPRINT"),
-          ("SrcS", "SET BASELINE: copy these 5 columns, then Paste Special > Values onto the 5 Baseline columns"),
-          ("DVar", "VARIANCE vs BASELINE"), ("Budget", "EARNED VALUE (at status date)"), ("Lvl", "HELPER COLUMNS (hidden - click + above to show)")]
+# The sheet's sections, left to right. The first holds what a plan needs and is always shown; each optional section is
+# an Excel column group, collapsed, whose +/- button sits on its first (key) column, which stays visible. (Excel would
+# merge groups that touch, so every section keeps one visible column.) Nothing is removed: + shows the rest.
+SECTIONS = [
+    ("PLAN: type in the blue columns", None, ["ID", "UID", "WBS", "Level", "Name", "Dur", *[f"{x}{k}" for k in LINK_NUMBERS for x in "PTL"],
+                                              "Res", "Units", "Pct", "AS", "AF", "Notes", "FS", "FF", "Status", "Crit", "Issues", "Show"]),
+    ("SCHEDULING", "DL", ["Mode", "CType", "Cons"]),
+    ("DETAIL", "Var", ["PS", "PF", "SVar", "LS", "LF", "TS", "FSl", "DLChk", "LinkChk", "Prog", "PredTxt"]),
+    ("COST", "Work", ["ResTxt", "OverAlloc", "Cost", "ACin"]),
+    ("AGILE", "Sprint", ["SprIn", "SP"]),
+    ("BASELINE", "DVar",
+     ["WVar", "CVar", "SrcS", "SrcF", "SrcD", "SrcW", "SrcC", "BS", "BF", "BD", "BW", "BC"]),
+    ("EARNED VALUE", "EV", ["Budget", "PV", "ACt"]),
+]
+_by_key = {row[0]: row for row in LAYOUT}
+_shown = [k for _, key, rest in SECTIONS for k in ([key] if key else []) + rest]
+assert len(_shown) == len(set(_shown)) and all(_by_key[k][1] != "help" for k in _shown), "every column once"
+LAYOUT = [_by_key[k] for k in _shown] + [row for row in LAYOUT if row[1] == "help"]
+assert len(LAYOUT) == len(_by_key), "a visible column is missing from SECTIONS"
 STATUS_COLOURS = {"Complete": "548235", "In Progress": "2F75B5", "Behind": "C00000", "Late Start": "C55A11",
                   "Not Started": "7F7F7F"}
 
@@ -490,9 +519,9 @@ def build_tasks(wb, rows, n_rows):
     title(ws, None)
     ws["A1"] = '=ProjectName&"  -  Task Entry"'
     ws["A2"] = ("Type in BLUE columns only. Level = outline level (1 = phase, 2 = task, 3 = sub-task). Predecessors refer "
-                "to the UID column. Planned = Baseline once set, otherwise calculated from Duration + Predecessors. "
-                "Forecast also uses Actuals, so slips ripple to every successor. Insert rows inside the table: formulas "
-                "fill in automatically.")
+                "to the UID column. Fix anything in Issues (red). More columns (scheduling, schedule detail, cost, "
+                "agile, baseline, earned value): click + above a section. Insert rows inside the table: formulas fill "
+                "in automatically.")
     ws["A2"].font = NOTE_FONT
     ws["A3"] = '="Next free UID for a new row: "&NextFreeUID'
     ws["A3"].font = LABEL_FONT
@@ -510,17 +539,36 @@ def build_tasks(wb, rows, n_rows):
         cols.append(Col(N[key], kind, width, fmt, None if kind == "in" else f[key], center, note, key, values))
     L = add_table(ws, TABLE, HEADER_ROW, 1, cols, n_rows)
     ws.row_dimensions[HEADER_ROW].height = 42
-    for key, label in GROUPS:
-        ws[f"{L[key]}4"] = label
-        ws[f"{L[key]}4"].font = LABEL_FONT
+    ws.sheet_properties.outlinePr.summaryRight = False       # a group's +/- sits on the column left of it
+    for label, key, rest in SECTIONS:
+        first = L[key] if key else L[rest[0]]
+        ws[f"{first}4"] = label
+        ws[f"{first}4"].font = LABEL_FONT
+        if key:
+            group_columns(ws, L[rest[0]], L[rest[-1]], 1)
+    ws[f"{L['Lvl']}4"] = "HELPER COLUMNS (hidden)"
+    ws[f"{L['Lvl']}4"].font = LABEL_FONT
     for key, defined in NAMES.items():
         name(wb, defined, C(key))
-    ws.freeze_panes = f"{L['Mode']}{HEADER_ROW + 1}"
+    ws.freeze_panes = f"{L['Dur']}{HEADER_ROW + 1}"
     group_outline(ws, [r.get("Level") for r in rows], HEADER_ROW + 1)
-    ws.column_dimensions.group(L["Lvl"], L["CurKey"], hidden=True, outline_level=1)
+    for i, r in enumerate(rows):                              # names indented by level, for the rows built in
+        level = r.get("Level")
+        if level and level > 1:
+            ws[f"{L['Name']}{HEADER_ROW + 1 + i}"].alignment = Alignment(indent=min(int(level) - 1, 15))
+    group_columns(ws, L["Lvl"], L["CurKey"], 2)
     _validation_and_formatting(ws, L, n_rows)
     ws.sheet_view.zoomScale = 90
     return ws
+
+
+def group_columns(ws, first, last, level):
+    """Collapse columns first..last (letters) into an Excel outline group. Each column keeps its own width (openpyxl's
+    column_dimensions.group merges them into one and loses the widths)."""
+    for c in range(column_index_from_string(first), column_index_from_string(last) + 1):
+        dim = ws.column_dimensions[get_column_letter(c)]
+        dim.outlineLevel, dim.hidden = level, True
+    ws.sheet_format.outlineLevelCol = max(ws.sheet_format.outlineLevelCol or 0, level)
 
 
 def group_outline(ws, levels, first_row):
@@ -536,6 +584,29 @@ def group_outline(ws, levels, first_row):
     ws.sheet_format.outlineLevelRow = deepest          # Excel shows that many outline buttons
 
 
+# What to type, shown when a cell in the column is selected (Excel's input message: desktop, web and iPhone).
+# Excel limits the title to 32 characters and the text to 255.
+PROMPTS = {
+    "UID": ("UID", "Pre-filled: a permanent number that other tasks' predecessors refer to. A new row: "
+                   "Settings > NextFreeUID."),
+    "Level": ("Outline level", "1 = phase, 2 = task, 3 = sub-task. At most 1 more than the row above. A row with deeper "
+                               "rows below it becomes a summary."),
+    "Name": ("Task name", "What the task is, e.g. Build login page. Leave the row blank to end the plan."),
+    "Dur": ("Duration (working days)", "e.g. 5. 0 = a milestone. Summaries roll up: leave them blank."),
+    **{f"P{k}": (f"Predecessor {k}", "The UID of a task that must come first, e.g. 12. It must be a detail task "
+                                     "above this one.") for k in LINK_NUMBERS},
+    **{f"T{k}": ("Link type", "FS (finish-to-start, the default when blank), SS, FF or SF.") for k in LINK_NUMBERS},
+    **{f"L{k}": ("Lag (working days)", "e.g. 2 = two days after; -1 = a day of overlap. Blank = 0.") for k in LINK_NUMBERS},
+    "Res": ("Resource", "Who does it (from the Resources sheet). More people: add rows on the Assignments sheet."),
+    "Units": ("Units", "Share of the person's time, e.g. 50%. Blank = Settings > DefaultUnits."),
+    "Pct": ("% Complete", "0% - 100%. An Actual Finish counts as 100%."),
+    "AS": ("Actual Start", "The day work really started. Leave blank until it starts."),
+    "AF": ("Actual Finish", "The day it really finished: the task counts as 100% complete."),
+    "Notes": ("Notes", "Anything worth knowing: assumptions, links, who to ask."),
+    "DL": ("Deadline", "Optional: the date it must be done by. Issues and the Gantt flag a forecast after it."),
+}
+
+
 def _validation_and_formatting(ws, L, n_rows):
     """Data validation and conditional formatting: Excel only accepts A1 ranges here (it shifts them on insert)."""
     first, last = HEADER_ROW + 1, HEADER_ROW + n_rows
@@ -543,9 +614,14 @@ def _validation_and_formatting(ws, L, n_rows):
     at = lambda k: f"${L[k]}{first}"           # this row's cell, relative to the top-left of the formatted range
 
     def dv(rule, *keys):
-        ws.add_data_validation(rule)
+        """One rule per column, so each can carry its own input prompt (PROMPTS)."""
         for k in keys:
-            rule.add(rng(k))
+            r = copy.copy(rule)
+            r.sqref = MultiCellRange()
+            if k in PROMPTS:
+                r.showInputMessage, (r.promptTitle, r.prompt) = True, PROMPTS[k]
+            ws.add_data_validation(r)
+            r.add(rng(k))
 
     dv(DataValidation(type="whole", operator="greaterThanOrEqual", formula1="1", showErrorMessage=True, errorTitle="UID",
                       error="UID must be a whole number; give each task a different one (see Settings > NextFreeUID)."), "UID")
@@ -566,6 +642,7 @@ def _validation_and_formatting(ws, L, n_rows):
     dv(DataValidation(type="decimal", operator="between", formula1="0", formula2="10"), "Units")
     dv(DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0"), "ACin", "SP")
     dv(DataValidation(type="list", formula1="=spr_Name"), "SprIn")
+    dv(DataValidation(allow_blank=True), "Name", "Notes")          # prompts only: any text
 
     cf = ws.conditional_formatting
     cf.add(f"A{first}:{L['ACt']}{last}", FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(bold=True), fill=fill("DDEBF7")))

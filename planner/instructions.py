@@ -1,7 +1,31 @@
-"""Instructions sheet."""
+"""Start sheet: the six settings a plan needs (written by planner.settings), a quick start, the weekly update, and
+the full reference below them."""
 from openpyxl.styles import Alignment
+from openpyxl.worksheet.hyperlink import Hyperlink
 
-from .core import CALC_FILL, HEADER_FILLS, HEADER_FONT, INPUT_FONT, font
+from .core import CALC_FILL, HEADER_FILLS, HEADER_FONT, INPUT_FONT, NOTE_FONT, font
+from .settings import ESSENTIAL, START, START_ROW
+
+# (label, text, sheet to link to)
+QUICK_START = [
+    ("1. Your project", "Fill in the blue cells above: name, manager, start date, status date, working week and "
+                        "hours per day. Everything else has a sensible default on Settings.", None),
+    ("2. People", "List the people (or roles) with their availability and hourly rate.", "Resources"),
+    ("3. Tasks", "One row per task: Level (1 = phase, 2 = task ...), Task Name, Duration in working days, the UID of "
+                 "the task that must come first (Pred1 UID), the person (Resource). That's a plan: dates, the "
+                 "critical path, the Gantt and the reports follow. Optional columns are grouped: click + above "
+                 "a section to show them.", "Tasks"),
+    ("4. Check", "Fix anything in the Issues column (red), then look at the Gantt and the Roadmap.", "Gantt"),
+    ("5. Baseline", "When the plan is agreed, freeze it: on Tasks open the BASELINE section (+), copy the 5 'BL "
+                    "Source' columns and Paste Special > Values onto the 5 Baseline columns.", "Tasks"),
+]
+WEEKLY = [
+    ("Status date", "Move the status date (above) to the reporting date.", None),
+    ("Progress", "On Tasks: % Complete, Actual Start and Actual Finish for the tasks that moved.", "Tasks"),
+    ("RAID and changes", "Update risks, issues, decisions and change requests.", "RAID"),
+    ("Status", "Review the RAG and add your comment (PM RAG overrides a calculated one).", "Status Report"),
+    ("Snapshot", "On History, copy the SnapshotNow row and Paste Special > Values under the last row.", "History"),
+]
 
 
 def text(sizes, wizard=False):
@@ -9,9 +33,10 @@ def text(sizes, wizard=False):
         ("REQUIREMENTS", None),
         ("Excel version", "Excel 2019 or Microsoft 365 (Windows or Mac), or Excel for the web. No macros needed."),
         ("HOW IT WORKS", None),
-        ("1. Settings", "Set project start and status date (both typed dates; Ctrl+; enters today), working week "
-                        "(Mon-Sun Yes/No), hours/day, Gantt scale and sprint calendar. Add holidays on 'Holidays'. "
-                        "Update the status date whenever you report progress."),
+        ("1. Settings", "Project start and status date (both typed dates; Ctrl+; enters today), working week and "
+                        "hours/day are at the top of this sheet. Settings holds the rest (Gantt scale, sprint calendar, "
+                        "RAG thresholds ...). Add holidays on 'Holidays'. Update the status date whenever you report "
+                        "progress."),
         ("2. Resources", "List people/roles with Max Units and hourly rate. They appear in the Resource dropdown on Tasks and "
                          "in sprint capacity. More than one person on a task: put the first on Tasks (Resource, Units) "
                          "and add a row on the Assignments sheet (Task UID, Resource, Units) for each of the others."),
@@ -174,13 +199,30 @@ WIZARD = [
 
 
 def build_instructions(wb, sizes, wizard=False):
-    ws = wb.create_sheet("Instructions")
-    ws.column_dimensions["A"].width = 3
+    ws = wb[START]                                  # created by build_settings, which wrote the essential settings
     ws.column_dimensions["B"].width = 28
     ws.column_dimensions["C"].width = 110
-    ws["B1"] = "Project Planner - MS Project-compatible Excel template"
+    ws["B1"] = "Project Planner - start here"
     ws["B1"].font = font(size=18, bold=True, color="1F4E78")
-    r = 3
+    ws["B2"] = "Blue = type here. Grey = calculated. Every sheet works in Excel alone: desktop, web and iPhone."
+    ws["B2"].font = NOTE_FONT
+    _header(ws, START_ROW - 1, "YOUR PROJECT")
+    r = START_ROW + len(ESSENTIAL) + 1
+    for heading, steps in (("QUICK START", QUICK_START), ("EVERY WEEK", WEEKLY)):
+        _header(ws, r, heading)
+        r += 1
+        for label, body, sheet in steps:
+            ws.cell(r, 2, label).font = font(bold=True)
+            c = ws.cell(r, 3, body + (f"  Go to {sheet}." if sheet else ""))
+            c.alignment = Alignment(wrap_text=True, vertical="top")
+            if sheet:                               # a link inside the workbook (a hyperlink, not a formula)
+                c.hyperlink = Hyperlink(ref=c.coordinate, location=f"'{sheet}'!A1")
+                c.font = font(color="1F4E78", underline="single")
+            r += 1
+        r += 1
+    ws.freeze_panes = "A3"
+    _header(ws, r, "REFERENCE")
+    r += 1
     for label, body in text(sizes, wizard):
         if body is None:
             r += 1
@@ -197,3 +239,9 @@ def build_instructions(wb, sizes, wizard=False):
                 c.fill = CALC_FILL
         r += 1
     return ws
+
+
+def _header(ws, r, label):
+    ws.cell(r, 2, label).font = HEADER_FONT
+    ws.cell(r, 2).fill = HEADER_FILLS["in"]
+    ws.cell(r, 3).fill = HEADER_FILLS["in"]

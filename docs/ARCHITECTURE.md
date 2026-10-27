@@ -34,8 +34,9 @@ How the workbook is put together, and the rules every change follows. These rule
 
 | Sheet | Table(s) | What is calculated there |
 |---|---|---|
-| Settings | (named cells) | Project start, status date, calendar mask (`WorkWeek`), Gantt and sprint settings |
-| Tasks | `Tasks` | All scheduling: WBS, summaries, links, planned / forecast dates, variances, progress, work, cost |
+| Start | (named cells) | The six essential settings (`ESSENTIAL` in `planner/settings.py`), quick start, weekly update, reference |
+| Settings | (named cells) | The other settings, calendar mask (`WorkWeek`, from the Working week preset or the seven day rows), Gantt and sprint settings |
+| Tasks | `Tasks` | All scheduling: WBS, summaries, links, planned / forecast dates, variances, progress, work, cost. Columns are in `SECTIONS`: the essentials, then one collapsed Excel column group per optional section, each with one visible key column (Excel merges groups that touch); the helpers are a level-2 group |
 | Gantt | `GanttView` + timeline | Task panel reads Tasks by position; timeline = conditional formatting only |
 | Resources | `ResourceTable` | Assigned tasks, work, cost per resource |
 | Sprints | `SprintTable` + 2 grids | Sprint calendar, capacity, load and utilisation per resource |

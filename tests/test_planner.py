@@ -134,7 +134,7 @@ class StructureTest(Tmp):
         cls.wb = openpyxl.load_workbook(cls.path)
 
     def test_sheets(self):
-        self.assertEqual(self.wb.sheetnames, ["Instructions", "Dashboard", "Roadmap", "Status Report", "Schedule Report",
+        self.assertEqual(self.wb.sheetnames, ["Start", "Dashboard", "Roadmap", "Status Report", "Schedule Report",
                                               "Resource Report", "Agile Report", "RAID", "Decisions", "Changes",
                                               "History", "Settings", "Tasks", "Gantt", "Resources", "Assignments", "Sprints",
                                               "Holidays", "Leave", "Lists"])
@@ -370,8 +370,9 @@ class ScheduleTest(Tmp):
         self.assertEqual(self.val(10, "Critical"), "Yes")                       # summary: a child is critical
         self.assertEqual(self.dashboard("Open critical tasks"), 11)
 
-    def test_no_link_problems_in_sample(self):
-        self.assertEqual(self.dashboard("Link problems (see Tasks > Link Check)"), 0)
+    def test_issues_in_sample(self):
+        # no bad links; the issues are the sample's over-allocations (3) and its missed deadline
+        self.assertEqual(self.dashboard("Tasks with issues (see Tasks > Issues)"), 4)
 
     def test_baseline_not_set_by_default(self):
         self.assertEqual(self.dashboard("Baseline"), "Not set (planned = calculated)")
@@ -827,6 +828,85 @@ class ViewsTest(Tmp):
         self.assertTrue(all(v is None for v in timeline))                    # conditional formatting only
 
 
+class EssentialsTest(Tmp):
+    """The Start sheet, the Tasks sheet's essential view and its input prompts (structure only: no recalculation)."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.raw = openpyxl.load_workbook(cls.path)
+
+    def test_start_sheet_holds_the_essential_settings(self):
+        self.assertEqual(self.raw.sheetnames[0], "Start")
+        for n in ("ProjectName", "ProjectManager", "ProjectStartDate", "StatusDateInput", "WorkingWeek", "HoursPerDay"):
+            self.assertTrue(self.raw.defined_names[n].attr_text.startswith("Start!"), n)
+        self.assertTrue(self.raw.defined_names["GanttPeriod"].attr_text.startswith("Settings!"))
+        links = [c.hyperlink.location for row in self.raw["Start"].iter_rows(max_row=30) for c in row if c.hyperlink]
+        self.assertIn("'Tasks'!A1", links)
+
+    def test_optional_columns_are_grouped_and_collapsed(self):
+        ws = self.raw["Tasks"]
+        col = columns(ws)
+        state = lambda header: (ws.column_dimensions[openpyxl.utils.get_column_letter(col[header])].outlineLevel,
+                                bool(ws.column_dimensions[openpyxl.utils.get_column_letter(col[header])].hidden))
+        for header in ("Task Name", "Duration", "Pred1 UID", "Resource", "% Complete", "Actual Start", "Forecast Finish",
+                       "Status", "Critical", "Issues", "Deadline", "Finish Var", "Work", "Sprint", "Duration Var", "EV"):
+            self.assertEqual(state(header), (0, False), header)          # essentials and each section's key column
+        for header in ("Mode", "Constraint", "Late Start", "Total Slack", "Cost", "Story Points", "BL Source Start",
+                       "Baseline Start", "Budget", "PV"):
+            self.assertEqual(state(header), (1, True), header)           # collapsed sections
+        self.assertEqual(state("_Row"), (2, True))                       # helpers: one level deeper
+        self.assertFalse(ws.sheet_properties.outlinePr.summaryRight)     # +/- on the key column, left of its group
+
+    def test_input_prompts(self):
+        ws = self.raw["Tasks"]
+        col = columns(ws)
+        prompts = {}
+        for dv in ws.data_validations.dataValidation:
+            for rng in dv.sqref.ranges:
+                prompts[rng.min_col] = (dv.showInputMessage, dv.promptTitle)
+        for header, title in (("Task Name", "Task name"), ("Duration", "Duration (working days)"), ("Level", "Outline level"),
+                              ("Pred1 UID", "Predecessor 1"), ("Resource", "Resource"), ("Actual Finish", "Actual Finish")):
+            self.assertEqual(prompts[col[header]], (True, title), header)
+
+
+@unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+class IssuesTest(Tmp):
+    def test_issues_column_says_what_is_wrong(self):
+        def edit(wb):
+            set_input(wb, 5, "UID", 3)                 # the same UID as task 3
+            set_input(wb, 6, "Resource", "Nobody")          # not on Resources
+            set_input(wb, 7, "P1", 7)                  # a link to itself
+            set_input(wb, 9, "Level", 4)               # two levels below the row above
+
+        wb = recalc(self.path, self.dir, edit)
+        self.assertEqual(errors_in(wb), [])
+        t = Tasks(wb)
+        self.assertIn("UID 3 is used twice.", t.get(3, "Issues"))
+        self.assertIn("UID 3 is used twice.", t.get(5, "Issues"))
+        self.assertEqual(t.get(6, "Issues"), "Nobody is not on Resources.")
+        self.assertEqual(t.get(7, "Issues"), "Pred 1: links to itself.")
+        self.assertIn("Level is more than 1 below the row above.", t.get(9, "Issues"))
+        self.assertEqual(t.get(19, "Issues"), "Misses its deadline (late by 1d).")
+        self.assertEqual(t.get(13, "Issues"), "Over-allocated: see the Resource Report.")
+        self.assertIn(t.get(2, "Issues"), (None, ""))
+
+    def test_working_week_preset(self):
+        wb = recalc(self.path, self.dir, lambda wb: setattr(named_cell(wb, "WorkingWeek"), "value", "Sun-Thu"))
+        self.assertEqual(errors_in(wb), [])
+        self.assertEqual(named_cell(wb, "WorkWeek").value, "0000110")
+        days = {d(r["Forecast Start"]).weekday() for r in table_rows(wb, "Tasks", "Tasks")
+                if r["_IsLeaf"] == 1 and not r["Actual Start"]}
+        self.assertFalse(days & {4, 5})                                    # nothing new starts on a Friday or Saturday
+        out = io.BytesIO()
+        wb.save(out)
+        ns = "{http://schemas.microsoft.com/project}"
+        week = {int(w.find(ns + "DayType").text): w.find(ns + "DayWorking").text
+                for w in ET.fromstring(mspdi.convert(out.getvalue())).iter(ns + "WeekDay")
+                if w.find(ns + "DayType").text != "0"}
+        self.assertEqual(week, {1: "1", 2: "1", 3: "1", 4: "1", 5: "1", 6: "0", 7: "0"})   # Sun-Thu in MS Project too
+
+
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")
 class LogsTest(Tmp):
     """RAID, decision and change logs, the Status Report's summaries of them, and status snapshots."""
@@ -1019,7 +1099,9 @@ class LinkCheckTest(Tmp):
         self.assertEqual(t.get(13, "PS"), dt.date(2026, 10, 9))    # good link still applies
         self.assertIn(t.get(7, "Pred"), (None, ""))
         dash = {wb["Dashboard"].cell(r, 2).value: wb["Dashboard"].cell(r, 3).value for r in range(5, 20)}
-        self.assertEqual(dash["Link problems (see Tasks > Link Check)"], 6)
+        issues = [r for r in table_rows(wb, "Tasks", "Tasks") if r["Issues"]]
+        self.assertEqual(dash["Tasks with issues (see Tasks > Issues)"], len(issues))
+        self.assertGreaterEqual(len(issues), 6)                       # the six bad links, at least
 
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")

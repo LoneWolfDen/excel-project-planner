@@ -17,6 +17,7 @@ import io
 import re
 import xml.etree.ElementTree as ET
 
+from .settings import week_preset
 from .tasks import CONSTRAINTS, LINK_NUMBERS, LINKS, each
 
 NS = "{http://schemas.microsoft.com/project}"
@@ -129,6 +130,7 @@ def read_project(data):
         for name, working in zip(DAY_SETTINGS, week or []):
             if working is not None:
                 settings[name] = "Yes" if working else "No"
+        settings["WorkingWeek"] = week_preset(settings)
         holidays = [(d, "From MS Project") for d in sorted(set(off))]
         if partial:
             warnings.append(f"{len(partial)} part-day calendar exceptions were not imported (whole days only).")

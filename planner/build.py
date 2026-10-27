@@ -39,10 +39,10 @@ from .settings import build_holidays, build_lists, build_settings
 from .sprints import build_sprints
 from .tasks import build_tasks
 
-ORDER = ["Instructions", "Dashboard", "Roadmap", "Status Report", "Schedule Report", "Resource Report", "Agile Report", "RAID",
+ORDER = ["Start", "Dashboard", "Roadmap", "Status Report", "Schedule Report", "Resource Report", "Agile Report", "RAID",
          "Decisions", "Changes", "History", "Settings", "Tasks", "Gantt", "Resources", "Assignments", "Sprints", "Holidays", "Leave", "MSP_Tasks",
          "MSP_Resources", "Lists"]
-TAB_COLOURS = {"Instructions": "1F4E78", "Dashboard": "548235", "Roadmap": "548235", "Status Report": "548235",
+TAB_COLOURS = {"Start": "1F4E78", "Dashboard": "548235", "Roadmap": "548235", "Status Report": "548235",
                "Schedule Report": "548235", "Resource Report": "548235", "Agile Report": "548235", "RAID": "C55A11",
                "Decisions": "C55A11", "Changes": "C55A11", "History": "C55A11", "Settings": "BF8F00", "Tasks": "2F75B5",
                "Gantt": "2F75B5", "Resources": "7030A0", "Assignments": "7030A0", "Sprints": "7030A0", "Holidays": "BF8F00", "Leave": "7030A0",

@@ -79,7 +79,7 @@ def read_planner(data):
     """(ProjectData, copies, Sizes, warnings, version) from an older planner workbook's bytes. copies: the other
     input tables, {table: (headers, rows)}, for copy_inputs."""
     from .build import ProjectData, Sizes
-    from .settings import settings_rows
+    from .settings import settings_rows, week_preset
     from .tasks import LAYOUT, N
     try:
         wb = openpyxl.load_workbook(io.BytesIO(data))
@@ -96,6 +96,9 @@ def read_planner(data):
         v = _named_value(wb, n)
         if is_input and v is not None:
             settings[n] = v
+
+    if "WorkingWeek" not in settings:                # before v1.7 the week was only the seven Yes / No days
+        settings["WorkingWeek"] = week_preset(settings)
 
     key_of = {N[k]: k for k, kind, *_ in LAYOUT if kind == "in"}
     tasks = []

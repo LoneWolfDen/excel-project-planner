@@ -26,7 +26,7 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 ## Sheets
 | Sheet | Purpose |
 |---|---|
-| Instructions | How to use it, colour key, MS Project import steps, named ranges |
+| Start | The six settings a plan needs (name, manager, start date, status date, working week, hours/day), a 5-step quick start, the weekly update checklist with links to each sheet, then the full reference |
 | Dashboard | Planned vs forecast finish, slip, progress, hours, cost, overall RAG, SPI / CPI, next milestones, charts |
 | Status Report | Overall RAG and RAG by area (calculated, with PM override and comment), earned value (BAC, PV, EV, AC, SPI, CPI, EAC, VAC, TCPI), top open RAID items, change control, commentary for the period |
 | Schedule Report | Phase summary with RAG, milestones, late tasks, tasks starting / due in the look-ahead window, open critical tasks |
@@ -35,8 +35,8 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 | RAID | Risks, assumptions, issues, dependencies: owner, due, probability x impact score and rating, overdue flag, linked task |
 | Decisions / Changes | Decision log; change request log with schedule and cost impact (totals on the Status Report) |
 | History | Status snapshot (copy, paste as values each reporting date) and trend charts: finish, earned value S-curve, SPI / CPI, burn-up |
-| Settings | Project start, status date, working week, hours/day, Gantt scale, sprint calendar |
-| Tasks | Entry table: UID, Level, Name, Mode, Duration, 4 predecessors by UID (FS/SS/FF/SF + lag), deadline, actuals, % complete, resource, over-allocated flag, actual cost, planned sprint, story points; frozen baseline with start / finish / duration / work / cost variance; critical path (late start/finish, total and free slack, Critical); Link Check and Deadline Check columns |
+| Settings | Everything else, with defaults: rescheduling, units, custom working days, Gantt scale, sprint calendar, RAG thresholds |
+| Tasks | Entry table. Shown: UID, Level, Task Name, Duration, predecessors by UID (FS/SS/FF/SF + lag), resource, % complete, actual start / finish, notes, the forecast dates, status, critical, and **Issues** (everything wrong on the row, in words). Collapsed sections (click + above): scheduling (deadline, mode, constraints), schedule detail (planned dates, variances, late dates, slack, checks), cost (work, over-allocation, cost, actual cost), agile (sprint, story points), baseline (set and compare), earned value. Each input shows what to type when selected |
 | Gantt | Planned outline, done / remaining / critical / late bars, summaries, milestones, deadlines, status-date line (conditional formatting only, no formulas); day, week, month or quarter scale; outline grouping (1 2 3 buttons) and a Show-to-level filter |
 | Roadmap | One-page view for sponsors: phases and milestones with dates on an 18-month timeline (forecast, done, late, planned, missed deadlines) |
 | Resources | Resource sheet with max units and rates; assigned hours and cost |

@@ -175,6 +175,15 @@ def _text(value):
     return "" if value is None else str(value)
 
 
+def _working_days(wb):
+    """Sun..Sat working flags from the WorkWeek mask (Mon..Sun, 1 = not working), which covers the Working week
+    presets; workbooks without it fall back to the Yes / No day settings."""
+    mask = _text(wb.named("WorkWeek"))
+    if len(mask) == 7 and set(mask) <= {"0", "1"}:
+        return [mask[6] == "0"] + [m == "0" for m in mask[:6]]
+    return [_text(wb.named(d)) == "Yes" for d in DAY_NAMES]
+
+
 def read_plan(data):
     """Everything the export needs, from the workbook's cached values."""
     wb = Workbook(data)
@@ -193,7 +202,7 @@ def read_plan(data):
         "status": _date(wb.named("StatusDate")),
         "hours": hours,
         "units": _num(wb.named("DefaultUnits"), 1) or 1,
-        "working": [_text(wb.named(d)) == "Yes" for d in DAY_NAMES],
+        "working": _working_days(wb),
         "holidays": sorted({d for d in (_date(h.get("Date")) for h in wb.table("HolidayTable")) if d}),
         "tasks": tasks,
         "resources": [r for r in wb.table("ResourceTable") if _text(r.get("Resource Name")).strip()],

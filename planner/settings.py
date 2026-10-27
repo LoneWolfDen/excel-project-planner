@@ -8,9 +8,26 @@ from .core import (BOX, CALC_FILL, CALC_FONT, DATE, INPUT_FONT, NOTE_FONT, Col, 
                    name, title)
 from .tasks import CONSTRAINTS
 
+# Working-week presets -> Mon..Sun mask for WORKDAY.INTL (1 = not working); "Custom" uses the seven day rows
+WEEKS = {"Mon-Fri": "0000011", "Sun-Thu": "0000110", "Mon-Sat": "0000001"}
+DAYS = ("WorkMon", "WorkTue", "WorkWed", "WorkThu", "WorkFri", "WorkSat", "WorkSun")
+
+
+def week_preset(settings):
+    """The Working week preset matching the Yes / No day settings in a dict (missing days = Mon-Fri), or Custom."""
+    mask = "".join("0" if settings.get(d, "Yes" if i < 5 else "No") == "Yes" else "1" for i, d in enumerate(DAYS))
+    return next((w for w, m in WEEKS.items() if m == mask), "Custom")
+
+
+# the settings a plan needs: typed on the Start sheet (the rest are on Settings, with defaults)
+ESSENTIAL = ("ProjectName", "ProjectManager", "ProjectStartDate", "StatusDateInput", "WorkingWeek", "HoursPerDay")
+START = "Start"
+START_ROW = 4                      # first essential setting's row on Start
+
 LISTS = {  # table name, column name, named range, values
     "L_DepType": ("ListDepType", "Link Type", ["FS", "SS", "FF", "SF"]),
     "L_Mode": ("ListMode", "Task Mode", ["Auto", "Manual"]),
+    "L_WorkingWeek": ("ListWorkingWeek", "Working Week", list(WEEKS) + ["Custom"]),
     "L_Constraint": ("ListConstraint", "Constraint", CONSTRAINTS),
     "L_YesNo": ("ListYesNo", "Yes / No", ["Yes", "No"]),
     "L_ResType": ("ListResType", "Resource Type", ["Work", "Material", "Cost"]),
@@ -26,8 +43,9 @@ LISTS = {  # table name, column name, named range, values
 
 def settings_rows(blank, max_sprints):
     """(name, label, value, number format, is input, note). Values that are formulas reference other names only."""
-    work_week = "&".join(f'IF({d}="Yes","0","1")' for d in
-                         ("WorkMon", "WorkTue", "WorkWed", "WorkThu", "WorkFri", "WorkSat", "WorkSun"))
+    custom = "&".join(f'IF({d}="Yes","0","1")' for d in
+                      ("WorkMon", "WorkTue", "WorkWed", "WorkThu", "WorkFri", "WorkSat", "WorkSun"))
+    work_week = "".join(f'IF(WorkingWeek="{w}","{mask}",' for w, mask in WEEKS.items()) + custom + ")" * len(WEEKS)
     return [
         ("ProjectName", "Project name", "New Project" if blank else "Customer Portal Implementation", "@", True,
          "Shown on every sheet title."),
@@ -50,8 +68,10 @@ def settings_rows(blank, max_sprints):
         ("HoursPerDay", "Working hours per day", 8, "0.0", True, "Work (hrs) = Duration x Hours/day x Units."),
         ("DefaultUnits", "Default assignment units", 1, "0%", True,
          "Used when a task has a resource but Units is blank. 100% = full time."),
+        ("WorkingWeek", "Working week", "Mon-Fri", "@", True,
+         "Mon-Fri, Sun-Thu or Mon-Sat. Custom = the seven day rows on Settings."),
         ("WorkMon", "Monday is a working day", "Yes", "@", True,
-         "Working-week calendar (Yes/No). Feeds every WORKDAY / NETWORKDAYS formula."),
+         "Used when Working week (Start sheet) is Custom: Yes / No for each day."),
         ("WorkTue", "Tuesday is a working day", "Yes", "@", True, ""),
         ("WorkWed", "Wednesday is a working day", "Yes", "@", True, ""),
         ("WorkThu", "Thursday is a working day", "Yes", "@", True, ""),
@@ -112,7 +132,7 @@ def settings_rows(blank, max_sprints):
         ("ResourceWeekStart", "Resource Report first week", "=MAX(2,StatusDate-WEEKDAY(StatusDate,3)-14)", DATE, True,
          "Defaults to the Monday two weeks before the status date. Overwrite with any Monday to scroll the weekly grids."),
         ("NextFreeUID", "Next free task UID (calculated)", "=MAX(tsk_UID)+1", "0", False,
-         "Give a newly inserted task row this UID (see Instructions > Inserting tasks)."),
+         "Give a newly inserted task row this UID (see Start > Inserting tasks)."),
     ]
 
 
@@ -120,27 +140,45 @@ def build_settings(wb, blank, max_sprints, values=None):
     """values: {setting name: value} replacing the defaults (an import sets the project's own)."""
     st = wb.create_sheet("Settings")
     title(st, "Project Settings",
-          "Blue = edit me. Grey = calculated. Column D shows the defined name every formula uses for that setting.")
+          "Blue = edit me. Grey = calculated. Column D shows the defined name every formula uses for that setting. "
+          "The settings every plan needs are on the Start sheet.")
+    start = wb.create_sheet(START)                  # the essentials go there; build_start adds the guide
+    start.column_dimensions["A"].width = 3
     for col, (text, width) in enumerate([("Setting", 34), ("Value", 24), ("Named range", 24), ("Notes", 80)], start=2):
         header_cell(st.cell(4, col), text)
         st.column_dimensions[chr(64 + col)].width = width
     st.column_dimensions["A"].width = 3
-    rows = {}
-    for i, (n, label, value, fmt, is_input, note) in enumerate(settings_rows(blank, max_sprints)):
+    rows, cells = {}, {}
+    settings = [row for row in settings_rows(blank, max_sprints) if row[0] in ESSENTIAL]
+    settings.sort(key=lambda row: ESSENTIAL.index(row[0]))
+    settings += [row for row in settings_rows(blank, max_sprints) if row[0] not in ESSENTIAL]
+    on_settings = 0
+    for n, label, value, fmt, is_input, note in settings:
         if values and n in values:
             value = values[n]
-        r = 5 + i
-        rows[n] = r
-        st.cell(r, 2, label).font = font()
-        c = st.cell(r, 3, value)
+        if n in ESSENTIAL:
+            ws, r = start, START_ROW + ESSENTIAL.index(n)
+        else:
+            ws, r = st, 5 + on_settings
+            on_settings += 1
+            ws.cell(r, 4, n).font = font(color="7F7F7F")
+            ws.cell(r, 5, note).font = NOTE_FONT
+        rows[n], cells[n] = r, (ws, f"C{r}")
+        ws.cell(r, 2, label).font = font(bold=n in ESSENTIAL)
+        c = ws.cell(r, 3, value)
         c.number_format = fmt
         c.font = INPUT_FONT if is_input else CALC_FONT
         if not is_input:
             c.fill = CALC_FILL
         c.border = BOX
-        st.cell(r, 4, n).font = font(color="7F7F7F")
-        st.cell(r, 5, note).font = NOTE_FONT
-        name(wb, n, f"Settings!$C${r}")
+        name(wb, n, f"{ws.title}!$C${r}")
+        if n in ESSENTIAL:                          # the note shows when the cell is selected
+            prompt = DataValidation(type="list", formula1="=L_WorkingWeek") if n == "WorkingWeek" else \
+                DataValidation(type="decimal", operator="between", formula1="1", formula2="24") if n == "HoursPerDay" \
+                else DataValidation(allow_blank=True)
+            prompt.showInputMessage, prompt.promptTitle, prompt.prompt = True, label[:32], note[:255]
+            ws.add_data_validation(prompt)
+            prompt.add(f"C{r}")
 
     yes_no = DataValidation(type="list", formula1="=L_YesNo", allow_blank=False)
     st.add_data_validation(yes_no)
@@ -156,8 +194,8 @@ def build_settings(wb, blank, max_sprints, values=None):
     st.add_data_validation(sprints)
     sprints.add(f"C{rows['SprintCount']}")
     for n in ("ProjectStartDate", "StatusDateInput"):
-        cell = f"C{rows[n]}"
-        st.conditional_formatting.add(cell, FormulaRule(formula=[f"N({cell})=0"], fill=fill("FFFF00")))
+        ws, cell = cells[n]
+        ws.conditional_formatting.add(cell, FormulaRule(formula=[f"N({cell})=0"], fill=fill("FFFF00")))
     return st
 
 

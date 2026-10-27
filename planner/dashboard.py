@@ -22,7 +22,7 @@ KPIS = [
     ("Baseline", 'IF(COUNT(tsk_BaseStart)=0,"Not set (planned = calculated)","Set on "&COUNT(tsk_BaseStart)&" tasks")', "@"),
     ("Open critical tasks", 'COUNTIFS(tsk_Critical,"Yes",tsk_IsLeaf,1)', "0"),
     ("Missed deadlines", 'COUNTIF(tsk_DeadlineCheck,"Late*")', "0"),
-    ("Link problems (see Tasks > Link Check)", 'COUNTIF(tsk_LinkCheck,"?*")', "0"),
+    ("Tasks with issues (see Tasks > Issues)", 'COUNTIF(tsk_Issues,"?*")', "0"),
     ("Overall status (see Status Report)", "ProjectRAG", "@"),
     ("Schedule performance (SPI)", 'IF(evm_SPI="","-",evm_SPI)', "0.00"),
     ("Cost performance (CPI)", 'IF(evm_CPI="","-",evm_CPI)', "0.00"),
@@ -33,7 +33,7 @@ KPIS = [
     ("Tasks with an over-allocated resource", 'COUNTIF(tsk_OverAllocated,"Yes")', "0"),
     ("Change requests awaiting decision", 'COUNTIF(chg_Status,"Submitted")+COUNTIF(chg_Status,"Under Review")', "0"),
 ]
-ALERT_IF_POSITIVE = {"Finish variance (work days)", "Missed deadlines", "Link problems (see Tasks > Link Check)"}
+ALERT_IF_POSITIVE = {"Finish variance (work days)", "Missed deadlines", "Tasks with issues (see Tasks > Issues)"}
 
 
 def build_dashboard(wb, sprints_ws, sprint_letters, n_chart_sprints=12):

@@ -43,7 +43,6 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 | Sprints | Sprint calendar, capacity vs planned hours, committed / done story points, velocity, release burndown, per-person load with over-allocation flags |
 | Holidays | Non-working dates used by every date formula |
 | Leave | Each person's leave by month (`16, 17(0.5)` under `Nov-26`): lowers weekly and sprint capacity, utilisation and over-allocation (task dates don't move) |
-| MSP_Tasks / MSP_Resources | Columns named with MS Project field names for the Import Wizard |
 
 ## Moving to Microsoft Project
 **Recommended: Microsoft Project XML.** Save the workbook, then convert it:
@@ -62,16 +61,18 @@ get a new planner workbook with every sheet and report: tasks, outline, links, c
 baseline, resources and assignments, calendar, holidays, and resource-calendar days off on the Leave sheet. Anything
 the planner can't hold (a fifth predecessor, a lag in % ...) is listed and noted on the task.
 
-**Alternative: the Import Wizard** (carries less: no calendar or holidays):
-1. File → Options → Trust Center → Legacy Formats → allow loading legacy/non-default formats.
-2. File → Open → this workbook → Import Wizard → new map → tick Tasks and Resources, using the `MSP_Tasks` and `MSP_Resources` sheets.
-3. For auto-scheduled tasks leave Start/Finish unmapped (otherwise MS Project adds date constraints); map Baseline, Actual and % Complete fields.
-4. Map `Predecessors` (by ID) for a new project. `Unique ID` and `Unique ID Predecessors` are there for merging into an existing project.
+**Upgrading to a newer template.** Made your plan with an older version? Choose the workbook on the same page with
+"Move it to the latest template" (or run `python scripts/upgrade_planner.py Old.xlsx New.xlsx`). Everything you
+typed (tasks, people, assignments, leave, holidays, settings, RAID / decisions / changes, status history, sprint
+goals, PM RAG and notes) is carried over by column name; the formulas, sheets and reports are the latest.
+
+**MS Project's Import Wizard** needs the `MSP_Tasks` / `MSP_Resources` sheets, which are no longer built by default
+(the XML file carries more). Build them with `python scripts/build_planner.py Planner.xlsx --import-wizard-sheets`.
 
 ## Limits
 - Tables start with 200 task rows, 50 resources, 100 assignments, 26 sprints and 100 holidays, and grow when you add rows. The fixed
-  grids (Gantt timeline 150 columns, per-resource grids 25 resources, Resource Report 26 weeks; Gantt and MSP_Tasks
-  show the first 200 tasks) are sized at build time. For a bigger template, rebuild:
+  grids (Gantt timeline 150 columns, per-resource grids 25 resources, Resource Report 26 weeks; the Gantt
+  shows the first 200 tasks) are sized at build time. For a bigger template, rebuild:
   ```
   python scripts/build_planner.py Big_Planner.xlsx --blank --recalc --tasks 2000 --resources 100 --assignments 500 \
       --grid-resources 60 --sprints 52 --gantt-columns 365 --weeks 52

@@ -40,7 +40,7 @@ How the workbook is put together, and the rules every change follows. These rule
 | Resources | `ResourceTable` | Assigned tasks, work, cost per resource |
 | Sprints | `SprintTable` + 2 grids | Sprint calendar, capacity, load and utilisation per resource |
 | Holidays | `HolidayTable` | Non-working dates (`Holidays` = `HolidayTable[Date]`) |
-| MSP_Tasks / MSP_Resources | `MSPTasks`, `MSPResources` | MS Project field names, for the Import Wizard |
+| MSP_Tasks / MSP_Resources | `MSPTasks`, `MSPResources` | MS Project field names, for the Import Wizard; only with `--import-wizard-sheets` |
 | Dashboard | `KPIs`, `StatusSummary`, `NextMilestones` | Project KPIs |
 | Status Report | `OverallStatus`, `StatusRAG`, `EarnedValue`, `StatusNotes` | RAG by area, earned value (`evm_*` names) |
 | Schedule Report | `PhaseSummary`, `MilestoneReport`, `LateTasks`, `StartingSoon`, `DueSoon`, `CriticalTasks` | Ranked lists |
@@ -211,6 +211,17 @@ cumulative hours at each week boundary (three SUMIFS, none outside the project's
 openpyxl / et_xmlfile (pinned in `requirements-dev.txt`) into the page as one deterministic zip. Rebuild the page after
 changing anything in `planner/` (CI checks it); CI also drives the page in headless Chromium in both directions and
 compares its output with the command line's.
+
+## Upgrading workbooks
+
+Users keep their plans in the workbook, and new versions move and rename inputs, so `planner/upgrade.py` moves a plan
+into the latest template: it reads only typed values (formula cells are skipped), always by table and header name.
+Tasks, people, assignments, holidays, leave and settings go through `ProjectData`, like an MS Project import, so the
+builder sizes the tables and keeps UIDs unique; every other input table (logs, status history, sprint goals, PM RAG
+and notes) is copied column by column onto the new template's input columns (blue headers) with the same header.
+Dropdown lists keep the template's values and add the user's own. Each workbook carries `PlannerVersion`; a change
+that moves an input adds its mapping (`RENAMED`, or a step in `read_planner`) and a fixture of the old layout under
+`tests/fixtures/`, and `tests/test_upgrade.py` checks that the upgraded plan schedules exactly as the old one did.
 
 ## Excel version
 

@@ -18,7 +18,7 @@ How the workbook is put together, and the rules every change follows. These rule
    Gantt header dates) also use one formula per grid, located by `ROW()`/`COLUMN()` offsets.
 3. **Inputs and formulas never mix.** Blue text = input, grey fill = formula, light-grey header = hidden helper.
    Summaries roll up rather than reading inputs.
-4. **Readable formulas.** Columns have short, plain names (`Forecast Finish`, `Predecessors`); helper columns start
+4. **Readable formulas.** Columns have short, plain names (`Finish`, `Predecessors`); helper columns start
    with `_` (`_CalcStart`, `_Pred1Pos`). Each helper does one job so the visible formulas stay short. Header comments
    explain units and meaning.
 5. **Cheap to recalculate.** Volatile functions (`OFFSET`, `INDIRECT`, `TODAY`, `NOW`, `RAND`, `CELL`, `INFO`) make
@@ -128,7 +128,7 @@ forecast still never starts unstarted work before the status date when Reschedul
 
 **As Late As Possible** needs the backward pass, which reads the early dates, so it can't move them without a
 circular reference. Instead the early dates stay as calculated (`_Leaf...`: links, slack and `ProjectFinish` read
-them) and the shown dates (`_Shown...`, rolled up into Planned / Forecast Start and Finish) move later by the task's
+them) and the shown dates (`_Shown...`, rolled up into Planned Start / Finish and Start / Finish) move later by the task's
 free slack. The task then finishes just in time for its successors (or the project finish) and moves nothing else.
 The plan moves by the same number of days as the forecast, so an ALAP task adds no finish variance.
 
@@ -144,6 +144,19 @@ The plan moves by the same number of days as the forecast, so an ALAP task adds 
   the month header is its only formula. It prints on one landscape page.
 - Bar labels and colours from a Settings table are not built: conditional formatting can't show per-row text or take
   a colour from a cell, so both would need a formula in every timeline cell (30,000 on the sample Gantt).
+
+## Progress by stage
+
+A free % Complete means something different to everyone, so a task's progress comes from its **Stage**, picked from
+the Stages table on Settings (`stg_Name`, `stg_Pct`): Not Started 0%, Design 15%, In Development 40%, Test Ready
+70%, In Testing 85%, Complete 100% by default. That is weighted-milestone earned value: the same stage is the same
+progress on every task, and a PMO can rename the stages or change their % in one place. `_Pct` is the % the
+schedule uses: a typed % Complete (now an optional override in the DETAIL section), or else the stage's %, looked up
+once per row. Everything that read % Complete (remaining duration, progress roll-up, earned
+value, sprint "done", the Gantt, the XML export's PercentComplete) reads `_Pct` through `_LeafProgress`. Actual
+Start and Actual Finish stay typed dates; Issues asks for them when the stage calls for them and flags a stage that
+disagrees with them. Older workbooks and MS Project files carry a %, so `tasks.take_stage` picks the nearest stage
+and keeps the exact % as the override when it differs: an upgraded plan schedules exactly as before.
 
 ## Text inputs: Predecessors and Resources
 

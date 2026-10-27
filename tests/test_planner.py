@@ -31,7 +31,7 @@ FIRST = 6  # first task row on Tasks
 H = {
     "ID": "ID", "UID": "UID", "WBS": "WBS", "Level": "Level", "Name": "Task Name", "Dur": "Duration",
     "P1": "Predecessors", "Res": "Resources", "AS": "Actual Start", "AF": "Actual Finish", "Pct": "% Complete",
-    "PS": "Planned Start", "PF": "Planned Finish", "FS": "Forecast Start", "FF": "Forecast Finish",
+    "PS": "Planned Start", "PF": "Planned Finish", "FS": "Start", "FF": "Finish",
     "SVar": "Start Var", "Var": "Finish Var", "DLChk": "Deadline Check", "Link": "Link Check", "Prog": "Progress",
     "Status": "Status", "Work": "Work", "Cost": "Cost", "Over-allocated": "Over-allocated", "Sprint": "Sprint", "Pred": "Predecessors by ID",
     "DVar": "Duration Var", "WVar": "Work Var", "CVar": "Cost Var",
@@ -42,7 +42,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(ROOT))
 import perf_check  # noqa: E402
-from planner import log, mspdi  # noqa: E402
+from planner import log, mspdi, settings  # noqa: E402
 
 
 def build(path, *flags):
@@ -153,7 +153,7 @@ class StructureTest(Tmp):
     def test_tables_have_calculated_columns(self):
         tasks = self.wb["Tasks"].tables["Tasks"]
         calculated = {c.name for c in tasks.tableColumns if c.calculatedColumnFormula is not None}
-        self.assertIn("Forecast Finish", calculated)
+        self.assertIn("Finish", calculated)
         self.assertNotIn("Duration", calculated)                 # inputs are not calculated columns
         for sheet, table in (("Resources", "ResourceTable"), ("Agile", "SprintTable"), ("Gantt", "GanttView"),
                              ("Settings", "HolidayTable"), ("Settings", "ListRAG")):
@@ -208,7 +208,7 @@ class StructureTest(Tmp):
         for token in ("Tasks[[#Headers],[_LeafCalcFinish]]", "Tasks[[#This Row],[_Pred1Pos]]", "WorkWeek", "Holidays"):
             self.assertIn(token, drivers[0])
         # every row of a calculated column carries the same formula text: nothing points at a particular row
-        for name in ("Forecast Start", "_Pred1PlanDriver", "WBS"):
+        for name in ("Start", "_Pred1PlanDriver", "WBS"):
             col = columns(ws)[name]
             self.assertEqual(len({ws.cell(r, col).value for r in range(FIRST, FIRST + 200)}), 1, name)
 
@@ -568,14 +568,14 @@ class ReportTest(Tmp):
         late = [t for t in tasks if t["Progress"] < 1 and (t["Finish Var"] > 0 or t["Status"] == "Late Start")]
         self.assertEqual(len(late), 7)
         self.assertEqual(self.listed("LateTasks"), order(late, lambda t: (-max(0, t["Finish Var"]), t["ID"])))
-        starting = [t for t in tasks if t["Actual Start"] is None and STATUS_DATE <= t["Forecast Start"] <= end]
-        self.assertEqual(self.listed("StartingSoon"), order(starting, lambda t: (t["Forecast Start"], t["ID"])))
+        starting = [t for t in tasks if t["Actual Start"] is None and STATUS_DATE <= t["Start"] <= end]
+        self.assertEqual(self.listed("StartingSoon"), order(starting, lambda t: (t["Start"], t["ID"])))
         self.assertEqual(self.listed("StartingSoon"), ["Payment gateway integration", "Accessibility review"])
-        due = [t for t in tasks if t["Progress"] < 1 and STATUS_DATE <= t["Forecast Finish"] <= end]
-        self.assertEqual(self.listed("DueSoon"), order(due, lambda t: (t["Forecast Finish"], t["ID"])))
+        due = [t for t in tasks if t["Progress"] < 1 and STATUS_DATE <= t["Finish"] <= end]
+        self.assertEqual(self.listed("DueSoon"), order(due, lambda t: (t["Finish"], t["ID"])))
         critical = [t for t in tasks if t["Critical"] == "Yes"]
         self.assertEqual(len(critical), 11)
-        self.assertEqual(self.listed("CriticalTasks"), order(critical, lambda t: (t["Forecast Start"], t["ID"])))
+        self.assertEqual(self.listed("CriticalTasks"), order(critical, lambda t: (t["Start"], t["ID"])))
         late_rows = table_rows(self.wb, "Schedule Report", "LateTasks")
         self.assertEqual(late_rows[0]["Resource"], "Jordan Lee")
         self.assertIn(late_rows[4]["Resource"], (None, ""))          # a milestone has no resource: blank, not 0
@@ -677,8 +677,8 @@ class ResourceReportTest(Tmp):
         for t, person, work in people:
             if not work:
                 continue
-            days, day = [], t["Forecast Start"]
-            while day <= max(t["Forecast Finish"], t["Forecast Start"]):
+            days, day = [], t["Start"]
+            while day <= max(t["Finish"], t["Start"]):
                 if day.weekday() < 5 and day not in holidays:
                     days.append(day)
                 day += dt.timedelta(days=1)
@@ -843,15 +843,24 @@ class EssentialsTest(Tmp):
         notes = openpyxl.utils.cell.range_boundaries(ws.tables["StatusNotes"].ref)
         self.assertGreater(snapshot[1], notes[3])                       # below the printed page
 
+    def test_gantt_panel_shows_the_essentials(self):
+        ws = self.raw["Gantt"]
+        head = {c.value: c.column_letter for c in ws[5] if c.value}
+        hidden = lambda h: bool(ws.column_dimensions[head[h]].hidden)
+        self.assertEqual([h for h in head if not h.startswith("_") and not hidden(h)][:7],
+                         ["ID", "Task", "Start", "Finish", "%", "Resources", "Show"])
+        self.assertTrue(all(hidden(h) for h in ("WBS", "Dur", "Planned Start", "Planned Finish", "Status")))
+        self.assertEqual(ws.column_dimensions[head["Planned Start"]].width, 10)   # widths kept inside the group
+
     def test_optional_columns_are_grouped_and_collapsed(self):
         ws = self.raw["Tasks"]
         col = columns(ws)
         state = lambda header: (ws.column_dimensions[openpyxl.utils.get_column_letter(col[header])].outlineLevel,
                                 bool(ws.column_dimensions[openpyxl.utils.get_column_letter(col[header])].hidden))
-        for header in ("Task Name", "Duration", "Predecessors", "Resources", "% Complete", "Actual Start", "Forecast Finish",
+        for header in ("Task Name", "Duration", "Predecessors", "Resources", "Stage", "Actual Start", "Finish",
                        "Status", "Critical", "Issues", "Deadline", "Finish Var", "Work", "Sprint", "Duration Var", "EV"):
             self.assertEqual(state(header), (0, False), header)          # essentials and each section's key column
-        for header in ("Mode", "Constraint", "Late Start", "Total Slack", "Cost", "Story Points", "BL Source Start",
+        for header in ("Mode", "Constraint", "Late Start", "Total Slack", "% Complete", "Cost", "Story Points", "BL Source Start",
                        "Baseline Start", "Budget", "PV"):
             self.assertEqual(state(header), (1, True), header)           # collapsed sections
         self.assertEqual(state("_Row"), (2, True))                       # helpers: one level deeper
@@ -895,7 +904,7 @@ class IssuesTest(Tmp):
         wb = recalc(self.path, self.dir, lambda wb: setattr(named_cell(wb, "WorkingWeek"), "value", "Sun-Thu"))
         self.assertEqual(errors_in(wb), [])
         self.assertEqual(named_cell(wb, "WorkWeek").value, "0000110")
-        days = {d(r["Forecast Start"]).weekday() for r in table_rows(wb, "Tasks", "Tasks")
+        days = {d(r["Start"]).weekday() for r in table_rows(wb, "Tasks", "Tasks")
                 if r["_IsLeaf"] == 1 and not r["Actual Start"]}
         self.assertFalse(days & {4, 5})                                    # nothing new starts on a Friday or Saturday
         out = io.BytesIO()
@@ -905,6 +914,56 @@ class IssuesTest(Tmp):
                 for w in ET.fromstring(mspdi.convert(out.getvalue())).iter(ns + "WeekDay")
                 if w.find(ns + "DayType").text != "0"}
         self.assertEqual(week, {1: "1", 2: "1", 3: "1", 4: "1", 5: "1", 6: "0", 7: "0"})   # Sun-Thu in MS Project too
+
+
+class StageConversionTest(unittest.TestCase):
+    def test_a_percent_becomes_the_nearest_stage(self):
+        from planner.tasks import take_stage
+        self.assertEqual(take_stage({"Pct": 1}), {"Stage": "Complete"})              # exact: no override kept
+        self.assertEqual(take_stage({"Pct": 0.7}), {"Stage": "Test Ready"})
+        self.assertEqual(take_stage({"Pct": 0.5}), {"Stage": "In Development", "Pct": 0.5})   # 40% is nearest
+        self.assertEqual(take_stage({"Pct": 0.25}), {"Stage": "Design", "Pct": 0.25})
+        self.assertEqual(take_stage({"Pct": None, "AS": 1}), {"Pct": None, "AS": 1})    # nothing to convert
+        self.assertEqual(take_stage({"Pct": 0.9, "Stage": "Design"}), {"Pct": 0.9, "Stage": "Design"})
+        self.assertEqual(take_stage({"Pct": 0.5}, [("Open", 0), ("Half", 0.5), ("Done", 1)]), {"Stage": "Half"})
+
+
+@unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+class StageTest(Tmp):
+    """Progress by Stage (Settings > Stages), with % Complete as an optional override."""
+
+    def test_stage_sets_progress_and_issues_ask_for_dates(self):
+        def edit(wb):
+            set_input(wb, 13, "Pct", None)                        # Core API: In Development = 40%
+            set_input(wb, 14, "Stage", "Test Ready")              # not started yet: 70% without an Actual Start
+            set_input(wb, 18, "Stage", "Complete")                # 100% without an Actual Finish
+            set_input(wb, 19, "Stage", "Design")                  # a milestone half way
+            set_input(wb, 12, "Stage", "In Testing")              # finished (Actual Finish) but not Complete
+            set_input(wb, 16, "Stage", "Typo")
+            ws = wb["Settings"]
+            table = ws.tables["StageTable"]
+            c1, r1, _, _ = openpyxl.utils.cell.range_boundaries(table.ref)
+            ws.cell(r1 + 4, c1 + 1).value = 0.75                  # Test Ready is now 75%
+
+        wb = recalc(self.path, self.dir, edit)
+        self.assertEqual(errors_in(wb), [])
+        t = Tasks(wb)
+        self.assertEqual((t.get(13, "Prog"), t.get(14, "Prog"), t.get(18, "Prog")), (0.4, 0.75, 1))
+        self.assertEqual(t.get(12, "Prog"), 1)                       # an Actual Finish counts as 100%
+        self.assertIn("Started: enter the Actual Start.", t.get(14, "Issues"))
+        self.assertIn("Complete: enter the Actual Finish.", t.get(18, "Issues"))
+        self.assertIn("A milestone is Not Started or Complete.", t.get(19, "Issues"))
+        self.assertIn("Actual Finish is set: set the Stage to Complete.", t.get(12, "Issues"))
+        self.assertIn("Stage Typo is not on Settings > Stages.", t.get(16, "Issues"))
+        self.assertEqual(t.get(13, "FF"), dt.date(2026, 11, 2))      # 6 of 10 days left: 26-Oct to 2-Nov
+
+    def test_sample_uses_stages(self):
+        wb = openpyxl.load_workbook(self.path)
+        stages = {r["Stage"]: r["% Complete"] for r in table_rows(wb, "Settings", "StageTable")}
+        self.assertEqual(stages, dict(settings.STAGES))
+        t = {r["UID"]: r for r in table_rows(wb, "Tasks", "Tasks")}
+        self.assertEqual((t[2]["Stage"], t[2]["% Complete"]), ("Complete", None))
+        self.assertEqual((t[13]["Stage"], t[13]["% Complete"]), ("In Development", 0.5))     # the override kept
 
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")
@@ -1142,7 +1201,8 @@ class InsertRowTest(Tmp):
         self.assertEqual(t.get(18, "Pred"), "17,13SS+2d")             # Feature screens now ID 18
         self.assertEqual(t.get(11, "Work"), 168 + 0)                  # no resource on new task
         gantt = wb["Gantt"]
-        self.assertEqual(gantt.cell(14 + FIRST - 1, 3).value.strip(), "Security review")
+        task = next(c.column for c in gantt[5] if c.value == "Task")
+        self.assertEqual(gantt.cell(14 + FIRST - 1, task).value.strip(), "Security review")
 
 
 import lo_session  # noqa: E402
@@ -1189,7 +1249,9 @@ class RealRowEditTest(Tmp):
         self.assertIsNone(t.get(15, "Link"))
         self.assertEqual(t.get(15, "PS"), dt.date(2026, 10, 27))   # follows the new task
         self.assertEqual(t.get(20, "Pred"), "15,19")                 # IDs renumbered in the MSP text
-        self.assertEqual(wb["Gantt"].cell(14 + FIRST - 1, 3).value.strip(), "Security review")
+        gantt = wb["Gantt"]
+        task = next(c.column for c in gantt[5] if c.value == "Task")
+        self.assertEqual(gantt.cell(14 + FIRST - 1, task).value.strip(), "Security review")
 
     def test_delete_a_predecessor(self):
         def delete(calc, cols):
@@ -1219,6 +1281,7 @@ class RippleTest(Tmp):
         def edit(wb):
             set_input(wb, 13, "AS", None)
             set_input(wb, 13, "Pct", None)
+            set_input(wb, 13, "Stage", None)
 
         t = Tasks(recalc(self.path, self.dir, edit))
         self.assertEqual(t.get(13, "FS"), dt.date(2026, 10, 26))   # first working day after 25-Oct
@@ -1320,8 +1383,8 @@ class LeaveTest(Tmp):
             names = [n for n in (t["_Resource1"], t["_Res2"], t["_Res3"], t["_Res4"]) if n]   # everyone on the task
             if t["_IsLeaf"] != 1 or not names or t["Progress"] >= 1:
                 continue
-            a = max(0, (t["Forecast Start"] - first).days // 7)
-            b = min(25, (t["Forecast Finish"] - first).days // 7)
+            a = max(0, (t["Start"] - first).days // 7)
+            b = min(25, (t["Finish"] - first).days // 7)
             if any((u or 0) > 1 for n in names for u in util[n][a:b + 1] if isinstance(u, (int, float))):
                 want.append(t["Task Name"])
         flagged = [t["Task Name"] for t in table_rows(self.wb, "Tasks", "Tasks") if t["Over-allocated"] == "Yes"]

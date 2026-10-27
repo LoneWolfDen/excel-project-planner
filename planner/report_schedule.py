@@ -45,19 +45,19 @@ LISTS = [
         Show("Deadline", "tsk_Deadline", "date", fmt=DATE), Show("Deadline Check", "tsk_DeadlineCheck"), STATUS]),
     ("LateTasks", "tsk_LateKey", 15, True, '"Late tasks (most days late first)"', [
         WBS, Show("Task", "tsk_Name", width=40), RESOURCE, Show("Planned Finish", "tsk_PlanFinish", "date", fmt=DATE),
-        Show("Forecast Finish", "tsk_FcFinish", "date", fmt=DATE), Show("Finish Var", "tsk_Variance", "num", fmt=VAR),
+        Show("Finish", "tsk_FcFinish", "date", fmt=DATE), Show("Finish Var", "tsk_Variance", "num", fmt=VAR),
         STATUS, CRITICAL]),
     ("StartingSoon", "tsk_StartSoonKey", 15, False,
      '"Starting by "&TEXT(LookaheadEnd,"ddd dd-mmm")&" (look-ahead "&LookaheadDays&" working days)"', [
-        WBS, Show("Task", "tsk_Name", width=40), RESOURCE, Show("Forecast Start", "tsk_FcStart", "date", fmt=DATE),
-        Show("Forecast Finish", "tsk_FcFinish", "date", fmt=DATE), Show("Duration", "tsk_Duration", "num"),
+        WBS, Show("Task", "tsk_Name", width=40), RESOURCE, Show("Start", "tsk_FcStart", "date", fmt=DATE),
+        Show("Finish", "tsk_FcFinish", "date", fmt=DATE), Show("Duration", "tsk_Duration", "num"),
         Show("Predecessors", "tsk_Predecessors"), CRITICAL]),
     ("DueSoon", "tsk_DueSoonKey", 15, False, '"Due by "&TEXT(LookaheadEnd,"ddd dd-mmm")', [
-        WBS, Show("Task", "tsk_Name", width=40), RESOURCE, Show("Forecast Finish", "tsk_FcFinish", "date", fmt=DATE),
+        WBS, Show("Task", "tsk_Name", width=40), RESOURCE, Show("Finish", "tsk_FcFinish", "date", fmt=DATE),
         Show("Progress", "tsk_Progress", "num", fmt="0%"), Show("Deadline Check", "tsk_DeadlineCheck"), STATUS, CRITICAL]),
     ("CriticalTasks", "tsk_CriticalKey", 20, False, '"Open critical tasks (by forecast start)"', [
-        WBS, Show("Task", "tsk_Name", width=40), RESOURCE, Show("Forecast Start", "tsk_FcStart", "date", fmt=DATE),
-        Show("Forecast Finish", "tsk_FcFinish", "date", fmt=DATE), Show("Total Slack", "tsk_TotalSlack", "num"),
+        WBS, Show("Task", "tsk_Name", width=40), RESOURCE, Show("Start", "tsk_FcStart", "date", fmt=DATE),
+        Show("Finish", "tsk_FcFinish", "date", fmt=DATE), Show("Total Slack", "tsk_TotalSlack", "num"),
         Show("Deadline Check", "tsk_DeadlineCheck"), STATUS]),
 ]
 PHASE_ROWS = 10
@@ -73,7 +73,7 @@ def build_schedule_report(wb):
     top = 5
     phase = ranked_table(ws, "PhaseSummary", top, FIRST_COL, "tsk_PhaseKey", PHASE_ROWS, [
         WBS, Show("Phase", "tsk_Name", width=40), Show("Planned Finish", "tsk_PlanFinish", "date", fmt=DATE),
-        Show("Forecast Finish", "tsk_FcFinish", "date", fmt=DATE), Show("Finish Var", "tsk_Variance", "num", fmt=VAR),
+        Show("Finish", "tsk_FcFinish", "date", fmt=DATE), Show("Finish Var", "tsk_Variance", "num", fmt=VAR),
         Show("Progress", "tsk_Progress", "num", fmt="0%"), Show("Budget", "tsk_Budget", "num", fmt=MONEY),
         Show("PV", "tsk_PV", "num", fmt=MONEY), Show("EV", "tsk_EV", "num", fmt=MONEY),
         Show("AC", "tsk_AC", "num", fmt=MONEY)], label='"Phases (outline level 1)"', extra=_phase_extras())

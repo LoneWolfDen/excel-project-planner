@@ -29,9 +29,9 @@ from .report_resources import build_resource_report
 from .report_schedule import build_schedule_report
 from .roadmap import build_roadmap
 from .resources import build_resources
-from .settings import build_holidays, build_lists, build_settings
+from .settings import build_holidays, build_lists, build_settings, build_stages
 from .status import build_status
-from .tasks import build_tasks, take_people
+from .tasks import build_tasks, take_people, take_stage
 
 ORDER = ["Start", "Status", "Roadmap", "Schedule Report", "Resource Report", "Agile", "Log", "History", "Settings",
          "Tasks", "Gantt", "Resources", "MSP_Tasks", "MSP_Resources"]
@@ -72,6 +72,7 @@ class ProjectData:
     leave: dict = field(default_factory=dict)          # {person: {"Nov-26": "16, 17(0.5)"}}
     leave_months: list = None                          # leave month headers (Resources sheet columns)
     assignments: list = field(default_factory=list)    # (task UID, resource, units): people beyond the first
+    stages: list = None                                # (stage, %) rows of the Stages table; None = the default
 
 
 VERSION = "1.7"          # PlannerVersion in every workbook: planner/upgrade.py reads it to know what to convert
@@ -93,13 +94,15 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
         raise SystemExit(f"{len(rows)} tasks do not fit in {n_tasks} rows; raise --tasks")
     build_settings(wb, blank, sizes.sprints, data.settings if data else None)
     build_lists(wb)
+    build_stages(wb, data.stages if data else None)
     build_holidays(wb, blank, holidays=data.holidays if data else None)
     build_resources(wb, blank, sizes.resources, data.resources if data else None, data.leave if data else None,
                     data.leave_months if data else None)
     more = {}                                          # people beyond the first: into each task's Resources text
     for uid, resource, units in (data.assignments if data is not None else sample.assignments(blank, stress)):
         more.setdefault(uid, []).append((resource, units))
-    rows = [take_people(dict(r), more.get(r.get("UID"), [])) for r in rows]
+    rows = [take_stage(take_people(dict(r), more.get(r.get("UID"), [])), data.stages if data else None)
+            for r in rows]
     build_tasks(wb, rows, n_tasks)
     charted = min(12, sizes.sprints)                 # sprints shown on the Status and Agile charts
     agile_ws, sprint_letters = build_agile(wb, blank, sizes.sprints, charted)

@@ -135,7 +135,7 @@ class StructureTest(Tmp):
         cls.wb = openpyxl.load_workbook(cls.path)
 
     def test_sheets(self):
-        self.assertEqual(self.wb.sheetnames, ["Start", "Status", "Roadmap", "Schedule Report", "Resource Report",
+        self.assertEqual(self.wb.sheetnames, ["Start", "Status", "Roadmap", "Resource Report",
                                               "Agile", "Log", "History", "Settings", "Tasks", "Resources", "Cost"])
 
     def test_named_ranges(self):
@@ -220,7 +220,7 @@ class StructureTest(Tmp):
 
     def test_views_read_tasks_by_name_not_row(self):
         # the reports use INDEX(tsk_..., n), so rows inserted on Tasks still show up
-        for sheet in ("Status", "Schedule Report", "Resource Report", "Agile", "Log", "History"):
+        for sheet in ("Status", "Roadmap", "Resource Report", "Agile", "Log", "History"):
             for row in self.wb[sheet].iter_rows(max_row=120, max_col=25):
                 for c in row:
                     if isinstance(c.value, str) and c.value.startswith("="):
@@ -465,7 +465,7 @@ def working_days(a, b, holidays):
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")
 class ReportTest(Tmp):
-    """Status sheet and Schedule Report, checked against values worked out in Python from the Tasks sheet."""
+    """Status sheet and its schedule lists, checked against values worked out in Python from the Tasks sheet."""
 
     @classmethod
     def setUpClass(cls):
@@ -517,13 +517,6 @@ class ReportTest(Tmp):
         self.assertAlmostEqual(self.evm(self.wb, "CPI"), ev / ac)
         self.assertAlmostEqual(self.evm(self.wb, "EAC"), ac + (bac - ev) / (ev / ac))
         self.assertAlmostEqual(self.evm(self.wb, "TCPI"), (bac - ev) / (bac - ac))
-        # the phase table: schedule SPI = progress / planned progress, both duration-weighted (no money there)
-        phases = [r for r in table_rows(self.wb, "Schedule Report", "PhaseSummary") if r["Phase"]]
-        self.assertEqual([r["Phase"] for r in phases], ["Initiation", "Requirements & Design", "Build", "Test & Release",
-                                                        "Project Close"])
-        for r in phases:
-            if r["Planned"]:
-                self.assertAlmostEqual(r["SPI"], r["Progress"] / r["Planned"], msg=r["Phase"])
         card = [r for r in table_rows(self.wb, "Cost", "RateCard") if r["Resource"]]
         self.assertAlmostEqual(sum(r["Actual Cost"] for r in card), ac, places=6)
 
@@ -566,8 +559,8 @@ class ReportTest(Tmp):
         overall = table_rows(wb, "Status", "OverallStatus")[0]
         self.assertEqual((overall["RAG"], overall["Value"]), ("Amber", "0 red, 4 amber"))
 
-    def listed(self, table):
-        return [r["Task"] if "Task" in r else r["Milestone"] for r in table_rows(self.wb, "Schedule Report", table)
+    def listed(self, table, sheet="Status"):
+        return [r["Task"] if "Task" in r else r["Milestone"] for r in table_rows(self.wb, sheet, table)
                 if r["_Task"] not in (None, "")]
 
     def test_schedule_lists(self):
@@ -575,8 +568,8 @@ class ReportTest(Tmp):
         end = named_cell(self.wb, "LookaheadEnd").value
         end = d(end) if not isinstance(end, (int, float)) else dt.date(1899, 12, 30) + dt.timedelta(days=end)
         self.assertEqual(end, dt.date(2026, 11, 6))
-        order = lambda rows, key: [t["Task Name"] for t in sorted(rows, key=key)]
-        self.assertEqual(self.listed("MilestoneReport"), order(
+        order = lambda rows, key: [t["Task Name"] for t in sorted(rows, key=key)][:5]       # Status shows the first 5
+        self.assertEqual(self.listed("RoadmapMilestones", "Roadmap"), order(
             [t for t in tasks if t["Duration"] == 0], lambda t: (t["Planned Finish"], t["ID"])))
         late = [t for t in tasks if t["Progress"] < 1 and (t["Finish Var"] > 0 or t["Status"] == "Late Start")]
         self.assertEqual(len(late), 7)
@@ -589,10 +582,11 @@ class ReportTest(Tmp):
         critical = [t for t in tasks if t["Critical"] == "Yes"]
         self.assertEqual(len(critical), 11)
         self.assertEqual(self.listed("CriticalTasks"), order(critical, lambda t: (t["Start"], t["ID"])))
-        late_rows = table_rows(self.wb, "Schedule Report", "LateTasks")
-        self.assertEqual(late_rows[0]["Resource"], "Jordan Lee")
-        self.assertIn(late_rows[4]["Resource"], (None, ""))          # a milestone has no resource: blank, not 0
-        self.assertIn(late_rows[-1]["Task"], (None, ""))
+        late_rows = table_rows(self.wb, "Status", "LateTasks")
+        self.assertEqual(late_rows[0]["Resources"], "Jordan Lee")
+        self.assertIn(late_rows[4]["Resources"], (None, ""))         # a milestone has no resource: blank, not 0
+        labels = [c.value for row in self.wb["Status"].iter_rows() for c in row if isinstance(c.value, str)]
+        self.assertIn("LATE TASKS (most days late first): 7 (showing the first 5)", labels)
 
 
 def serial(value):
@@ -816,6 +810,22 @@ class ViewsTest(Tmp):
         build = phases[2]
         self.assertEqual((d(build["Start"]), d(build["Finish"]), build["Finish Var"]),
                          (t.get(10, "FS"), t.get(10, "FF"), t.get(10, "Var")))
+        # B-1009: owner, tasks done (milestones left out), RAG from the finish slip, next milestone, a link
+        self.assertEqual([r["Owner"] for r in phases], ["Priya Sharma", "Morgan Patel", "Jordan Lee", "Taylor Morgan",
+                                                        "Priya Sharma"])
+        rows = [r for r in table_rows(self.wb, "Tasks", "Tasks") if r["_IsLeaf"] == 1 and r["Duration"]]
+        for p in phases:
+            mine = [r for r in rows if str(r["_Phase"]) == str(p["WBS"])]
+            self.assertEqual(p["Tasks Done"], f'{sum(r["Progress"] >= 1 for r in mine)} of {len(mine)} done', p["Phase"])
+        self.assertEqual(phases[0]["Tasks Done"], "2 of 2 done")
+        amber, red = (named_cell(self.wb, n).value for n in ("RAGAmberSlipDays", "RAGRedSlipDays"))
+        for p in phases:
+            slip = p["Finish Var"] or 0
+            self.assertEqual(p["RAG"], "Red" if slip >= red else "Amber" if slip >= amber else "Green", p["Phase"])
+        finish = t.get(19, "FF")
+        self.assertEqual(build["Next Milestone"], f"Build complete ({finish:%d-%b})")
+        self.assertIn(phases[0]["Next Milestone"], (None, ""))           # Kickoff complete is done
+        self.assertEqual(build["Link"], "Go to phase")
         milestones = [r["Milestone"] for r in table_rows(self.wb, "Roadmap", "RoadmapMilestones") if r["Milestone"]]
         self.assertEqual(milestones, ["Kickoff complete", "Design sign-off", "Build complete", "Go-live", "Project closed"])
         ws, origin = self.wb["Roadmap"], named_cell(self.wb, "rm_Origin")

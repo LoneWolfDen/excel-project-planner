@@ -77,7 +77,7 @@ def _summary(ws, top, n_resources):
         Col("Remaining", width=10, fmt="#,##0", formula=f'IF({blank},"",{t.row("Work")}-{t.row("Work Done")})'),
         Col("Late Tasks", width=10, fmt="0", center=True,
             formula=f'IF({blank},"",{count_by_resource(res, ',tsk_LateKey,">0"')})',
-            note="Unfinished tasks forecast to finish after plan, or not started on time (Schedule Report)."),
+            note="Unfinished tasks forecast to finish after plan, or not started on time (Status > late tasks)."),
         Col("Open Critical", width=10, fmt="0", center=True,
             formula=f'IF({blank},"",{count_by_resource(res, ',tsk_Critical,"Yes",tsk_IsLeaf,1')})'),
         Col("Peak Week (h)", width=10, fmt="#,##0", center=True, formula=f'IF({blank},"",MAX({week_row("rw_Load")}))',

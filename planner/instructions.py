@@ -72,7 +72,9 @@ def text(sizes, wizard=False):
                      "Change GanttStart / GanttPeriod (1 = days, 7 = weeks, 30 = months, 91 = quarters) on Settings to "
                      "scroll or zoom. Collapse the outline with the 1 2 3 buttons at the top left (rows are grouped by "
                      "Level), or set Settings > OutlineShowLevel and filter Show = Yes (DETAIL section)."),
-        ("6b. Roadmap", "One landscape page for sponsors: phases and milestones with their dates, drawn by month (blue "
+        ("6b. Roadmap", "One landscape page for sponsors. Each phase (Level 1) with its owner (Tasks > Owner, WORK "
+                        "section), progress (duration-weighted) and how many of its tasks are done, a RAG from its "
+                        "finish slip, its next milestone and a link to its row; then the milestones. Drawn by month (blue "
                         "= forecast, green = done, amber = late vs plan, outline = planned, purple = milestone, red = "
                         "deadline missed). Settings > RoadmapStart scrolls the 18 months shown."),
         ("7. Agile", "Sprint calendar from Settings (type a Set End or Set Start to move a sprint; later sprints "
@@ -89,11 +91,10 @@ def text(sizes, wizard=False):
                       "RAG by area (schedule, SPI, deadlines, critical path, RAID, plan quality) calculated from "
                       "the thresholds on Settings (RAG...); pick a PM RAG to override one and say why in Comment. Then "
                       "key figures (SPI here is duration-weighted: progress / progress planned by now), tasks by "
-                      "status, next milestones, the top open RAID items, change control, the commentary for the period and the "
-                      "snapshot row for History."),
-        ("9. Schedule Report", "Phase summary with RAG, all milestones, late tasks, tasks starting and due in the "
-                                "look-ahead window (Settings > LookaheadDays) and open critical tasks. Lists update with "
-                                "every edit; drag a list's bottom corner down to show more rows."),
+                      "status, next milestones, the top open RAID items, the first five late tasks, tasks due and "
+                      "starting in the look-ahead window (Settings > LookaheadDays) and open critical tasks (filter "
+                      "Tasks by Status or Critical for the full lists), change control, the commentary for the period "
+                      "and the snapshot row for History."),
         ("10. Resource Report", "Per resource: work, done, remaining, late and critical tasks, peak "
                                 "week and weeks over capacity. Hours and utilisation grids by week from "
                                 "Settings > ResourceWeekStart and by sprint (red = over capacity), leave by week, and a "
@@ -180,7 +181,7 @@ def text(sizes, wizard=False):
     ] + (WIZARD if wizard else []) + [
         ("NAMES AND TABLES (Formulas > Name Manager)", None),
         ("Tables", "Tasks, ResourceTable, SprintTable, HolidayTable, KPIs, StatusSummary, "
-                   "NextMilestones, OverallStatus, StatusRAG, StatusNotes, PhaseSummary, MilestoneReport, "
+                   "NextMilestones, OverallStatus, StatusRAG, StatusNotes, RoadmapPhases, RoadmapMilestones, "
                    "LateTasks, StartingSoon, DueSoon, CriticalTasks, ResourceSummary, AgileKPIs, SprintBacklog, SprintBurndown, "
                    "Log, TopRAID, ChangeControl, SnapshotNow, StatusHistory and the List* "
                    "dropdown tables. Inside a table, formulas read [@Column] (this row)."),

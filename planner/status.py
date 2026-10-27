@@ -1,6 +1,7 @@
 """Status sheet: the weekly page. The status date and this week's checklist at the top, then everything a steering
 meeting reads: overall RAG and RAG by area, key figures, tasks by status, next milestones, the top open RAID items,
-change control and the period commentary, printable on one page. The snapshot row to paste onto History sits at
+the schedule watch lists (late, due and starting in the look-ahead, open critical: B-1008, which replaced the
+Schedule Report), change control and the period commentary, printable on one page. The snapshot row to paste onto History sits at
 the bottom. Money is on the Cost sheet, which nothing here reads, so it can be deleted before sharing.
 
 Each RAG is calculated from the plan against the Settings thresholds. The project manager can override it (PM RAG)
@@ -135,6 +136,7 @@ def build_status(wb, agile_ws=None, sprint_letters=None, n_chart_sprints=12):
     top = _rag(wb, ws, top)
     top = _key_figures(wb, ws, top)
     top = _top_raid(ws, top)
+    top = _schedule_watch(ws, top)
     chart_at = top
     top = _change_control(ws, top)
     end = _commentary(ws, top)
@@ -265,6 +267,52 @@ def _top_raid(ws, top):
     ws.column_dimensions["A"].width = WIDTHS["A"]
     rag.colour(ws, f"G{top + 1}:G{top + TOP_RAID_ROWS}", f"G{top + 1}")
     return top + TOP_RAID_ROWS + 3
+
+
+VAR = "+0;-0;0"
+TASK, RESOURCE = Show("Task", "tsk_Name", width=WIDTHS["B"]), Show("Resources", "tsk_ResourceNames", width=WIDTHS["C"])
+FINISH, START = (Show(h, n, "date", WIDTHS["D"], "ddd dd-mmm") for h, n in (("Finish", "tsk_FcFinish"),
+                                                                            ("Start", "tsk_FcStart")))
+CRITICAL = Show("Critical", "tsk_Critical", width=WIDTHS["G"])
+WATCH_ROWS = 5
+# table, key, largest first, label, columns B-G (the hidden _Task column is the margin, column A)
+WATCH = [
+    ("LateTasks", "tsk_LateKey", True, '"LATE TASKS (most days late first)"', [
+        TASK, RESOURCE, FINISH, Show("Finish Var", "tsk_Variance", "num", WIDTHS["E"], VAR),
+        Show("Status", "tsk_Status", width=WIDTHS["F"]), CRITICAL]),
+    ("DueSoon", "tsk_DueSoonKey", False, '"DUE BY "&UPPER(TEXT(LookaheadEnd,"ddd dd-mmm"))', [
+        TASK, RESOURCE, FINISH, Show("Progress", "tsk_Progress", "num", WIDTHS["E"], "0%"),
+        Show("Deadline Check", "tsk_DeadlineCheck", width=WIDTHS["F"]), CRITICAL]),
+    ("StartingSoon", "tsk_StartSoonKey", False,
+     '"STARTING BY "&UPPER(TEXT(LookaheadEnd,"ddd dd-mmm"))&" (look-ahead "&LookaheadDays&" working days)"', [
+        TASK, RESOURCE, START, Show("Duration", "tsk_Duration", "num", WIDTHS["E"]),
+        Show("Predecessors", "tsk_Predecessors", width=WIDTHS["F"]), CRITICAL]),
+    ("CriticalTasks", "tsk_CriticalKey", False, '"OPEN CRITICAL TASKS (by start)"', [
+        TASK, RESOURCE, START, Show("Total Slack", "tsk_TotalSlack", "num", WIDTHS["E"]),
+        Show("Deadline Check", "tsk_DeadlineCheck", width=WIDTHS["F"]), FINISH]),
+]
+
+
+def _schedule_watch(ws, top):
+    """The first few tasks of each schedule list. Tasks works out which tasks belong on each list and in what order
+    (its _LateKey, _DueSoonKey, ... columns); these only look them up. Filter Tasks for the whole list."""
+    for table, key, largest, label, shows in WATCH:
+        letters = ranked_table(ws, table, top, 1, key, WATCH_ROWS, shows, largest, label)
+        first, last = top + 1, top + WATCH_ROWS
+        if "Finish Var" in letters:
+            c = letters["Finish Var"]
+            ws.conditional_formatting.add(f"{c}{first}:{c}{last}", FormulaRule(
+                formula=[f"AND(ISNUMBER({c}{first}),{c}{first}>0)"], font=Font(color="C00000", bold=True)))
+        if "Critical" in letters:
+            c = letters["Critical"]
+            ws.conditional_formatting.add(f"{c}{first}:{c}{last}", FormulaRule(
+                formula=[f'{c}{first}="Yes"'], font=Font(color="FFFFFF", bold=True), fill=fill("C00000")))
+        if "Deadline Check" in letters:
+            c = letters["Deadline Check"]
+            ws.conditional_formatting.add(f"{c}{first}:{c}{last}", FormulaRule(
+                formula=[f'LEFT({c}{first},4)="Late"'], font=Font(color="C00000", bold=True)))
+        top = last + 3
+    return top
 
 
 def _change_control(ws, top):

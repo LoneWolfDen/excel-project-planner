@@ -8,8 +8,8 @@ UIDs and sizes are worked out by the builder. Every other input table (the logs,
 PM RAG and notes, resource notes) is then copied onto the new workbook column by column, matched by table and
 header. Dropdown lists keep the new template's values and add any the user had added.
 
-Inputs that a version renamed or moved are mapped in RENAMED and in the per-version steps below; workbooks carry
-their version in the PlannerVersion name (absent before v1.7). The same code runs on the command line
+Inputs that a version renamed or moved are mapped in RENAMED, RENAMED_TABLES and LOGS and in the steps below;
+workbooks carry their version in the PlannerVersion name (absent before v1.7). The same code runs on the command line
 (scripts/upgrade_planner.py) and in the browser page docs/export.html.
 """
 import io
@@ -23,8 +23,14 @@ from .core import BOX, HEADER_FILLS, INPUT_FONT
 
 # Tasks headers an older version used, and the column they are now
 RENAMED = {"Tasks": {"Start No Earlier Than": "Constraint Date"}}
+# tables a version renamed: old name -> (new name, {old header: new header})
+RENAMED_TABLES = {"ListRAIDType": ("ListLogType", {"RAID Type": "Log Type"})}
+# before v1.7 the Log was three tables: old table -> (Type of its rows, or None to keep theirs, {old header: Log's})
+LOGS = {"RAIDLog": (None, {}),
+        "DecisionLog": ("Decision", {"Date": "Raised", "Decision": "Title", "RAID Ref": "Related Ref"}),
+        "ChangeLog": ("Change", {"Requested By": "Owner", "Reason": "Options and Reasons"})}
 # tables the builder fills from ProjectData; everything else with inputs is copied by header
-BUILT = {"Tasks", "HolidayTable", "LeaveTable", "AssignmentTable"}
+BUILT = {"Tasks", "HolidayTable", "LeaveTable", "AssignmentTable"} | set(LOGS)
 INPUT_FILL = HEADER_FILLS["in"].start_color.rgb[-6:]
 MONTH = re.compile(r"^[A-Z][a-z]{2}-\d\d$")          # a leave month header: Nov-26
 
@@ -135,12 +141,48 @@ def read_planner(data):
                    for r in _records(tables, "AssignmentTable") if r.get("Task UID")]
 
     copies = {name: (head, rows) for name, (_, head, rows) in tables.items() if name not in BUILT}
+    for old, (new, headers) in RENAMED_TABLES.items():
+        if old in copies:
+            head, rows = copies.pop(old)
+            copies[new] = ([headers.get(h, h) for h in head], rows)
+    if any(t in tables for t in LOGS):
+        copies["Log"] = _merge_logs(tables, warnings)
     default = Sizes()
     sizes = Sizes(tasks=max(default.tasks, len(tasks)), resources=max(default.resources, len(resources)),
                   sprints=max(default.sprints, len(tables.get("SprintTable", (None, None, []))[2])))
     project = ProjectData(settings=settings, tasks=tasks, resources=resources, holidays=holidays, leave=leave,
                           leave_months=months, assignments=assignments)
     return project, copies, sizes, warnings, version
+
+
+def _merge_logs(tables, warnings):
+    """The RAID, decision and change logs of a v1.6 or older workbook as one Log table (headers, rows). RAID items
+    keep their Ref; decisions and change requests get the next free ones (the Log has one Ref sequence), and a
+    warning lists them so references typed in notes can be updated. The rows after them carry on the numbering."""
+    from .log import ROWS
+    items, warned = [], {}
+    for table, (kind, headers) in LOGS.items():
+        for rec in _records(tables, table, headers):
+            if rec.get("Title") in (None, ""):
+                continue
+            if kind:
+                rec["Type"] = kind
+            items.append((table, rec))
+    refs = [rec["Ref"] for table, rec in items if table == "RAIDLog" and isinstance(rec.get("Ref"), (int, float))]
+    ref = int(max(refs, default=0))
+    for table, rec in items:
+        if table != "RAIDLog" or not isinstance(rec.get("Ref"), (int, float)):
+            ref += 1
+            if rec.get("Ref") not in (None, ""):
+                warned.setdefault(rec["Type"], []).append(f"{rec['Type']} {rec['Ref']} is now {rec['Type']} {ref}")
+            rec["Ref"] = ref
+    for kind, moves in warned.items():
+        warnings.append(f"{kind} refs now follow the Log's numbering ({', '.join(moves)}): update any notes that "
+                        "quote the old numbers.")
+    head = ["Ref", "Type"] + sorted({h for _, rec in items for h in rec} - {"Ref", "Type"})
+    rows = [[rec.get(h) for h in head] for _, rec in items]
+    rows += [[ref + k] + [None] * (len(head) - 1) for k in range(1, ROWS - len(rows) + 1)]   # the free Refs
+    return head, rows
 
 
 def copy_inputs(wb, copies, warnings):

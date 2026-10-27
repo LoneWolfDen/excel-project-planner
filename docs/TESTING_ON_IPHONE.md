@@ -49,15 +49,16 @@ Tick each one and note anything odd (a screenshot is ideal).
 - [ ] Red lines at the status date (25-Oct), grey weekend columns, red deadline cells on tasks 19 and 25.
 
 **Baseline**
-- [ ] On Tasks, select the 5 "BL Source" columns for rows 6–35, Copy, tap the first "Baseline Start" cell, Paste Special → Values. Dashboard "Baseline" shows "Set on 30 tasks".
+- [ ] On Tasks, select the 5 "BL Source" columns for rows 6–35, Copy, tap the first "Baseline Start" cell, Paste Special → Values. Status > KEY FIGURES "Baseline" shows "Set on 30 tasks".
 - [ ] Change Task 21's Duration from 8 to 10: Planned Finish stays put, Forecast Finish moves 2 days, Finish Variance shows 2.
 
 **Inserting a task**
 - [ ] On Tasks, long-press row 19's number → Insert (row above). The new row fills in its grey formula cells by itself, and its UID cell turns red until you type the number shown at the top of the sheet ("Next free UID").
 
 **Other sheets**
-- [ ] Dashboard: KPI numbers and both charts show.
-- [ ] Sprints: hours and utilisation fill in; red cells only where someone is over capacity.
+- [ ] Status: change the status date at the top; the key figures, RAG and charts update, and Print preview fits one page.
+- [ ] Log: pick Type = Decision on an empty row; the RAID columns turn grey and the Status dropdown offers Proposed, Approved ...
+- [ ] Agile: the sprint table, release figures and charts show. Resource Report: hours and utilisation by sprint fill in; red cells only where someone is over capacity.
 - [ ] Tasks: the Resource and Type cells show dropdowns.
 
 ## Reporting back

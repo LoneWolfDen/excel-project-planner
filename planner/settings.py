@@ -21,9 +21,12 @@ def week_preset(settings):
 
 
 # the settings a plan needs: typed on the Start sheet (the rest are on Settings, with defaults)
-ESSENTIAL = ("ProjectName", "ProjectManager", "ProjectStartDate", "StatusDateInput", "WorkingWeek", "HoursPerDay")
+ESSENTIAL = ("ProjectName", "ProjectManager", "ProjectStartDate", "WorkingWeek", "HoursPerDay")
 START = "Start"
 START_ROW = 4                      # first essential setting's row on Start
+STATUS = "Status"                  # the status date is typed on the Status sheet (the weekly page), at this row
+STATUS_ROW = 5
+PROMPTED = ESSENTIAL + ("StatusDateInput",)
 
 LISTS = {  # table name, column name, named range, values
     "L_DepType": ("ListDepType", "Link Type", ["FS", "SS", "FF", "SF"]),
@@ -34,7 +37,7 @@ LISTS = {  # table name, column name, named range, values
     "L_ResType": ("ListResType", "Resource Type", ["Work", "Material", "Cost"]),
     "L_Period": ("ListPeriod", "Gantt Days per Column", [1, 7, 30, 91]),
     "L_RAG": ("ListRAG", "RAG", ["Green", "Amber", "Red"]),
-    "L_RAIDType": ("ListRAIDType", "RAID Type", ["Risk", "Assumption", "Issue", "Dependency"]),
+    "L_LogType": ("ListLogType", "Log Type", ["Risk", "Assumption", "Issue", "Dependency", "Decision", "Change"]),
     "L_RAIDStatus": ("ListRAIDStatus", "RAID Status", ["Open", "In Progress", "Closed"]),
     "L_DecisionStatus": ("ListDecisionStatus", "Decision Status", ["Proposed", "Approved", "Rejected", "Superseded"]),
     "L_ChangeStatus": ("ListChangeStatus", "Change Status", ["Submitted", "Under Review", "Approved", "Rejected",
@@ -97,13 +100,13 @@ def settings_rows(blank, max_sprints):
          "Defaults to the project start. Overwrite to align with your sprint calendar."),
         ("SprintLength", "Sprint length (calendar days)", 14, "0", True, "14 = two-week sprints."),
         ("SprintCount", "Number of sprints", min(12, max_sprints), "0", True,
-         f"Up to the number of rows in the Sprints table ({max_sprints}; add rows to the table for more). "
+         f"Up to the number of rows in the sprint table (Agile sheet) ({max_sprints}; add rows to the table for more). "
          "Tasks outside the sprint range are labelled 'Backlog'."),
         ("SprintPrefix", "Sprint name prefix", "Sprint ", "@", True, "Sprint names = prefix & number."),
         ("SprintLastEnd", "Last sprint end (calculated)", "=INDEX(spr_End,SprintCount)", DATE, False, ""),
         ("CurrentSprint", "Sprint containing the status date (calculated)",
          '=IF(OR(StatusDate<Sprint1Start,StatusDate>SprintLastEnd),"",INDEX(spr_Name,MATCH(StatusDate,spr_Start,1)))',
-         "@", False, "Blank outside the sprint calendar. Agile Report shows its backlog and daily burndown."),
+         "@", False, "Blank outside the sprint calendar. The Agile sheet shows its backlog and daily burndown."),
         ("CurrentSprintStart", "Current sprint start (calculated)",
          '=IF(CurrentSprint="","",INDEX(spr_Start,MATCH(CurrentSprint,spr_Name,0)))', DATE, False, ""),
         ("CurrentSprintEnd", "Current sprint end (calculated)",
@@ -127,7 +130,7 @@ def settings_rows(blank, max_sprints):
         ("LookaheadEnd", "Look-ahead window ends (calculated)", "=WORKDAY.INTL(StatusDate-1,LookaheadDays,WorkWeek,Holidays)",
          DATE, False, ""),
         ("RAGAmberSlipDays", "RAG: amber when the finish slips by (working days)", 3, "0", True,
-         "Status Report thresholds. A finish slip of at least this many working days is amber."),
+         "Status sheet thresholds. A finish slip of at least this many working days is amber."),
         ("RAGRedSlipDays", "RAG: red when the finish slips by (working days)", 10, "0", True, ""),
         ("RAGAmberIndex", "RAG: amber when SPI or CPI is below", 0.95, "0.00", True,
          "SPI = earned value / planned value; CPI = earned value / actual cost. 1.00 = on plan."),
@@ -149,6 +152,7 @@ def build_settings(wb, blank, max_sprints, values=None):
           "Blue = edit me. Grey = calculated. Column D shows the defined name every formula uses for that setting. "
           "The settings every plan needs are on the Start sheet.")
     start = wb.create_sheet(START)                  # the essentials go there; build_start adds the guide
+    status = wb.create_sheet(STATUS)                # the status date goes there; build_status adds the rest
     start.column_dimensions["A"].width = 3
     for col, (text, width) in enumerate([("Setting", 34), ("Value", 24), ("Named range", 24), ("Notes", 80)], start=2):
         header_cell(st.cell(4, col), text)
@@ -164,13 +168,15 @@ def build_settings(wb, blank, max_sprints, values=None):
             value = values[n]
         if n in ESSENTIAL:
             ws, r = start, START_ROW + ESSENTIAL.index(n)
+        elif n == "StatusDateInput":
+            ws, r = status, STATUS_ROW
         else:
             ws, r = st, 5 + on_settings
             on_settings += 1
             ws.cell(r, 4, n).font = font(color="7F7F7F")
             ws.cell(r, 5, note).font = NOTE_FONT
         rows[n], cells[n] = r, (ws, f"C{r}")
-        ws.cell(r, 2, label).font = font(bold=n in ESSENTIAL)
+        ws.cell(r, 2, label).font = font(bold=n in PROMPTED)
         c = ws.cell(r, 3, value)
         c.number_format = fmt
         c.font = INPUT_FONT if is_input else CALC_FONT
@@ -178,7 +184,7 @@ def build_settings(wb, blank, max_sprints, values=None):
             c.fill = CALC_FILL
         c.border = BOX
         name(wb, n, f"{ws.title}!$C${r}")
-        if n in ESSENTIAL:                          # the note shows when the cell is selected
+        if n in PROMPTED:                           # the note shows when the cell is selected
             prompt = DataValidation(type="list", formula1="=L_WorkingWeek") if n == "WorkingWeek" else \
                 DataValidation(type="decimal", operator="between", formula1="1", formula2="24") if n == "HoursPerDay" \
                 else DataValidation(allow_blank=True)

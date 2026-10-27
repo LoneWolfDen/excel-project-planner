@@ -18,32 +18,26 @@ from pathlib import Path
 import openpyxl
 
 from . import sample
-from .dashboard import build_dashboard
+from .agile import build_agile
 from .gantt import build_gantt
 from .instructions import build_instructions
 from .msp import build_msp_resources, build_msp_tasks
-from .changes import build_changes
 from .core import name
-from .decisions import build_decisions
 from .history import build_history
-from .raid import build_raid
-from .report_agile import build_agile_report
+from .log import build_log
 from .report_resources import build_resource_report
 from .report_schedule import build_schedule_report
-from .report_status import build_status_report
 from .roadmap import build_roadmap
 from .resources import build_resources
 from .settings import build_holidays, build_lists, build_settings
-from .sprints import build_sprints
+from .status import build_status
 from .tasks import build_tasks, take_people
 
-ORDER = ["Start", "Dashboard", "Roadmap", "Status Report", "Schedule Report", "Resource Report", "Agile Report", "RAID",
-         "Decisions", "Changes", "History", "Settings", "Tasks", "Gantt", "Resources", "Sprints", "MSP_Tasks",
-         "MSP_Resources"]
-TAB_COLOURS = {"Start": "1F4E78", "Dashboard": "548235", "Roadmap": "548235", "Status Report": "548235",
-               "Schedule Report": "548235", "Resource Report": "548235", "Agile Report": "548235", "RAID": "C55A11",
-               "Decisions": "C55A11", "Changes": "C55A11", "History": "C55A11", "Settings": "BF8F00", "Tasks": "2F75B5",
-               "Gantt": "2F75B5", "Resources": "7030A0", "Sprints": "7030A0",
+ORDER = ["Start", "Status", "Roadmap", "Schedule Report", "Resource Report", "Agile", "Log", "History", "Settings",
+         "Tasks", "Gantt", "Resources", "MSP_Tasks", "MSP_Resources"]
+TAB_COLOURS = {"Start": "1F4E78", "Status": "548235", "Tasks": "2F75B5", "Gantt": "2F75B5", "Roadmap": "548235",
+               "Resources": "7030A0", "Log": "C55A11", "Agile": "548235", "Schedule Report": "548235",
+               "Resource Report": "548235", "History": "C55A11", "Settings": "BF8F00",
                "MSP_Tasks": "595959", "MSP_Resources": "595959"}
 @dataclass(frozen=True)
 class Sizes:
@@ -51,7 +45,7 @@ class Sizes:
     (Gantt timeline, per-resource grids, weeks) are sized here, so a bigger plan is a rebuild, not a formula edit."""
     tasks: int = 200
     resources: int = 50          # ResourceTable and MSP_Resources rows
-    grid_resources: int = 25     # rows in the per-resource grids (Sprints load / utilisation, Resource Report)
+    grid_resources: int = 25     # rows in the per-resource grids (Resource Report, by week and by sprint)
     sprints: int = 26            # SprintTable rows (SprintCount can be at most this)
     gantt_columns: int = 150     # Gantt timeline columns (days or weeks, Settings > GanttPeriod)
     weeks: int = 26              # Resource Report weekly grids
@@ -107,22 +101,18 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
         more.setdefault(uid, []).append((resource, units))
     rows = [take_people(dict(r), more.get(r.get("UID"), [])) for r in rows]
     build_tasks(wb, rows, n_tasks)
-    sprints_ws, sprint_letters = build_sprints(wb, blank, sizes.sprints, sizes.grid_resources)
+    charted = min(12, sizes.sprints)                 # sprints shown on the Status and Agile charts
+    agile_ws, sprint_letters = build_agile(wb, blank, sizes.sprints, charted)
     build_gantt(wb, n_tasks, sizes.gantt_columns, [r.get("Level") for r in rows])
     if import_wizard:
         build_msp_tasks(wb, n_tasks)
         build_msp_resources(wb, sizes.resources)
-    charted = min(12, sizes.sprints)                 # sprints shown on the Dashboard and Agile Report charts
-    build_dashboard(wb, sprints_ws, sprint_letters, charted)
-    build_raid(wb, blank)
-    build_decisions(wb, blank)
-    build_changes(wb, blank)
-    build_status_report(wb)
+    build_log(wb, blank)
+    build_history(wb, blank)
+    build_status(wb, agile_ws, sprint_letters, charted)
     build_schedule_report(wb)
     build_roadmap(wb)
-    build_resource_report(wb, sizes.grid_resources, sizes.weeks)
-    build_agile_report(wb, sprints_ws, sprint_letters, charted)
-    build_history(wb, blank)
+    build_resource_report(wb, sizes.grid_resources, sizes.weeks, sizes.sprints)
     build_instructions(wb, sizes, import_wizard)
     name(wb, "PlannerVersion", f'"{VERSION}"')
     wb._sheets = [wb[n] for n in ORDER if n in wb.sheetnames]
@@ -188,8 +178,8 @@ def main(argv=None):
     p.add_argument("--tasks", type=int, default=d.tasks, help="rows in the Tasks table (and Gantt / MSP_Tasks)")
     p.add_argument("--resources", type=int, default=d.resources, help="rows in the Resources table")
     p.add_argument("--grid-resources", type=int, default=d.grid_resources,
-                   help="resources shown in the per-resource grids (Sprints, Resource Report)")
-    p.add_argument("--sprints", type=int, default=d.sprints, help="rows in the Sprints table")
+                   help="resources shown in the per-resource grids (Resource Report)")
+    p.add_argument("--sprints", type=int, default=d.sprints, help="rows in the sprint table (Agile sheet)")
     p.add_argument("--gantt-columns", type=int, default=d.gantt_columns, help="columns in the Gantt timeline")
     p.add_argument("--weeks", type=int, default=d.weeks, help="weeks in the Resource Report grids")
     p.add_argument("--stress", type=int, default=0, help="repeat the sample project N times (performance tests)")

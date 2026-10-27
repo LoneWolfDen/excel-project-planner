@@ -354,7 +354,7 @@ def formulas():
         f[w_k] = (f'IF(OR(NOT({leaf}),{R(nm_k)}=""),0,IF(ISNA(MATCH({R(nm_k)},res_Name,0)),0,'   # unknown: Issues
                   f'N({R("Dur")})*HoursPerDay*IF({R(u_k)}="",DefaultUnits,{R(u_k)})))')
         f[c_k] = f'IF({R(w_k)}=0,0,{R(w_k)}*IFERROR(INDEX(res_Rate,MATCH({R(nm_k)},res_Name,0)),0))'
-    # the task's totals add everyone; the per-resource totals (Resources, reports, Sprints) sum each person's columns
+    # the task's totals add everyone; the per-resource totals (Resources, reports, Agile) sum each person's columns
     f["NPeople"] = f'IF(NOT({leaf}),0,' + "+".join(f'({R(person[k][0])}<>"")' for k in person) + ")"
     f["LTW"] = "+".join(R(person[k][2]) for k in person)
     f["LTC"] = "+".join(R(person[k][3]) for k in person)
@@ -433,7 +433,7 @@ def formulas():
     f["DVar"] = variance("SrcD", "BD")
     f["WVar"] = variance("Work", "BW")
     f["CVar"] = variance("Cost", "BC")
-    # time-phased work, in working days counted from the project start (used by Sprints with SUMIFS):
+    # time-phased work, in working days counted from the project start (used by the sprint and weekly totals with SUMIFS):
     # work up to working day D = SUMIFS(work, finish < D) + D x SUMIFS(work/day, running on D) - SUMIFS(work before start)
     has_work = f'AND({leaf},{R("LTW")}>0)'
     f["SWD"] = f'IF({has_work},NETWORKDAYS.INTL(ProjectStart,{R("XFS")},{WD}),0)'

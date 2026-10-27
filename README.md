@@ -13,7 +13,7 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 - `Project_Planner.xlsx` – the template, loaded with a 30-task sample project.
 - `Project_Planner_Blank.xlsx` – the same template with no sample data, for a new project.
 - `docs/` – [architecture and rules](docs/ARCHITECTURE.md), [MS Project gap analysis](docs/MSP_GAP_ANALYSIS.md), [backlog](docs/BACKLOG.md), [testing on iPhone](docs/TESTING_ON_IPHONE.md).
-- `planner/` – the generator: one module per sheet (`tasks.py`, `gantt.py`, `sprints.py`, ...) plus `core.py` helpers.
+- `planner/` – the generator: one module per sheet (`tasks.py`, `gantt.py`, `agile.py`, `log.py`, `status.py`, ...) plus `core.py` helpers.
 - `scripts/perf_check.py` and `perf_budget.json` – performance and structure checks run on every PR.
 - `scripts/build_planner.py` – generates the workbooks (needs `openpyxl`; `--recalc` also needs LibreOffice):
   ```
@@ -26,21 +26,18 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 ## Sheets
 | Sheet | Purpose |
 |---|---|
-| Start | The six settings a plan needs (name, manager, start date, status date, working week, hours/day), a 5-step quick start, the weekly update checklist with links to each sheet, then the full reference |
-| Dashboard | Planned vs forecast finish, slip, progress, hours, cost, overall RAG, SPI / CPI, next milestones, charts |
-| Status Report | Overall RAG and RAG by area (calculated, with PM override and comment), earned value (BAC, PV, EV, AC, SPI, CPI, EAC, VAC, TCPI), top open RAID items, change control, commentary for the period |
+| Start | The five settings a plan needs (name, manager, start date, working week, hours/day), a 5-step quick start, then the full reference |
+| Status | The weekly page, printable on one page: the status date and this week's steps (with links), overall RAG and RAG by area (calculated, with PM override and comment), key figures, tasks by status, next milestones, earned value (BAC, PV, EV, AC, SPI, CPI, EAC, VAC, TCPI), top open RAID items, change control, commentary for the period, sprint load chart, and the snapshot row for History |
 | Schedule Report | Phase summary with RAG, milestones, late tasks, tasks starting / due in the look-ahead window, open critical tasks |
-| Resource Report | Per-resource work, progress, cost, late / critical tasks; weekly hours and utilisation grids (over-allocation in red); team hours vs capacity chart |
-| Agile Report | Story points scope / done / remaining, velocity and forecast finish sprint, current sprint backlog and daily burndown, release burndown and velocity charts |
-| RAID | Risks, assumptions, issues, dependencies: owner, due, probability x impact score and rating, overdue flag, linked task |
-| Decisions / Changes | Decision log; change request log with schedule and cost impact (totals on the Status Report) |
-| History | Status snapshot (copy, paste as values each reporting date) and trend charts: finish, earned value S-curve, SPI / CPI, burn-up |
+| Resource Report | Per-resource work, progress, cost, late / critical tasks; hours and utilisation grids by week and by sprint (over-allocation in red); leave by week; team hours vs capacity chart |
+| Agile | Sprint calendar (goal, capacity vs planned hours, points capacity, committed / done story points, velocity, release burndown), release forecast, current sprint backlog and daily burndown, charts |
+| Log | One list for risks, assumptions, issues, dependencies, decisions and change requests: Type, owner, dates, status (the dropdown follows the type), linked task; RAID score and rating, decision options and reasons, change schedule and cost impact (columns that don't apply to a row's type are grey); overdue flag |
+| History | Status history (paste the Status sheet's snapshot row as values each reporting date) and trend charts: finish, earned value S-curve, SPI / CPI, burn-up |
 | Settings | Everything else, with defaults: rescheduling, units, custom working days, View from (scrolls the Gantt and Resource Report together), Gantt scale, sprint calendar, RAG thresholds; the holiday table below; the dropdown lists in a collapsed group to the right |
 | Tasks | Entry table. Shown: UID, Level, Task Name, Duration, Predecessors (`12, 14SS+2d`, by UID), Resources (`Alex Chen, JL[50%]`), % complete, actual start / finish, notes, the forecast dates, status, critical, and **Issues** (everything wrong on the row, in words). Collapsed sections (click + above): scheduling (deadline, mode, constraints), schedule detail (planned dates, variances, late dates, slack, checks), cost (work, over-allocation, cost, actual cost), agile (sprint, story points), baseline (set and compare), earned value. Each input shows what to type when selected |
 | Gantt | Planned outline, done / remaining / critical / late bars, summaries, milestones, deadlines, status-date line (conditional formatting only, no formulas); day, week, month or quarter scale; outline grouping (1 2 3 buttons) and a Show-to-level filter |
 | Roadmap | One-page view for sponsors: phases and milestones with dates on an 18-month timeline (forecast, done, late, planned, missed deadlines) |
 | Resources | One row per person: max units, rate, assigned tasks, hours and cost, then their leave by month (`16, 17(0.5)` under `Nov-26`), which lowers weekly and sprint capacity, utilisation and over-allocation (task dates don't move) |
-| Sprints | Sprint calendar, capacity vs planned hours, committed / done story points, velocity, release burndown, per-person load with over-allocation flags |
 
 ## Moving to Microsoft Project
 **Recommended: Microsoft Project XML.** Save the workbook, then convert it:
@@ -61,7 +58,7 @@ the planner can't hold (a fifth predecessor, a lag in % ...) is listed and noted
 
 **Upgrading to a newer template.** Made your plan with an older version? Choose the workbook on the same page with
 "Move it to the latest template" (or run `python scripts/upgrade_planner.py Old.xlsx New.xlsx`). Everything you
-typed (tasks, people, assignments, leave, holidays, settings, RAID / decisions / changes, status history, sprint
+typed (tasks, people, assignments, leave, holidays, settings, the Log, status history, sprint
 goals, PM RAG and notes) is carried over by column name; the formulas, sheets and reports are the latest.
 
 **MS Project's Import Wizard** needs the `MSP_Tasks` / `MSP_Resources` sheets, which are no longer built by default

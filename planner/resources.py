@@ -35,7 +35,7 @@ def build_resources(wb, blank, n_rows=50, resources=None, leave=None, months=Non
     ws = wb.create_sheet("Resources")
     title(ws, "Resource Sheet", "One row per person: who they are, their availability and rate, then their leave by "
                                 'month, e.g. "16, 17(0.5)" under Nov-26 = all of 16 November and half of the 17th. '
-                                "Leave lowers capacity (Resource Report, Sprints) but doesn't move tasks. Add rows for "
+                                "Leave lowers capacity (Resource Report, Agile) but doesn't move tasks. Add rows for "
                                 'more people; add a month by inserting a column among the months (right-click a month > Insert > Table Columns '
                                 'to the Left) and typing its name, e.g. "Jan-29".')
     ws.column_dimensions["A"].width = 3

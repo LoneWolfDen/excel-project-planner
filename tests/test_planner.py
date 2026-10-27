@@ -7,11 +7,13 @@ Run:  python -m unittest discover -s tests -v
 Needs openpyxl and LibreOffice (`soffice` on PATH); recalculation tests are skipped without it.
 """
 import datetime as dt
+import io
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
@@ -37,7 +39,9 @@ SOURCE = ["BL Source Start", "BL Source Finish", "BL Source Duration", "BL Sourc
 BASELINE = ["Baseline Start", "Baseline Finish", "Baseline Duration", "Baseline Work", "Baseline Cost"]
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(ROOT))
 import perf_check  # noqa: E402
+from planner import mspdi  # noqa: E402
 
 
 def build(path, *flags):
@@ -133,7 +137,7 @@ class StructureTest(Tmp):
         self.assertEqual(self.wb.sheetnames, ["Instructions", "Dashboard", "Roadmap", "Status Report", "Schedule Report",
                                               "Resource Report", "Agile Report", "RAID", "Decisions", "Changes",
                                               "History", "Settings", "Tasks", "Gantt", "Resources", "Assignments", "Sprints",
-                                              "Holidays", "Leave", "MSP_Tasks", "MSP_Resources", "Lists"])
+                                              "Holidays", "Leave", "Lists"])
 
     def test_named_ranges(self):
         names = set(self.wb.defined_names)
@@ -153,7 +157,7 @@ class StructureTest(Tmp):
         self.assertIn("Forecast Finish", calculated)
         self.assertNotIn("Duration", calculated)                 # inputs are not calculated columns
         for sheet, table in (("Resources", "ResourceTable"), ("Sprints", "SprintTable"), ("Gantt", "GanttView"),
-                             ("MSP_Tasks", "MSPTasks"), ("Holidays", "HolidayTable")):
+                             ("Holidays", "HolidayTable")):
             self.assertIn(table, self.wb[sheet].tables)
 
     def test_no_a1_references_in_formulas(self):
@@ -215,20 +219,13 @@ class StructureTest(Tmp):
         self.assertEqual([ws.cell(r, c).value for r in range(FIRST, FIRST + 200)], list(range(1, 201)))
 
     def test_views_read_tasks_by_name_not_row(self):
-        # Gantt and MSP_Tasks use INDEX(tsk_..., n), so rows inserted on Tasks still show up
-        for sheet in ("Gantt", "MSP_Tasks", "Status Report", "Schedule Report", "Resource Report", "Agile Report",
+        # Gantt and the reports use INDEX(tsk_..., n), so rows inserted on Tasks still show up
+        for sheet in ("Gantt", "Status Report", "Schedule Report", "Resource Report", "Agile Report",
                       "RAID", "Decisions", "Changes", "History"):
             for row in self.wb[sheet].iter_rows(max_row=120, max_col=25):
                 for c in row:
                     if isinstance(c.value, str) and c.value.startswith("="):
                         self.assertNotIn("Tasks!", c.value, f"{sheet}!{c.coordinate}")
-
-    def test_msp_headers_match_project_fields(self):
-        headers = [c.value for c in self.wb["MSP_Tasks"][1]]
-        for h in ("ID", "Unique ID", "Name", "Outline Level", "Duration", "Predecessors", "Unique ID Predecessors",
-                  "Resource Names", "% Complete", "Actual Start", "Actual Finish", "Baseline Start", "Baseline Finish",
-                  "Baseline Duration", "Baseline Work", "Baseline Cost", "Deadline"):
-            self.assertIn(h, headers)
 
     def test_functions_need_at_most_excel_2019(self):
         # Excel 2019 / Microsoft 365 is the stated requirement. Only MINIFS/MAXIFS from Excel 2019 are used (stored
@@ -384,18 +381,6 @@ class ScheduleTest(Tmp):
         self.assertEqual(self.val(2, "Sprint"), "Sprint 1")
         self.assertEqual(self.val(2, "Cost"), 24 * 95)
         self.assertEqual(self.dashboard("Current sprint"), "Sprint 4")
-
-    def test_msp_export(self):
-        mx = self.wb["MSP_Tasks"]
-        col = {c.value: c.column for c in mx[1]}
-        row = lambda task_id: task_id + 1
-        self.assertEqual(mx.cell(row(6), col["Duration"]).value, "8d")
-        self.assertEqual(mx.cell(row(18), col["Resource Names"]).value, "Casey Kim[50%]")
-        self.assertEqual(mx.cell(row(22), col["Constraint Type"]).value, "Start No Earlier Than")
-        self.assertEqual(mx.cell(row(19), col["Unique ID Predecessors"]).value, "14,18")
-        self.assertEqual(d(mx.cell(row(19), col["Deadline"]).value), dt.date(2026, 11, 6))
-        self.assertEqual((mx.cell(row(17), col["Text1"]).value, mx.cell(row(17), col["Number1"]).value), ("Sprint 4", 8))
-        self.assertIn(mx.cell(row(1), col["Text1"]).value, (None, ""))          # summaries carry no sprint
 
     def dashboard(self, label):
         ws = self.wb["Dashboard"]
@@ -910,12 +895,56 @@ class LogsTest(Tmp):
 
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+class ImportWizardTest(unittest.TestCase):
+    """--import-wizard-sheets: MSP_Tasks / MSP_Resources, for MS Project's Import Wizard (not built by default)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        path = Path(cls.tmp.name) / "Project_Planner.xlsx"
+        build(path, "--import-wizard-sheets")
+        cls.wb = recalc(path, Path(cls.tmp.name))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_sheets_built_on_request(self):
+        self.assertEqual(self.wb.sheetnames[-3:], ["MSP_Tasks", "MSP_Resources", "Lists"])
+        self.assertEqual(errors_in(self.wb), [])
+
+    def test_msp_headers_match_project_fields(self):
+        headers = [c.value for c in self.wb["MSP_Tasks"][1]]
+        for h in ("ID", "Unique ID", "Name", "Outline Level", "Duration", "Predecessors", "Unique ID Predecessors",
+                  "Resource Names", "% Complete", "Actual Start", "Actual Finish", "Baseline Start", "Baseline Finish",
+                  "Baseline Duration", "Baseline Work", "Baseline Cost", "Deadline"):
+            self.assertIn(h, headers)
+
+    def test_msp_export(self):
+        mx = self.wb["MSP_Tasks"]
+        col = {c.value: c.column for c in mx[1]}
+        row = lambda task_id: task_id + 1
+        self.assertEqual(mx.cell(row(6), col["Duration"]).value, "8d")
+        self.assertEqual(mx.cell(row(18), col["Resource Names"]).value, "Casey Kim[50%]")
+        self.assertEqual(mx.cell(row(22), col["Constraint Type"]).value, "Start No Earlier Than")
+        self.assertEqual(mx.cell(row(19), col["Unique ID Predecessors"]).value, "14,18")
+        self.assertEqual(d(mx.cell(row(19), col["Deadline"]).value), dt.date(2026, 11, 6))
+        self.assertEqual((mx.cell(row(17), col["Text1"]).value, mx.cell(row(17), col["Number1"]).value), ("Sprint 4", 8))
+        self.assertIn(mx.cell(row(1), col["Text1"]).value, (None, ""))          # summaries carry no sprint
+
+
+@unittest.skipUnless(SOFFICE, "LibreOffice not installed")
 class ConstraintTest(Tmp):
     """The eight MS Project constraint types, hand-checked on the sample (holidays 24/25/31-Dec and 1-Jan)."""
 
-    def msp_row(self, wb, uid):
-        rows = table_rows(wb, "MSP_Tasks", "MSPTasks")
-        return next(r for r in rows if r["Unique ID"] == uid)
+    def msp_task(self, wb, uid):
+        """The task's MS Project XML element, exported from the recalculated workbook (its cached values)."""
+        out = io.BytesIO()
+        wb.save(out)
+        ns = "{http://schemas.microsoft.com/project}"
+        root = ET.fromstring(mspdi.convert(out.getvalue()))
+        task = next(t for t in root.iter(ns + "Task") if t.find(ns + "UID").text == str(uid))
+        return lambda tag: task.find(ns + tag).text if task.find(ns + tag) is not None else None
 
     def test_late_and_lower_bounds(self):
         def edit(wb):
@@ -940,9 +969,9 @@ class ConstraintTest(Tmp):
                          (dt.date(2027, 1, 14), dt.date(2027, 1, 15), 3))               # can slip to 20-Jan
         self.assertEqual(t.get(30, "FS"), dt.date(2027, 1, 20))
         self.assertEqual(d(named_cell(wb, "ProjectFinish").value), dt.date(2027, 1, 20))
-        self.assertEqual(self.msp_row(wb, 23)["Constraint Type"], "As Late As Possible")
-        self.assertEqual((self.msp_row(wb, 30)["Constraint Type"], d(self.msp_row(wb, 30)["Constraint Date"])),
-                         ("Must Start On", dt.date(2027, 1, 20)))
+        self.assertEqual(self.msp_task(wb, 23)("ConstraintType"), "1")                  # As Late As Possible
+        self.assertEqual((self.msp_task(wb, 30)("ConstraintType"), self.msp_task(wb, 30)("ConstraintDate")[:10]),
+                         ("2", "2027-01-20"))                                       # Must Start On
 
     def test_upper_bounds_win_over_links(self):
         def edit(wb):
@@ -1241,7 +1270,7 @@ class BuildOptionsTest(unittest.TestCase):
     def check(self, flags, resources, grid, sprints, gantt, weeks):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "Project_Planner.xlsx"
-            build(path, *flags)
+            build(path, *flags, "--import-wizard-sheets")
             raw = openpyxl.load_workbook(path)
             report = perf_check.static_report(path)
             self.assertEqual((report["a1_references"], report["excel_limit_problems"]), ([], []))

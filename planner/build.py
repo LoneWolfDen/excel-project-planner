@@ -25,6 +25,7 @@ from .instructions import build_instructions
 from .leave import build_leave
 from .msp import build_msp_resources, build_msp_tasks
 from .changes import build_changes
+from .core import name
 from .decisions import build_decisions
 from .history import build_history
 from .raid import build_raid
@@ -83,7 +84,12 @@ class ProjectData:
     assignments: list = field(default_factory=list)    # (task UID, resource, units): people beyond Tasks > Resource
 
 
-def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None):
+VERSION = "1.7"          # PlannerVersion in every workbook: planner/upgrade.py reads it to know what to convert
+
+
+def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, import_wizard=False):
+    """import_wizard: also build MSP_Tasks / MSP_Resources, formula copies of Tasks and Resources under MS Project's
+    field names for its Import Wizard. Off by default: the XML converter (docs/export.html) carries more."""
     """The planner workbook: the sample project, a blank template (blank=True), or a given project (data)."""
     sizes = sizes or Sizes(tasks=n_tasks)
     sizes.check()
@@ -105,8 +111,9 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None):
     build_assignments(wb, max(sizes.assignments, len(extra)), extra)
     sprints_ws, sprint_letters = build_sprints(wb, blank, sizes.sprints, sizes.grid_resources)
     build_gantt(wb, n_tasks, sizes.gantt_columns, [r.get("Level") for r in rows])
-    build_msp_tasks(wb, n_tasks)
-    build_msp_resources(wb, sizes.resources)
+    if import_wizard:
+        build_msp_tasks(wb, n_tasks)
+        build_msp_resources(wb, sizes.resources)
     charted = min(12, sizes.sprints)                 # sprints shown on the Dashboard and Agile Report charts
     build_dashboard(wb, sprints_ws, sprint_letters, charted)
     build_raid(wb, blank)
@@ -118,11 +125,12 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None):
     build_resource_report(wb, sizes.grid_resources, sizes.weeks)
     build_agile_report(wb, sprints_ws, sprint_letters, charted)
     build_history(wb, blank)
-    build_instructions(wb, sizes)
-    wb._sheets = [wb[n] for n in ORDER]
+    build_instructions(wb, sizes, import_wizard)
+    name(wb, "PlannerVersion", f'"{VERSION}"')
+    wb._sheets = [wb[n] for n in ORDER if n in wb.sheetnames]
     for ws in wb.worksheets:
         ws.sheet_properties.tabColor = TAB_COLOURS[ws.title]
-    wb.active = ORDER.index("Tasks")
+    wb.active = wb.sheetnames.index("Tasks")
     wb.calculation.fullCalcOnLoad = True
     return wb
 
@@ -189,9 +197,12 @@ def main(argv=None):
     p.add_argument("--assignments", type=int, default=d.assignments,
                    help="rows in the Assignments table (more people on a task)")
     p.add_argument("--stress", type=int, default=0, help="repeat the sample project N times (performance tests)")
+    p.add_argument("--import-wizard-sheets", action="store_true",
+                   help="also build MSP_Tasks / MSP_Resources for MS Project's Import Wizard (the XML converter "
+                        "is the better route)")
     a = p.parse_args(argv)
     sizes = Sizes(a.tasks, a.resources, a.grid_resources, a.sprints, a.gantt_columns, a.weeks, a.assignments)
-    save(make_workbook(a.blank, stress=a.stress, sizes=sizes), a.out, a.recalc)
+    save(make_workbook(a.blank, stress=a.stress, sizes=sizes, import_wizard=a.import_wizard_sheets), a.out, a.recalc)
     print("saved", a.out)
 
 

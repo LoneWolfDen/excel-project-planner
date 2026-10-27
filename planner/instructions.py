@@ -4,7 +4,7 @@ from openpyxl.styles import Alignment
 from .core import CALC_FILL, HEADER_FILLS, HEADER_FONT, INPUT_FONT, font
 
 
-def text(sizes):
+def text(sizes, wizard=False):
     return [
         ("REQUIREMENTS", None),
         ("Excel version", "Excel 2019 or Microsoft 365 (Windows or Mac), or Excel for the web. No macros needed."),
@@ -106,7 +106,7 @@ def text(sizes):
                          "Project 'Update Project'), so late tasks push successors."),
         ("Capacity", f"Tables grow when you add rows: Tasks starts with {sizes.tasks} rows, Resources {sizes.resources}, "
                      f"Assignments {sizes.assignments}, "
-                     f"Sprints {sizes.sprints}, Holidays 100. The Gantt and MSP_Tasks sheets show the first {sizes.tasks} "
+                     f"Sprints {sizes.sprints}, Holidays 100. The Gantt shows the first {sizes.tasks} "
                      f"tasks (the Gantt says so when there are more); the Gantt timeline has {sizes.gantt_columns} columns; "
                      f"the per-resource grids on Sprints and Resource Report show the first {sizes.grid_resources} "
                      f"resources and the Resource Report {sizes.weeks} weeks. To change these sizes, rebuild with "
@@ -126,23 +126,12 @@ def text(sizes):
                             "python scripts/import_mspdi.py): you get a new planner workbook with the project's tasks, "
                             "links, calendar, holidays, resources, assignments, baseline and leave. Anything the planner "
                             "can't hold is listed and noted on the task."),
-        ("Or: Import Wizard", "The MSP_Tasks / MSP_Resources sheets below. Carries less (no calendar or holidays)."),
-        ("One-time setting", "MS Project > File > Options > Trust Center > Trust Center Settings > Legacy Formats > 'Allow "
-                             "loading files with legacy or non-default file formats'."),
-        ("Import", "In MS Project: File > Open > choose this .xlsx > Import Wizard > New map > 'As a new project' > tick Tasks "
-                   "(and Resources) > Tasks source worksheet = MSP_Tasks, Resources = MSP_Resources. Column headers already "
-                   "use MS Project field names, so the wizard maps them automatically. Map 'Predecessors' (by ID) for a new "
-                   "project; 'Unique ID' and 'Unique ID Predecessors' are for merging into an existing one."),
-        ("Tip: Start/Finish", "For auto-scheduled tasks map Duration + Predecessors (+ Constraint Type/Date) and set Start/Finish "
-                              "to '(not mapped)' - importing Start/Finish makes MS Project add fixed 'Start No Earlier Than' "
-                              "constraints. Map Baseline Start/Finish to keep the plan, and Actual Start/Finish/% Complete for "
-                              "progress."),
-        ("Rows", "Blank MSP_Tasks rows import as blank tasks - delete them in MS Project, or filter the table to non-blank "
-                 "names and copy those rows to a new sheet before importing."),
-        ("From MS Project to Excel", "MS Project > File > Save As > Excel Workbook, then paste Name / Outline Level / Duration "
-                                     "/ Predecessors etc. into the Tasks input columns (split '3FS+2d' into UID, Type, Lag)."),
+        ("Upgrading", "To move a plan made with an older version of this template into the latest one, choose the old "
+                      "workbook on docs/export.html with 'Move to the latest template' (or run python "
+                      "scripts/upgrade_planner.py old.xlsx new.xlsx). Everything you typed is carried over."),
+    ] + (WIZARD if wizard else []) + [
         ("NAMES AND TABLES (Formulas > Name Manager)", None),
-        ("Tables", "Tasks, ResourceTable, AssignmentTable, SprintTable, HolidayTable, GanttView, MSPTasks, MSPResources, KPIs, StatusSummary, "
+        ("Tables", "Tasks, ResourceTable, AssignmentTable, SprintTable, HolidayTable, GanttView, KPIs, StatusSummary, "
                    "NextMilestones, OverallStatus, StatusRAG, EarnedValue, StatusNotes, PhaseSummary, MilestoneReport, "
                    "LateTasks, StartingSoon, DueSoon, CriticalTasks, ResourceSummary, AgileKPIs, SprintBacklog, SprintBurndown, "
                    "RAIDLog, DecisionLog, ChangeLog, TopRAID, ChangeControl, SnapshotNow, StatusHistory and the List* "
@@ -166,7 +155,25 @@ def text(sizes):
     ]
 
 
-def build_instructions(wb, sizes):
+# MS Project's Import Wizard: only with the MSP_Tasks / MSP_Resources sheets (build option --import-wizard-sheets)
+WIZARD = [
+        ("Or: Import Wizard", "The MSP_Tasks / MSP_Resources sheets. Carries less than the XML (no calendar or holidays)."),
+        ("One-time setting", "MS Project > File > Options > Trust Center > Trust Center Settings > Legacy Formats > 'Allow "
+                             "loading files with legacy or non-default file formats'."),
+        ("Import", "In MS Project: File > Open > choose this .xlsx > Import Wizard > New map > 'As a new project' > tick Tasks "
+                   "(and Resources) > Tasks source worksheet = MSP_Tasks, Resources = MSP_Resources. Column headers already "
+                   "use MS Project field names, so the wizard maps them automatically. Map 'Predecessors' (by ID) for a new "
+                   "project; 'Unique ID' and 'Unique ID Predecessors' are for merging into an existing one."),
+        ("Tip: Start/Finish", "For auto-scheduled tasks map Duration + Predecessors (+ Constraint Type/Date) and set Start/Finish "
+                              "to '(not mapped)' - importing Start/Finish makes MS Project add fixed 'Start No Earlier Than' "
+                              "constraints. Map Baseline Start/Finish to keep the plan, and Actual Start/Finish/% Complete for "
+                              "progress."),
+        ("Rows", "Blank MSP_Tasks rows import as blank tasks - delete them in MS Project, or filter the table to non-blank "
+                 "names and copy those rows to a new sheet before importing."),
+]
+
+
+def build_instructions(wb, sizes, wizard=False):
     ws = wb.create_sheet("Instructions")
     ws.column_dimensions["A"].width = 3
     ws.column_dimensions["B"].width = 28
@@ -174,7 +181,7 @@ def build_instructions(wb, sizes):
     ws["B1"] = "Project Planner - MS Project-compatible Excel template"
     ws["B1"].font = font(size=18, bold=True, color="1F4E78")
     r = 3
-    for label, body in text(sizes):
+    for label, body in text(sizes, wizard):
         if body is None:
             r += 1
             ws.cell(r, 2, label).font = HEADER_FONT

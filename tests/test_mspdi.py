@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from planner import mspdi, mspdi_import, tasks  # noqa: E402
+from planner import mspdi, mspdi_import, tasks, upgrade  # noqa: E402
 import build_export_page  # noqa: E402
 from test_planner import (BASELINE, FIRST, SOFFICE, SOURCE, build, columns, errors_in, recalc, set_input,  # noqa: E402
                           table_rows)
@@ -446,6 +446,17 @@ class ExportPageTest(unittest.TestCase):
             cli.write_bytes(mspdi_import.convert(MS_PROJECT_XML.encode())[0])
             a, b = openpyxl.load_workbook(page_xlsx), openpyxl.load_workbook(cli)
             self.assertEqual(a.sheetnames, b.sheetnames)
+            diffs = [(ws.title, c.coordinate) for ws in a.worksheets for row in ws.iter_rows() for c in row
+                     if c.value != b[ws.title][c.coordinate].value]
+            self.assertEqual(diffs, [])
+            # an older workbook in, "Move it to the latest template": the same workbook as the command line
+            old, page_new = ROOT / "tests" / "fixtures" / "planner_v1.4.xlsx", Path(tmp) / "new.xlsx"
+            result = subprocess.run(["node", str(ROOT / "tests" / "browser" / "export_page.js"),
+                                     str(ROOT / "docs" / "export.html"), str(old), os.environ["PYODIDE_DIR"],
+                                     str(page_new), "upgrade"], capture_output=True, text=True, timeout=600)
+            self.assertIn("STATUS Done: 30 tasks, 7 resources.", result.stdout)
+            cli.write_bytes(upgrade.convert(old.read_bytes())[0])
+            a, b = openpyxl.load_workbook(page_new), openpyxl.load_workbook(cli)
             diffs = [(ws.title, c.coordinate) for ws in a.worksheets for row in ws.iter_rows() for c in row
                      if c.value != b[ws.title][c.coordinate].value]
             self.assertEqual(diffs, [])

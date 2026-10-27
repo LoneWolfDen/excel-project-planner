@@ -1,11 +1,11 @@
 // Drive docs/export.html in headless Chromium: choose a workbook, save the download.
-//   node tests/browser/export_page.js <page.html> <workbook.xlsx> <pyodide dir> <out.xml>
+//   node tests/browser/export_page.js <page.html> <workbook.xlsx> <pyodide dir> <out.xml> [xml|upgrade]
 // Pyodide is served from <pyodide dir> instead of the CDN, so the test needs no network.
 const path = require("path");
 const fs = require("fs");
 const { chromium } = require("playwright");
 
-const [page, workbook, pyodideDir, out] = process.argv.slice(2);
+const [page, workbook, pyodideDir, out, mode] = process.argv.slice(2);
 const CDN = "https://cdn.jsdelivr.net/pyodide/v0.26.4/full/";
 const TYPES = { ".js": "text/javascript", ".mjs": "text/javascript", ".wasm": "application/wasm",
                 ".json": "application/json", ".zip": "application/zip" };
@@ -22,6 +22,7 @@ const TYPES = { ".js": "text/javascript", ".mjs": "text/javascript", ".wasm": "a
   });
   const tab = await context.newPage();
   await tab.goto("file://" + path.resolve(page));
+  if (mode) await tab.check(`input[name="mode"][value="${mode}"]`);
   await tab.setInputFiles("#file", workbook);
   await tab.waitForSelector("#status.ok, #status.bad", { timeout: 120000 });
   const status = await tab.textContent("#status");

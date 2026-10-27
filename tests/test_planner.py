@@ -826,11 +826,22 @@ class EssentialsTest(Tmp):
 
     def test_start_sheet_holds_the_essential_settings(self):
         self.assertEqual(self.raw.sheetnames[0], "Start")
-        for n in ("ProjectName", "ProjectManager", "ProjectStartDate", "StatusDateInput", "WorkingWeek", "HoursPerDay"):
+        for n in ("ProjectName", "ProjectManager", "ProjectStartDate", "WorkingWeek", "HoursPerDay"):
             self.assertTrue(self.raw.defined_names[n].attr_text.startswith("Start!"), n)
         self.assertTrue(self.raw.defined_names["GanttPeriod"].attr_text.startswith("Settings!"))
         links = [c.hyperlink.location for row in self.raw["Start"].iter_rows(max_row=30) for c in row if c.hyperlink]
         self.assertIn("'Tasks'!A1", links)
+        self.assertIn("'Status'!A1", links)                              # the weekly update starts there
+
+    def test_status_sheet_is_the_weekly_page(self):
+        self.assertEqual(self.raw.defined_names["StatusDateInput"].attr_text, "Status!$C$5")
+        ws = self.raw["Status"]
+        links = [c.hyperlink.location for row in ws.iter_rows(max_row=12) for c in row if c.hyperlink]
+        self.assertEqual(links, ["'Tasks'!A1", "'Log'!A1", "'History'!A1"])
+        self.assertEqual(ws.print_area, "'Status'!$B$1:$H$" + str(ws.tables["StatusNotes"].ref.split(":")[1][1:]))
+        snapshot = openpyxl.utils.cell.range_boundaries(ws.tables["SnapshotNow"].ref)
+        notes = openpyxl.utils.cell.range_boundaries(ws.tables["StatusNotes"].ref)
+        self.assertGreater(snapshot[1], notes[3])                       # below the printed page
 
     def test_optional_columns_are_grouped_and_collapsed(self):
         ws = self.raw["Tasks"]

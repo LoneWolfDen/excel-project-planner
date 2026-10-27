@@ -57,6 +57,43 @@ EXTRA = {22: {"CType": "Start No Earlier Than"}, 24: {"P3": 21, "T3": "FS"}}
 ASSIGNMENTS = [(7, "Jordan Lee", 0.5), (17, "Casey Kim", 0.5), (21, "Sam Rivera", 0.5), (22, "Taylor Morgan", None)]
 
 
+# The plan as first estimated (Core API 8 days, Feature screens 10, before any actuals), frozen as the baseline of the
+# committed sample (--baselined) so the Gantt shows planned against current on first open: UID -> (Baseline Start,
+# Baseline Finish, Baseline Duration, Baseline Work, Baseline Cost), as the BL Source columns calculated them.
+BASELINE = {
+    1: (D(2026, 9, 7), D(2026, 9, 11), 5, 40, 3400),
+    2: (D(2026, 9, 7), D(2026, 9, 9), 3, 24, 2280),
+    3: (D(2026, 9, 10), D(2026, 9, 11), 2, 16, 1120),
+    4: (D(2026, 9, 11), D(2026, 9, 11), 0, 0, 0),
+    5: (D(2026, 9, 14), D(2026, 10, 1), 14, 152, 12480),
+    6: (D(2026, 9, 14), D(2026, 9, 23), 8, 64, 4480),
+    7: (D(2026, 9, 17), D(2026, 9, 23), 5, 40, 4400),
+    8: (D(2026, 9, 24), D(2026, 10, 1), 6, 48, 3600),
+    9: (D(2026, 10, 1), D(2026, 10, 1), 0, 0, 0),
+    10: (D(2026, 10, 2), D(2026, 10, 28), 19, 292, 24060),
+    11: (D(2026, 10, 2), D(2026, 10, 28), 19, 152, 12920),
+    12: (D(2026, 10, 2), D(2026, 10, 8), 5, 40, 3400),
+    13: (D(2026, 10, 9), D(2026, 10, 20), 8, 64, 5440),
+    14: (D(2026, 10, 21), D(2026, 10, 28), 6, 48, 4080),
+    15: (D(2026, 10, 2), D(2026, 10, 27), 18, 140, 11140),
+    16: (D(2026, 10, 2), D(2026, 10, 9), 6, 48, 3840),
+    17: (D(2026, 10, 13), D(2026, 10, 26), 10, 80, 6400),
+    18: (D(2026, 10, 23), D(2026, 10, 27), 3, 12, 900),
+    19: (D(2026, 10, 28), D(2026, 10, 28), 0, 0, 0),
+    20: (D(2026, 10, 29), D(2026, 12, 29), 44, 180, 13180),
+    21: (D(2026, 10, 29), D(2026, 11, 9), 8, 64, 4160),
+    22: (D(2026, 12, 7), D(2026, 12, 14), 6, 48, 3360),
+    23: (D(2026, 11, 2), D(2026, 11, 6), 5, 20, 1500),
+    24: (D(2026, 12, 15), D(2026, 12, 15), 1, 8, 760),
+    25: (D(2026, 12, 15), D(2026, 12, 15), 0, 0, 0),
+    26: (D(2026, 12, 16), D(2026, 12, 29), 10, 40, 3400),
+    27: (D(2026, 11, 16), D(2026, 12, 31), 34, 24, 2280),
+    28: (D(2026, 11, 16), D(2026, 11, 16), 1, 8, 760),
+    29: (D(2026, 12, 30), D(2026, 12, 31), 2, 16, 1520),
+    30: (D(2026, 12, 31), D(2026, 12, 31), 0, 0, 0),
+}
+
+
 def assignments(blank=False, stress=0):
     """Assignment rows for the sample; stress=N repeats them for each copy (UIDs follow the copies)."""
     if blank:
@@ -69,12 +106,17 @@ def _row(i, t):
     return dict(zip(COLUMNS, t), ACin=ACTUAL_COST.get(i + 1), SP=STORY_POINTS.get(i + 1), **EXTRA.get(i + 1, {}))
 
 
-def tasks(blank=False, stress=0):
-    """Rows as dicts keyed by COLUMNS. stress=N repeats the sample N times; each copy follows the previous one."""
+def tasks(blank=False, stress=0, baselined=False):
+    """Rows as dicts keyed by COLUMNS. stress=N repeats the sample N times; each copy follows the previous one.
+    baselined: the rows carry BASELINE (the committed sample), so planned and current differ."""
     if blank:
         return []
     if not stress:
-        return [take_links(dict(_row(i, t), UID=i + 1)) for i, t in enumerate(TASKS)]
+        rows = [take_links(dict(_row(i, t), UID=i + 1)) for i, t in enumerate(TASKS)]
+        if baselined:
+            for r in rows:
+                r.update(zip(("BS", "BF", "BD", "BW", "BC"), BASELINE[r["UID"]]))
+        return rows
     rows = []
     n = len(TASKS)
     for copy in range(stress):

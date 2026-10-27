@@ -263,9 +263,14 @@ class CommittedWorkbooksTest(unittest.TestCase):
                 tables = [z.read(n).decode() for n in z.namelist() if n.startswith("xl/tables/")]
             tasks = next(t for t in tables if 'displayName="Tasks"' in t)
             self.assertIn("<calculatedColumnFormula>", tasks)
+            # B-1001: LibreOffice's save drops these too; Excel must recalculate automatically and on open
+            with zipfile.ZipFile(committed) as z:
+                calc = re.search(r"<calcPr[^>]*>", z.read("xl/workbook.xml").decode()).group(0)
+            self.assertIn('calcMode="auto"', calc)
+            self.assertIn('fullCalcOnLoad="1"', calc)
 
     def test_sample_workbook_up_to_date(self):
-        self.compare(ROOT / "Project_Planner.xlsx")
+        self.compare(ROOT / "Project_Planner.xlsx", "--baselined")
 
     def test_blank_workbook_up_to_date(self):
         self.compare(ROOT / "Project_Planner_Blank.xlsx", "--blank")
@@ -964,6 +969,82 @@ class StageTest(Tmp):
         t = {r["UID"]: r for r in table_rows(wb, "Tasks", "Tasks")}
         self.assertEqual((t[2]["Stage"], t[2]["% Complete"]), ("Complete", None))
         self.assertEqual((t[13]["Stage"], t[13]["% Complete"]), ("In Development", 0.5))     # the override kept
+
+
+@unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+class SprintCalendarTest(Tmp):
+    """B-1003: sprint dates follow the Settings cadence until a sprint is moved; the sprints below follow it."""
+
+    def set(self, wb, sprint, column, value):
+        ws = wb["Agile"]
+        c1, r1 = openpyxl.utils.cell.range_boundaries(ws.tables["SprintTable"].ref)[:2]
+        head = {ws.cell(r1, c).value: c for c in range(c1, c1 + 40)}
+        ws.cell(r1 + sprint, head[column]).value = value
+
+    def test_moving_a_sprint_moves_the_ones_after_it(self):
+        def edit(wb):
+            self.set(wb, 5, "Set End", dt.date(2026, 11, 22))          # sprint 5: three weeks instead of two
+            self.set(wb, 9, "Set Start", dt.date(2027, 1, 4))          # sprint 9 after a holiday break
+        wb = recalc(self.path, self.dir, edit)
+        self.assertEqual(errors_in(wb), [])
+        s = {r["No"]: r for r in table_rows(wb, "Agile", "SprintTable")}
+        self.assertEqual((serial(s[4]["End"]), serial(s[5]["Start"]), serial(s[5]["End"])),
+                         (dt.date(2026, 11, 1), dt.date(2026, 11, 2), dt.date(2026, 11, 22)))
+        self.assertEqual((serial(s[6]["Start"]), serial(s[8]["End"])), (dt.date(2026, 11, 23), dt.date(2027, 1, 3)))
+        self.assertEqual((serial(s[9]["Start"]), serial(s[9]["End"])), (dt.date(2027, 1, 4), dt.date(2027, 1, 17)))
+        self.assertEqual(s[5]["Working Days"], 15)
+        tasks = {r["UID"]: r for r in table_rows(wb, "Tasks", "Tasks")}
+        self.assertEqual(tasks[14]["Sprint"], "Sprint 5")               # starts 02-Nov: in the longer sprint
+
+    def test_cadence_without_overrides(self):
+        wb = openpyxl.load_workbook(self.path)
+        ws = wb["Agile"]
+        head = [c.value for c in ws[openpyxl.utils.cell.range_boundaries(ws.tables["SprintTable"].ref)[1]]]
+        self.assertIn("Set Start", head)
+        self.assertIn("Set End", head)
+
+
+@unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+class PlannedVsCurrentTest(unittest.TestCase):
+    """B-1002: the baselined sample (the committed workbook) draws planned dates as an outline and slip in red."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.dir = Path(cls.tmp.name)
+        cls.path = cls.dir / "Project_Planner.xlsx"
+        build(cls.path, "--baselined")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+
+    def test_baselined_sample_shows_slip(self):
+        def add_task(wb):                                             # scope added after the baseline
+            set_input(wb, 31, "Level", 2)
+            set_input(wb, 31, "Name", "Data migration rehearsal")
+            set_input(wb, 31, "Dur", 3)
+            set_input(wb, 31, "P1", 26)
+        wb = recalc(self.path, self.dir, add_task)
+        self.assertEqual(errors_in(wb), [])
+        self.assertTrue(named_cell(wb, "BaselineSet").value)
+        t = {r["UID"]: r for r in table_rows(wb, "Tasks", "Tasks")}
+        self.assertEqual((serial(t[13]["Planned Start"]), serial(t[13]["Planned Finish"])),
+                         (dt.date(2026, 10, 9), dt.date(2026, 10, 20)))            # first estimate: 8 days
+        self.assertGreater(t[30]["Finish Var"], 0)                                 # the project has slipped
+        g = {r["ID"]: r for r in table_rows(wb, "Gantt", "GanttView") if r["ID"]}
+        self.assertTrue(g[13]["_ShowPlan"])
+        self.assertFalse(g[31]["_ShowPlan"])                          # added after the baseline: no outline
+        self.assertEqual(key_figures(wb)["Baseline"], "Set on 30 tasks")
+
+    def test_outline_rules(self):
+        ws = openpyxl.load_workbook(self.path)["Gantt"]
+        borders = [r.dxf.border for cf in ws.conditional_formatting for r in cf.rules if r.dxf and r.dxf.border]
+        edges = {tuple(bool(getattr(b, s) and getattr(b, s).style) for s in ("left", "right", "top", "bottom"))
+                 for b in borders}
+        # closed box on a one-day plan, start, end, middle; plus the status-date line
+        self.assertTrue({(True, True, True, True), (True, False, True, True), (False, True, True, True),
+                         (False, False, True, True)} <= edges)
 
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")

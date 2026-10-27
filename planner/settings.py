@@ -121,6 +121,8 @@ def settings_rows(blank, max_sprints):
          "The critical path's backward pass starts here (the detail tasks' early finish)."),
         ("PlannedFinish", "Planned project finish (calculated)", "=MAX(tsk_PlanFinish)", DATE, False,
          "Baseline finish once a baseline is set."),
+        ("BaselineSet", "Baseline set (calculated)", "=COUNT(tsk_BaseStart)>0", "@", False,
+         "TRUE once any task has a Baseline Start: the Gantt then outlines only the tasks that have one."),
         ("FinishVarianceDays", "Project finish variance (calculated, working days)",
          "=IF(ProjectFinish>=PlannedFinish,NETWORKDAYS.INTL(PlannedFinish,ProjectFinish,WorkWeek,Holidays)-1,"
          "1-NETWORKDAYS.INTL(ProjectFinish,PlannedFinish,WorkWeek,Holidays))", "+0;-0;0", False,

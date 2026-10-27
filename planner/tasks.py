@@ -91,6 +91,9 @@ N = {
     "DueKey": "_DueSoonKey", "CritKey": "_CriticalKey",
     # resource and agile reports
     "LWDone": "_LeafWorkDone", "DoneDate": "_DoneDate", "LPts": "_LeafPoints", "CurKey": "_CurrentSprintKey",
+    # the timeline to the right of the table (planner/gantt.py) reads these in its conditional formatting
+    "IsMile": "_IsMilestone", "GDoneFrom": "_DoneFrom", "GDoneTo": "_DoneTo", "GRemFrom": "_RemFrom",
+    "GRemTo": "_RemTo", "ShowPlan": "_ShowPlan",
 }
 
 # defined names used by every other sheet (tsk_Duration = Tasks[Duration], ...)
@@ -295,6 +298,17 @@ def formulas():
     f["ID"] = f'IF({blank},"",COUNTA({T.upto(N["Name"])})-1)'
     f["Lvl"] = f'IF({blank},"",MAX(1,N({R("Level")})))'
     f["Show"] = f'IF({blank},"",IF({R("Lvl")}<=OutlineShowLevel,"Yes","No"))'
+    # the timeline (planner/gantt.py): done and remaining spans of a detail task's bar, 0 = none
+    pct = R("Prog")
+    f["IsMile"] = f"IF({blank},FALSE(),AND({leaf},N({R('Dur')})=0))"
+    f["GDoneFrom"] = f"IF({blank},0,IF(AND({leaf},NOT({R('IsMile')}),N({pct})>0),{R('FS')},0))"
+    f["GDoneTo"] = (f"IF({R('GDoneFrom')}=0,0,IF({pct}>=1,{R('FF')},"
+                    f"MAX({R('GDoneFrom')},{R('FS')}+ROUND(({R('FF')}-{R('FS')}+1)*{pct},0)-1)))")
+    f["GRemFrom"] = (f"IF({blank},0,IF(OR(NOT({leaf}),{R('IsMile')},N({pct})>=1),0,"
+                     f"IF({R('GDoneTo')}>0,{R('GDoneTo')}+1,{R('FS')})))")
+    f["GRemTo"] = f"IF({R('GRemFrom')}=0,0,{R('FF')})"
+    # the planned outline: every task until a baseline is set, then only the tasks that have one
+    f["ShowPlan"] = f"IF({blank},FALSE(),OR(NOT(BaselineSet),N({R('BS')})>0))"
     f["Idx"] = f"ROW()-ROW({H('ID')})"
     f["Parent"] = (f'IF(OR({blank},{R("Lvl")}<=1),0,IFERROR(LOOKUP(2,1/({T.upto(N["Lvl"])}={R("Lvl")}-1),'
                    f'ROW({T.upto(N["Lvl"])})),0))')
@@ -523,7 +537,8 @@ def each(prefix):
 
 
 HELPER_DATES = {"CPS", "CPF", "LCS", "LCF", "LFS", "LFF", "XCS", "XCF", "XFS", "XFF", "SuccLF", "LLF", "LLS",
-                "DoneDate", "CStart", "CLow", "CHigh", *each("D"), *each("E")}
+                "DoneDate", "CStart", "CLow", "CHigh", *each("D"), *each("E"), "GDoneFrom", "GDoneTo", "GRemFrom",
+                "GRemTo"}
 # key, kind, width, number format, centre, header note
 LAYOUT = [
     ("ID", "calc", 5, None, True, "Position in the list; renumbers when rows move (like MS Project)."),
@@ -600,18 +615,20 @@ LAYOUT = [
                "LTS", "LCrit", "Shift", "XCS", "XCF", "XFS", "XFF", "CPS", "CPF", *each("M"), *each("D"), *each("E"),
                "SWD", "FWD", "WPD", "WBefore", "WtDur", "WtDone", "WtPlan", "UPredTxt", "MKey",
                "PlanPct", "Phase", "PhaseKey", "MsKey", "LateKey", "StartKey", "DueKey", "CritKey",
-               "LWDone", "DoneDate", "LPts", "CurKey")]
+               "LWDone", "DoneDate", "LPts", "CurKey", "IsMile", "GDoneFrom", "GDoneTo", "GRemFrom", "GRemTo",
+               "ShowPlan")]
 
 # The sheet's sections, left to right. The first holds what a plan needs and is always shown; each optional section is
 # an Excel column group, collapsed, whose +/- button sits on its first (key) column, which stays visible. (Excel would
 # merge groups that touch, so every section keeps one visible column.) Nothing is removed: + shows the rest.
 SECTIONS = [
-    ("PLAN: type in the blue columns", None, ["ID", "UID", "WBS", "Level", "Name", "Dur", "PredIn",
-                                              "ResIn", "Stage", "AS", "AF", "Notes", "FS", "FF", "Status", "Crit", "Issues", "Show"]),
+    ("PLAN: type in the blue columns", None, ["ID", "UID", "Level", "Name", "Dur", "PredIn", "ResIn", "Stage", "AS",
+                                              "AF", "FS", "FF", "Sprint", "Notes", "Issues"]),
     ("SCHEDULING", "DL", ["Mode", "CType", "Cons"]),
-    ("DETAIL", "Var", ["PS", "PF", "SVar", "LS", "LF", "TS", "FSl", "DLChk", "LinkChk", "Pct", "Prog", "PredTxt"]),
+    ("DETAIL", "Var", ["Status", "Crit", "PS", "PF", "SVar", "LS", "LF", "TS", "FSl", "DLChk", "LinkChk", "Pct", "Prog",
+                       "PredTxt", "WBS", "Show"]),
     ("WORK", "Work", ["ResTxt", "OverAlloc"]),             # cost: the Cost sheet
-    ("AGILE", "Sprint", ["SprIn", "SP"]),
+    ("AGILE", "SP", ["SprIn"]),
     ("BASELINE", "DVar",
      ["WVar", "SrcS", "SrcF", "SrcD", "SrcW", "BS", "BF", "BD", "BW"]),
 ]
@@ -629,9 +646,9 @@ def build_tasks(wb, rows, n_rows):
     title(ws, None)
     ws["A1"] = '=ProjectName&"  -  Task Entry"'
     ws["A2"] = ("Type in BLUE columns only. Level = outline level (1 = phase, 2 = task, 3 = sub-task). Predecessors refer "
-                "to the UID column. Fix anything in Issues (red). More columns (scheduling, schedule detail, cost, "
-                "agile, baseline, earned value): click + above a section. Insert rows inside the table: formulas fill "
-                "in automatically.")
+                "to the UID column. Fix anything in Issues (red). More columns (scheduling, detail, work, agile, "
+                "baseline): click + above a section. The Gantt timeline is to the right of the table. Insert rows "
+                "inside the table, or paste rows under the last task: formulas fill in automatically.")
     ws["A2"].font = NOTE_FONT
     ws["A3"] = '="Next free UID for a new row: "&NextFreeUID'
     ws["A3"].font = LABEL_FONT
@@ -666,10 +683,10 @@ def build_tasks(wb, rows, n_rows):
         level = r.get("Level")
         if level and level > 1:
             ws[f"{L['Name']}{HEADER_ROW + 1 + i}"].alignment = Alignment(indent=min(int(level) - 1, 15))
-    group_columns(ws, L["Lvl"], L["CurKey"], 2)
+    group_columns(ws, L["Lvl"], L[LAYOUT[-1][0]], 2)
     _validation_and_formatting(ws, L, n_rows)
     ws.sheet_view.zoomScale = 90
-    return ws
+    return ws, L
 
 
 def group_columns(ws, first, last, level):

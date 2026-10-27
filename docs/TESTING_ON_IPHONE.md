@@ -19,7 +19,7 @@ Covers backlog item B-001 until desktop Excel is available.
 2. Get the file onto the phone, either way:
    - In the Claude app, open the `Project_Planner.xlsx` card → Share → **Excel**; or
    - Safari → `github.com/LoneWolfDen/excel-project-planner` (sign in, it's private) → `Project_Planner.xlsx` → **View raw** → Share → **Excel**.
-3. If Excel offers **Enable editing**, tap it. Rotate the phone to landscape for the Tasks and Gantt sheets.
+3. If Excel offers **Enable editing**, tap it. Rotate the phone to landscape for the Tasks sheet.
 
 ## Checklist
 
@@ -44,7 +44,7 @@ Tick each one and note anything odd (a screenshot is ideal).
 - [ ] Type `6, 21` in Task 8's "Predecessors" (a second link, to a task further down). Link Check shows "Pred 2: UID 21 is below this task: move it above." Undo.
 - [ ] On Settings, change `GanttPeriod` from 1 to 7. The Gantt switches to weeks. Set it back to 1.
 
-**Gantt sheet**
+**Gantt timeline** (Tasks, right of the table: tap "Gantt timeline >>" at the top)
 - [ ] Green / blue / orange / dark grey bars appear; planned dates show as a thin dark outline; milestones are purple cells.
 - [ ] Red lines at the status date (25-Oct), grey weekend columns, red deadline cells on tasks 19 and 25.
 

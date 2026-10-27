@@ -36,8 +36,7 @@ How the workbook is put together, and the rules every change follows. These rule
 |---|---|---|
 | Start | (named cells) | The five essential settings (`ESSENTIAL` in `planner/settings.py`), quick start, reference |
 | Settings | (named cells) | The other settings, calendar mask (`WorkWeek`, from the Working week preset or the seven day rows), Gantt and sprint settings |
-| Tasks | `Tasks` | All scheduling: WBS, summaries, links, planned / forecast dates, variances, progress, work. Columns are in `SECTIONS`: the essentials, then one collapsed Excel column group per optional section, each with one visible key column (Excel merges groups that touch); the helpers are a level-2 group |
-| Gantt | `GanttView` + timeline | Task panel reads Tasks by position; timeline = conditional formatting only |
+| Tasks | `Tasks` + timeline | All scheduling: WBS, summaries, links, planned / forecast dates, variances, progress, work; the Gantt timeline to the right of the table (conditional formatting only). Columns are in `SECTIONS`: the essentials, then one collapsed Excel column group per optional section, each with one visible key column (Excel merges groups that touch); the helpers are a level-2 group |
 | Resources | `ResourceTable`, `cap_Days`, `cap_Points` | Allocation, dates and focus per person, assigned tasks and work, then one leave column per month (`leave_Grid` / `leave_Months` name only the month columns, so the leave look-ups never depend on the calculated columns) |
 | Settings (below the settings) | `HolidayTable` | Non-working dates (`Holidays` = `HolidayTable[Date]`) |
 | MSP_Tasks / MSP_Resources | `MSPTasks`, `MSPResources` | MS Project field names, for the Import Wizard; only with `--import-wizard-sheets` |
@@ -136,7 +135,7 @@ The plan moves by the same number of days as the forecast, so an ALAP task adds 
 ## Views: outline, timeline scales, Roadmap
 
 - **Outline.** Excel row groups (one level per outline level, summary rows above) give the 1 2 3 buttons on Tasks
-  and Gantt. Grouping is sheet structure, not a formula, so it covers the rows the workbook is built with; the Show
+  (the timeline is on the same rows). Grouping is sheet structure, not a formula, so it covers the rows the workbook is built with; the Show
   column (`Level <= OutlineShowLevel`) works for any row through the table's filter.
 - **Timeline scales.** Each Gantt column's date is a formula of its position (`column_start` in `planner/gantt.py`:
   `GanttStart + k x days`, or `EDATE` of the month / quarter start for GanttPeriod 30 / 91), and the bar rules use
@@ -148,8 +147,11 @@ The plan moves by the same number of days as the forecast, so an ALAP task adds 
 
 ## Gantt: planned = outline, current = fill
 
-The timeline holds no formulas; each cell's look comes from conditional-format rules over the panel's helper
-columns. Excel applies every rule that is true and, for each property (fill, border, font), the first one listed
+The timeline is drawn to the right of the Tasks table, on the same rows (B-1005: one plan sheet, no copy of the
+task list to keep in step). It holds no formulas; each cell's look comes from conditional-format rules over six Tasks
+helper columns (`_IsMilestone`, `_DoneFrom`, `_DoneTo`, `_RemFrom`, `_RemTo`, `_ShowPlan`), one formula each per
+row. A spacer column keeps the table from growing into the timeline, and the header dates are located from
+`gantt_Origin` by `COLUMN()`. Excel applies every rule that is true and, for each property (fill, border, font), the first one listed
 wins, so a fill rule (done, slip, critical, remaining, a planned gap) and a border rule (the planned outline) combine
 in one cell. The outline is four rules (closed box on a one-day plan, start, end, middle) so the box closes on the
 first and last planned day. `_ShowPlan` draws it for every task until a baseline is set (`BaselineSet`), then only
@@ -243,7 +245,7 @@ cumulative hours at each week boundary (three SUMIFS, none outside the project's
 
 Money lives on one sheet that nothing else reads, so a PM can delete it for an audience that shouldn't see rates
 (a test deletes it and checks no name or formula is left dangling). `TaskCost` has one row per Tasks row and follows
-it by position (`INDEX(tsk_..., _Row)`), like the Gantt panel. A detail task costs its people's work x day rate / hours
+it by position (`INDEX(tsk_..., _Row)`), like the Roadmap lists. A detail task costs its people's work x day rate / hours
 per day (`RateCard`, looked up by name); a summary sums its descendants (`SUM(INDEX(col, n+1):INDEX(col,
 n+tsk_Descendants))`). Actual cost = work done x rate, as MS Project calculates it, so nobody types costs. Budget =
 baseline work x the task's cost per hour (cost before a baseline); PV = Budget x planned %; EV = Budget x Progress;

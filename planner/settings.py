@@ -103,6 +103,9 @@ def settings_rows(blank, max_sprints):
          f"Up to the number of rows in the sprint table (Agile sheet) ({max_sprints}; add rows to the table for more). "
          "Tasks outside the sprint range are labelled 'Backlog'."),
         ("SprintPrefix", "Sprint name prefix", "Sprint ", "@", True, "Sprint names = prefix & number."),
+        ("FocusFactor", "Sprint focus (share of time on delivery)", 0.8, "0%", True,
+         "Of each person's available days in a sprint, the share that is delivery (1 person-day = 1 story point); "
+         "the rest is ceremonies and overhead. A Focus % on Resources overrides it per person (0% = advisory)."),
         ("SprintLastEnd", "Last sprint end (calculated)", "=INDEX(spr_End,SprintCount)", DATE, False, ""),
         ("CurrentSprint", "Sprint containing the status date (calculated)",
          '=IF(OR(StatusDate<Sprint1Start,StatusDate>SprintLastEnd),"",INDEX(spr_Name,MATCH(StatusDate,spr_Start,1)))',

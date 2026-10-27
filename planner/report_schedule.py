@@ -13,7 +13,6 @@ from .core import DATE, Col, Show, Tab, fill, ranked_table, title
 
 FIRST_COL = 2            # column B: every list's hidden _Task column, so hiding it never hides a visible column
 VAR = "+0;-0;0"
-MONEY = "#,##0"
 WBS = Show("WBS", "tsk_WBS", width=8)
 RESOURCE = Show("Resource", "tsk_ResourceNames", width=16)
 CRITICAL = Show("Critical", "tsk_Critical", width=9)
@@ -21,19 +20,22 @@ STATUS = Show("Status", "tsk_Status", width=12)
 
 
 def _phase_extras():
-    """SPI, CPI, open critical tasks and a RAG for each phase (from the phase's rolled-up values)."""
+    """Planned progress, SPI, open critical tasks and a RAG for each phase. SPI here is the schedule index: progress
+    against the progress planned by the status date, both duration-weighted (money is on the Cost sheet)."""
     p = Tab("PhaseSummary")
     blank = f'{p.row("_Task")}=""'
-    spi = f'IF({blank},"",IF(N({p.row("PV")})>0,{p.row("EV")}/{p.row("PV")},""))'
-    cpi = f'IF({blank},"",IF(N({p.row("AC")})>0,{p.row("EV")}/{p.row("AC")},""))'
+    in_phase = lambda col: f'SUMIFS({col},tsk_Phase,{p.row("WBS")})'
+    planned = f'IF({blank},"",IFERROR({in_phase("tsk_WtPlanned")}/{in_phase("tsk_WtDur")},0))'
+    spi = f'IF({blank},"",IF(N({p.row("Planned")})>0,{p.row("Progress")}/{p.row("Planned")},""))'
     critical = f'IF({blank},"",COUNTIFS(tsk_Phase,{p.row("WBS")},tsk_Critical,"Yes",tsk_IsLeaf,1))'
-    worst = f'MAX({rag.slip(p.row("Finish Var"))},{rag.index(p.row("SPI"))},{rag.index(p.row("CPI"))})'
+    worst = f'MAX({rag.slip(p.row("Finish Var"))},{rag.index(p.row("SPI"))})'
     return [
-        Col("SPI", width=8, fmt="0.00", formula=spi, center=True, note="Earned value / planned value. Below 1 = behind."),
-        Col("CPI", width=8, fmt="0.00", formula=cpi, center=True, note="Earned value / actual cost. Below 1 = over cost."),
+        Col("Planned", width=9, fmt="0%", formula=planned, center=True,
+            note="Progress planned by the status date (duration-weighted)."),
+        Col("SPI", width=8, fmt="0.00", formula=spi, center=True, note="Progress / planned progress. Below 1 = behind."),
         Col("Open Critical", width=9, fmt="0", formula=critical, center=True, note="Unfinished critical tasks in the phase."),
         Col("RAG", width=9, formula=f'IF({blank},"",{rag.rag_text(worst)})', center=True,
-            note="Worst of finish slip, SPI and CPI against the Settings thresholds."),
+            note="Worst of finish slip and SPI against the Settings thresholds."),
     ]
 
 
@@ -74,9 +76,7 @@ def build_schedule_report(wb):
     phase = ranked_table(ws, "PhaseSummary", top, FIRST_COL, "tsk_PhaseKey", PHASE_ROWS, [
         WBS, Show("Phase", "tsk_Name", width=40), Show("Planned Finish", "tsk_PlanFinish", "date", fmt=DATE),
         Show("Finish", "tsk_FcFinish", "date", fmt=DATE), Show("Finish Var", "tsk_Variance", "num", fmt=VAR),
-        Show("Progress", "tsk_Progress", "num", fmt="0%"), Show("Budget", "tsk_Budget", "num", fmt=MONEY),
-        Show("PV", "tsk_PV", "num", fmt=MONEY), Show("EV", "tsk_EV", "num", fmt=MONEY),
-        Show("AC", "tsk_AC", "num", fmt=MONEY)], label='"Phases (outline level 1)"', extra=_phase_extras())
+        Show("Progress", "tsk_Progress", "num", fmt="0%")], label='"Phases (outline level 1)"', extra=_phase_extras())
     last = top + PHASE_ROWS
     rag.colour(ws, f"{phase['RAG']}{top + 1}:{phase['RAG']}{last}", f"{phase['RAG']}{top + 1}")
     _late_red(ws, phase["Finish Var"], top + 1, last)

@@ -58,7 +58,7 @@ Tick each one and note anything odd (a screenshot is ideal).
 **Other sheets**
 - [ ] Status: change the status date at the top; the key figures, RAG and charts update, and Print preview fits one page.
 - [ ] Log: pick Type = Decision on an empty row; the RAID columns turn grey and the Status dropdown offers Proposed, Approved ...
-- [ ] Agile: the sprint table, release figures and charts show. Resource Report: hours and utilisation by sprint fill in; red cells only where someone is over capacity.
+- [ ] Agile: the sprint table, release figures and charts show; picking a sprint under "Sprint to show" lists its tasks. Resources: the person-days and points grids fill in. Cost: task costs and earned value show; deleting the sheet leaves no #REF! elsewhere. Resource Report: hours and utilisation by sprint fill in; red cells only where someone is over capacity.
 - [ ] Tasks: the Resource and Type cells show dropdowns.
 
 ## Reporting back

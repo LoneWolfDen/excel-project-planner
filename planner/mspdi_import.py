@@ -142,7 +142,7 @@ def read_project(data):
             continue
         by_uid[_int(r, "UID")] = name
         resources.append((name, _text(r, "Initials"), _text(r, "Group"), _float(r, "MaxUnits", 1.0),
-                          _float(r, "StandardRate"), _text(r, "EmailAddress"),
+                          round(_float(r, "StandardRate") * hours, 2), _text(r, "EmailAddress"),   # a day rate
                           RESOURCE_TYPES.get(_int(r, "Type", 1), "Work")))
         own = calendars.get(_int(r, "CalendarUID", -1))
         if own is not None and own is not base:
@@ -175,7 +175,7 @@ def read_project(data):
             _warn(row, warnings, "links on a summary task are ignored (link one of its tasks instead)")
         if row.get("CType") and row["Mode"] == "Auto":
             _warn(row, warnings, f"constraint '{row['CType']}' on a summary task is ignored")
-        for key in ("Dur", "AS", "AF", "Pct", "Res", "Units", "ACin", "SP", "CType", "Cons", "_more"):
+        for key in ("Dur", "AS", "AF", "Pct", "Res", "Units", "SP", "CType", "Cons", "_more"):
             row.pop(key, None)                            # summaries roll up in the planner
     more = [a for row in tasks for a in row.pop("_more", [])]
     position = {row["UID"]: i for i, row in enumerate(tasks)}
@@ -186,6 +186,12 @@ def read_project(data):
 
     for row in tasks:
         take_links(row)                                   # P1 / T1 / L1 ... -> the Predecessors text
+    # MS Project works Actual Cost out from rates, as the Cost sheet does; only a fixed cost is typed in
+    typed = sum(1 for t in root.iter(NS + "Task") if _float(t, "FixedCost"))
+    if typed:
+        warnings.append(f"{typed} tasks had fixed costs in MS Project. The planner works cost out on the Cost sheet "
+                        "(each person's work x their day rate = MS Project's Standard Rate x hours per day), so fixed "
+                        "costs were not imported.")
     months = _leave_months(start, leave)
     return ProjectData(settings=settings, tasks=tasks, resources=resources, holidays=holidays, leave=leave,
                        leave_months=months, assignments=more), warnings
@@ -211,8 +217,6 @@ def _task(t, uid, hours, assignments, warnings):
     row["AS"], row["AF"] = _date(_text(t, "ActualStart")), _date(_text(t, "ActualFinish"))
     pct = _float(t, "PercentComplete")
     row["Pct"] = pct / 100 if pct else None
-    if _text(t, "ActualCost") not in (None, "0", "0.0"):
-        row["ACin"] = _float(t, "ActualCost")
 
     links = t.findall(NS + "PredecessorLink")
     for k, link in enumerate(links[:LINKS], start=1):
@@ -245,7 +249,7 @@ def _task(t, uid, hours, assignments, warnings):
     if base is not None and _text(base, "Start"):
         row["BS"], row["BF"] = _date(_text(base, "Start")), _date(_text(base, "Finish"))
         row["BD"] = _days(_hours(_text(base, "Duration")), hours)
-        row["BW"], row["BC"] = round(_hours(_text(base, "Work")), 2), _float(base, "Cost")
+        row["BW"] = round(_hours(_text(base, "Work")), 2)        # the Cost sheet prices it at the day rates
     return row
 
 

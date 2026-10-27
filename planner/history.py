@@ -2,9 +2,10 @@
 
 A formula can't remember last week's value, so history is kept the way the baseline is: SnapshotNow, at the
 bottom of the Status sheet, shows this status date's numbers (formulas), and on each reporting date the PM copies
-that row and pastes it as values onto the first empty row of StatusHistory (inputs). The trend charts read StatusHistory: forecast vs planned finish,
-earned value S-curve, SPI / CPI, and a story-point burn-up that shows scope changes. Nothing here needs a macro;
-a macro or script would only automate the same copy and paste.
+that row and pastes it as values onto the first empty row of StatusHistory (inputs). The trend charts read
+StatusHistory: forecast vs planned finish, progress done vs planned, the schedule SPI, and a story-point burn-up that
+shows scope changes. Money is not here: the Cost sheet keeps its own history, so deleting it leaves no cost behind.
+Nothing here needs a macro; a macro or script would only automate the same copy and paste.
 """
 import datetime as dt
 
@@ -20,15 +21,9 @@ FIELDS = [
     ("Forecast Finish", "ProjectFinish", DATE),
     ("Planned Finish", "PlannedFinish", DATE),
     ("Finish Var", "FinishVarianceDays", "+0;-0;0"),
-    ("% Earned", "evm_PctEarned", "0%"),
-    ("% Planned", "evm_PctPlanned", "0%"),
-    ("BAC", "evm_BAC", "#,##0"),
-    ("PV", "evm_PV", "#,##0"),
-    ("EV", "evm_EV", "#,##0"),
-    ("AC", "evm_AC", "#,##0"),
-    ("SPI", "evm_SPI", "0.00"),
-    ("CPI", "evm_CPI", "0.00"),
-    ("EAC", "evm_EAC", "#,##0"),
+    ("% Done", "sch_Progress", "0%"),
+    ("% Planned", "sch_Planned", "0%"),
+    ("SPI", "sch_SPI", "0.00"),
     ("Points Done", "agl_Done", "0.#"),
     ("Total Points", "TotalPoints", "0.#"),
     ("Open Risks", 'COUNTIFS(log_Type,"Risk",log_Open,1)', "0"),
@@ -42,17 +37,13 @@ HISTORY_ROWS = 60
 def sample_history():
     """Four weekly snapshots before the sample's status date (illustrative; the PM pastes the real ones)."""
     rows = []
-    bac = 58040
-    for when, finish, slip, earned, planned, cost_ratio, done, total, risks, issues, pending, rag in (
-            (D(2026, 9, 27), D(2026, 12, 28), 0, 0.17, 0.19, 1.02, 5, 76, 2, 0, 0, "Green"),
-            (D(2026, 10, 4), D(2026, 12, 29), 1, 0.27, 0.31, 1.04, 18, 78, 3, 0, 1, "Green"),
-            (D(2026, 10, 11), D(2026, 12, 31), 3, 0.36, 0.43, 1.05, 23, 82, 3, 0, 0, "Amber"),
-            (D(2026, 10, 18), D(2027, 1, 4), 5, 0.44, 0.54, 1.06, 33, 82, 4, 1, 0, "Amber")):
-        ev, pv = round(bac * earned), round(bac * planned)
-        ac = round(ev * cost_ratio)
-        cpi = ev / ac
-        rows.append([when, finish, D(2026, 12, 28), slip, earned, planned, bac, pv, ev, ac, round(ev / pv, 2),
-                     round(cpi, 2), round(ac + (bac - ev) / cpi), done, total, risks, issues, pending, rag])
+    for when, finish, slip, done_pct, planned, done, total, risks, issues, pending, rag in (
+            (D(2026, 9, 27), D(2026, 12, 28), 0, 0.17, 0.19, 5, 76, 2, 0, 0, "Green"),
+            (D(2026, 10, 4), D(2026, 12, 29), 1, 0.27, 0.31, 18, 78, 3, 0, 1, "Green"),
+            (D(2026, 10, 11), D(2026, 12, 31), 3, 0.36, 0.43, 23, 82, 3, 0, 0, "Amber"),
+            (D(2026, 10, 18), D(2027, 1, 4), 5, 0.44, 0.54, 33, 82, 4, 1, 0, "Amber")):
+        rows.append([when, finish, D(2026, 12, 28), slip, done_pct, planned, round(done_pct / planned, 2), done, total,
+                     risks, issues, pending, rag])
     return rows
 
 
@@ -97,6 +88,6 @@ def _charts(ws, top):
     right = 2 + len(FIELDS) + 1
     at = lambda row: f"{get_column_letter(right)}{row}"
     chart("Forecast vs planned finish", ["Forecast Finish", "Planned Finish"], at(4), "dd-mmm-yy")
-    chart("Earned value S-curve", ["PV", "EV", "AC"], at(19))
-    chart("SPI and CPI", ["SPI", "CPI"], at(34), "0.00")
+    chart("Progress: done vs planned", ["% Done", "% Planned"], at(19), "0%")
+    chart("SPI (schedule)", ["SPI"], at(34), "0.00")
     chart("Story-point burn-up (done vs scope)", ["Points Done", "Total Points"], at(49))

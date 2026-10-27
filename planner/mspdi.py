@@ -206,6 +206,11 @@ def read_plan(data):
         "holidays": sorted({d for d in (_date(h.get("Date")) for h in wb.table("HolidayTable")) if d}),
         "tasks": tasks,
         "resources": [r for r in wb.table("ResourceTable") if _text(r.get("Resource Name")).strip()],
+        # v1.8: day rates and task costs on the Cost sheet (absent when it was deleted before sharing)
+        "rates": {_text(r.get("Resource")).strip(): _num(r.get("Day Rate"))
+                  for r in (wb.table("RateCard") if "RateCard" in wb.tables else []) if _text(r.get("Resource")).strip()},
+        "costs": {r.get("ID"): r for r in (wb.table("TaskCost") if "TaskCost" in wb.tables else [])
+                  if r.get("ID") not in (None, "")},
         # v1.5 / v1.6: more people on the Assignments sheet; _Valid = 1 for the rows Tasks used
         "assignments": [a for a in (wb.table("AssignmentTable") if "AssignmentTable" in wb.tables else [])
                         if _num(a.get("_Valid")) == 1],
@@ -348,8 +353,10 @@ def to_mspdi(plan):
             _sub(e, "ActualStart", start_of(actual_start))
         if actual_finish and not summary:
             _sub(e, "ActualFinish", end_of(actual_finish))
-        if not summary and _num(t.get("Actual Cost"), None) is not None:
-            _sub(e, "ActualCost", t["Actual Cost"])
+        cost = plan.get("costs", {}).get(t.get("ID"), {})
+        actual_cost = _num(cost.get("Actual Cost", t.get("Actual Cost")), None)    # before v1.8: on Tasks
+        if not summary and actual_cost:
+            _sub(e, "ActualCost", round(actual_cost, 2))
         # ConstraintType is MS Project's code (the planner's _ConstraintCode); codes 2-7 carry a date, which for
         # Must Finish On / Finish No Earlier / Later Than (3, 6, 7) is the end of that day
         if summary or manual:
@@ -388,7 +395,7 @@ def to_mspdi(plan):
             _sub(b, "Duration", _hours_text(_num(t.get("Baseline Duration")) * hours))
             _sub(b, "DurationFormat", 7)
             _sub(b, "Work", _hours_text(_num(t.get("Baseline Work"))))
-            _sub(b, "Cost", _num(t.get("Baseline Cost")))
+            _sub(b, "Cost", round(_num(cost.get("Budget", t.get("Baseline Cost"))), 2))
         for name, units, hours_of in _people(t, work):
             if summary or not name:
                 continue
@@ -412,8 +419,10 @@ def to_mspdi(plan):
         for tag, key in (("Initials", "Initials"), ("Group", "Group"), ("EmailAddress", "Email")):
             if _text(r.get(key)):
                 _sub(e, tag, r[key])
-        _sub(e, "MaxUnits", _num(r.get("Max Units"), 1))
-        _sub(e, "StandardRate", _num(r.get("Std Rate")))
+        _sub(e, "MaxUnits", _num(r.get("Allocation %", r.get("Max Units")), 1))
+        day_rate = plan.get("rates", {}).get(_text(r["Resource Name"]).strip())
+        hourly = day_rate / plan["hours"] if day_rate is not None else _num(r.get("Std Rate"))   # Std Rate: v1.7
+        _sub(e, "StandardRate", f"{round(hourly, 4):g}")
         _sub(e, "StandardRateFormat", 2)          # per hour
 
     asg_el = _sub(p, "Assignments")

@@ -1,12 +1,12 @@
 """Status sheet: the weekly page. The status date and this week's checklist at the top, then everything a steering
-meeting reads: overall RAG and RAG by area, key figures, tasks by status, next milestones, earned value, the top
-open RAID items, change control and the period commentary, printable on one page. The snapshot row to paste
-onto History sits at the bottom.
+meeting reads: overall RAG and RAG by area, key figures, tasks by status, next milestones, the top open RAID items,
+change control and the period commentary, printable on one page. The snapshot row to paste onto History sits at
+the bottom. Money is on the Cost sheet, which nothing here reads, so it can be deleted before sharing.
 
 Each RAG is calculated from the plan against the Settings thresholds. The project manager can override it (PM RAG)
 and explain why (Comment); the RAG column shows the override when there is one, which is how most PMOs report.
-Earned-value cells have defined names (evm_BAC, evm_SPI, ...) so other reports reuse them instead of repeating the
-sums. The status date cell itself is written by planner.settings (StatusDateInput), like every other setting.
+The schedule measures have defined names (sch_Progress, sch_Planned, sch_SPI: duration-weighted, so they need no
+cost) that History reuses. The status date cell itself is written by planner.settings (StatusDateInput), like every other setting.
 """
 from openpyxl.chart import BarChart, Reference
 from openpyxl.formatting.rule import FormulaRule
@@ -37,8 +37,8 @@ WEEKLY = [
 # area, measure, value, severity of the value (0 green, 1 amber, 2 red), number format
 AREAS = [
     ("Schedule", "Forecast finish vs plan (working days)", "FinishVarianceDays", rag.slip("{v}"), "+0;-0;0"),
-    ("Schedule performance", "SPI = earned value / planned value", "evm_SPI", rag.index("{v}"), "0.00"),
-    ("Cost performance", "CPI = earned value / actual cost", "evm_CPI", rag.index("{v}"), "0.00"),
+    ("Schedule performance", "SPI = progress / progress planned by now (duration-weighted)", "sch_SPI",
+     rag.index("{v}"), "0.00"),
     ("Deadlines", "Tasks forecast to miss their deadline", 'COUNTIF(tsk_DeadlineCheck,"Late*")', rag.count("{v}", 2), "0"),
     ("Critical path", "Critical tasks forecast to finish late",
      'COUNTIFS(tsk_Critical,"Yes",tsk_IsLeaf,1,tsk_Variance,">0")', rag.count("{v}", 1), "0"),
@@ -54,12 +54,12 @@ KPIS = [
     ("Planned finish", "MAX(tsk_PlanFinish)", DATE, "Tasks (the baseline once it is set)"),
     ("Forecast finish", "MAX(tsk_FcFinish)", DATE, "Tasks"),
     ("Overall progress (duration-weighted)", "IFERROR(SUM(tsk_WtDone)/SUM(tsk_WtDur),0)", "0%", "Tasks"),
-    ("Planned progress by status date", "IFERROR(SUMPRODUCT(tsk_WtDur,tsk_PlannedPct)/SUM(tsk_WtDur),0)", "0%",
-     "Tasks"),
+    ("Planned progress by status date", "IFERROR(SUM(tsk_WtPlanned)/SUM(tsk_WtDur),0)", "0%", "Tasks"),
+    ("Schedule performance (SPI)", 'IF(sch_Planned>0,sch_Progress/sch_Planned,"")', "0.00",
+     "Progress / planned progress"),
     ("Detail tasks", "SUM(tsk_IsLeaf)", "0", "Tasks"),
     ("Milestones", 'SUMPRODUCT(tsk_IsLeaf*(tsk_Duration=0)*(tsk_Name<>""))', "0", "Tasks"),
     ("Total work (hrs)", "SUMPRODUCT(tsk_Work,tsk_IsLeaf)", "#,##0", "Tasks"),
-    ("Total cost", "SUMPRODUCT(tsk_Cost,tsk_IsLeaf)", "#,##0.00", "Tasks"),
     ("Baseline", 'IF(COUNT(tsk_BaseStart)=0,"Not set (planned = calculated)","Set on "&COUNT(tsk_BaseStart)&" tasks")',
      "@", "Tasks > BASELINE"),
     ("Open critical tasks", 'COUNTIFS(tsk_Critical,"Yes",tsk_IsLeaf,1)', "0", "Tasks"),
@@ -72,25 +72,6 @@ KPIS = [
 ]
 ALERT_IF_POSITIVE = {"Tasks with issues (see Tasks > Issues)", "Tasks with an over-allocated resource"}
 
-# defined name, label, formula, meaning, format
-EVM = [
-    ("evm_BAC", "Budget at completion (BAC)", "SUM(tsk_LeafBudget)", "Baseline Cost once a baseline is set, otherwise Cost.", MONEY),
-    ("evm_PV", "Planned value (PV)", "SUM(tsk_LeafPV)", "Budget of the work planned before the status date.", MONEY),
-    ("evm_EV", "Earned value (EV)", "SUM(tsk_LeafEV)", "Budget of the work done (Budget x Progress).", MONEY),
-    ("evm_AC", "Actual cost (AC)", "SUM(tsk_LeafAC)", "Actual Cost on Tasks; Cost x Progress where blank.", MONEY),
-    ("evm_SV", "Schedule variance (SV)", "evm_EV-evm_PV", "EV - PV. Negative = behind plan.", MONEY),
-    ("evm_CV", "Cost variance (CV)", "evm_EV-evm_AC", "EV - AC. Negative = over cost.", MONEY),
-    ("evm_SPI", "Schedule performance index (SPI)", 'IF(evm_PV>0,evm_EV/evm_PV,"")', "EV / PV. Below 1 = behind.", "0.00"),
-    ("evm_CPI", "Cost performance index (CPI)", 'IF(evm_AC>0,evm_EV/evm_AC,"")', "EV / AC. Below 1 = over cost.", "0.00"),
-    ("evm_EAC", "Estimate at completion (EAC)", "IF(N(evm_CPI)>0,evm_AC+(evm_BAC-evm_EV)/evm_CPI,evm_AC+evm_BAC-evm_EV)",
-     "AC + (BAC - EV) / CPI: forecast cost at the current CPI.", MONEY),
-    ("evm_ETC", "Estimate to complete (ETC)", "evm_EAC-evm_AC", "EAC - AC: forecast cost of the remaining work.", MONEY),
-    ("evm_VAC", "Variance at completion (VAC)", "evm_BAC-evm_EAC", "BAC - EAC. Negative = forecast overrun.", MONEY),
-    ("evm_TCPI", "To-complete performance index (TCPI)", 'IF(evm_BAC>evm_AC,(evm_BAC-evm_EV)/(evm_BAC-evm_AC),"")',
-     "CPI the remaining work needs to finish on budget.", "0.00"),
-    ("evm_PctEarned", "% complete (earned)", "IF(evm_BAC>0,evm_EV/evm_BAC,0)", "EV / BAC.", "0%"),
-    ("evm_PctPlanned", "% complete (planned)", "IF(evm_BAC>0,evm_PV/evm_BAC,0)", "PV / BAC.", "0%"),
-]
 
 
 def changes(status):
@@ -152,8 +133,7 @@ def build_status(wb, agile_ws=None, sprint_letters=None, n_chart_sprints=12):
         ws.column_dimensions[col].width = width
     top = _this_week(ws)
     top = _rag(wb, ws, top)
-    top = _key_figures(ws, top)
-    top = _earned_value(wb, ws, top)
+    top = _key_figures(wb, ws, top)
     top = _top_raid(ws, top)
     chart_at = top
     top = _change_control(ws, top)
@@ -216,7 +196,12 @@ def _rag(wb, ws, top):
     return top + len(AREAS) + 3
 
 
-def _key_figures(ws, top):
+# key figures other sheets read by name
+KPI_NAMES = {"Overall progress (duration-weighted)": "sch_Progress", "Planned progress by status date": "sch_Planned",
+             "Schedule performance (SPI)": "sch_SPI"}
+
+
+def _key_figures(wb, ws, top):
     """Key figures (B:D) with detail tasks by status beside them (E:F) and its chart below that, then the next
     milestones."""
     _heading(ws, top - 1, "KEY FIGURES")
@@ -232,6 +217,8 @@ def _key_figures(ws, top):
         value.number_format = fmt
         value.font = font(bold=True)
         value.alignment = Alignment(horizontal="right")
+        if label in KPI_NAMES:
+            name(wb, KPI_NAMES[label], f"{SHEET}!$D${r}")
         if label in ALERT_IF_POSITIVE:
             ws.conditional_formatting.add(f"D{r}", FormulaRule(formula=[f"D{r}>0"], font=Font(color="C00000", bold=True),
                                                                fill=fill("FFC7CE")))
@@ -265,27 +252,6 @@ def _key_figures(ws, top):
     for r in range(top + 1, top + 6):
         ws.cell(r, 3).alignment = Alignment(horizontal="left")
     return top + 5 + 3
-
-
-def _earned_value(wb, ws, top):
-    _heading(ws, top - 1, "EARNED VALUE at the status date")
-    add_table(ws, "EarnedValue", top, 2, [
-        Col("Measure", width=WIDTHS["B"], values=[e[1] for e in EVM]),
-        Col("Meaning", width=WIDTHS["C"], values=[e[3] for e in EVM]),
-        Col("Value", width=WIDTHS["D"], values=[f"={e[2]}" for e in EVM]),
-    ], len(EVM), autofilter=False)
-    for i, (defined, _, _, _, fmt) in enumerate(EVM):
-        r = top + 1 + i
-        ws.cell(r, 4).number_format = fmt
-        ws.cell(r, 4).font = font(bold=True)
-        name(wb, defined, f"{SHEET}!$D${r}")
-    chart = BarChart()
-    chart.type, chart.style, chart.title, chart.legend = "bar", 10, "Earned value (BAC, PV, EV, AC)", None
-    chart.add_data(Reference(ws, min_col=4, min_row=top + 1, max_row=top + 4))
-    chart.set_categories(Reference(ws, min_col=2, min_row=top + 1, max_row=top + 4))
-    chart.height, chart.width = 7, 16
-    ws.add_chart(chart, f"E{top}")
-    return top + len(EVM) + 3
 
 
 def _top_raid(ws, top):
@@ -328,12 +294,12 @@ def _commentary(ws, top):
 
 
 def _sprint_chart(ws, agile_ws, L, n, at):
-    """Planned work vs capacity for the first n sprints (charts need A1 ranges into SprintTable)."""
+    """Planned days vs available days for the first n sprints (charts need A1 ranges into SprintTable)."""
     from .agile import HEADER_ROW
     col = lambda key: agile_ws[f"{L[key]}{HEADER_ROW}"].column
     chart = BarChart()
-    chart.title = "Sprint planned work vs capacity (hrs)"
-    for key in ("Planned Work", "Capacity"):
+    chart.title = "Sprint planned vs available person-days"
+    for key in ("Planned Days", "Available Days"):
         chart.add_data(Reference(agile_ws, min_col=col(key), min_row=HEADER_ROW, max_row=HEADER_ROW + n),
                        titles_from_data=True)
     chart.set_categories(Reference(agile_ws, min_col=col("Sprint"), min_row=HEADER_ROW + 1, max_row=HEADER_ROW + n))

@@ -13,8 +13,11 @@ from openpyxl.chart import BarChart, LineChart, Reference, Series
 from openpyxl.formatting.rule import FormulaRule
 from openpyxl.styles import Alignment, Font
 
-from .core import DATE, NOTE_FONT, TITLE_FONT, Col, Show, Tab, add_table, fill, font, name, ranked_table
-from .leave import month_column, month_start, team_leave_hours
+from openpyxl.worksheet.datavalidation import DataValidation
+
+from .core import (BOX, DATE, INPUT_FONT, NOTE_FONT, TITLE_FONT, Col, Show, Tab, add_table, fill, font, name,
+                   ranked_table)
+from .leave import month_column, month_start
 from .workload import work_between
 
 SHEET = "Agile"
@@ -45,9 +48,11 @@ KPIS = [
      'INDEX(spr_End,agl_LastClosed+agl_SprintsLeft),""))', DATE),
     ("agl_ScheduleFinish", "Forecast finish (schedule)", "ProjectFinish", DATE),
     ("agl_Current", "Current sprint", 'IF(CurrentSprint="","(outside sprint range)",CurrentSprint)', "@"),
-    ("agl_CurCommitted", "Current sprint: committed points", "SUMIFS(tsk_LeafPoints,tsk_Sprint,CurrentSprint)", "0.#"),
-    ("agl_CurDone", "Current sprint: done so far",
-     'SUMIFS(tsk_LeafPoints,tsk_Sprint,CurrentSprint,tsk_DoneDate,"<="&StatusDate)', "0.#"),
+    ("agl_CurCommitted", "Shown sprint: committed points", "SUMIFS(tsk_LeafPoints,tsk_Sprint,ShownSprint)", "0.#"),
+    ("agl_CurDone", "Shown sprint: done so far",
+     'SUMIFS(tsk_LeafPoints,tsk_Sprint,ShownSprint,tsk_DoneDate,"<="&StatusDate)', "0.#"),
+    ("agl_CurCapacity", "Shown sprint: capacity (points)",
+     'IFERROR(INDEX(spr_Capacity,MATCH(ShownSprint,spr_Name,0)),"")', "0.#"),
     ("agl_Unestimated", "Tasks without story points (not milestones)",
      'COUNTIFS(tsk_IsLeaf,1,tsk_StoryPoints,"",tsk_Duration,">0")', "0"),
 ]
@@ -68,7 +73,7 @@ def build_agile(wb, blank, n_sprints, n_chart_sprints=12):
     top = HEADER_ROW + n_sprints + 4
     kpi_top = top
     top = _release(wb, ws, top)
-    top = _backlog(ws, top)
+    top = _backlog(wb, ws, top)
     burndown_top = _burndown(ws, top)
     for col, width in WIDTHS.items():
         ws.column_dimensions[col].width = width
@@ -104,21 +109,26 @@ def _sprint_table(wb, ws, blank, n_sprints):
             formula=f"IF(N({r('Set End')})>0,{r('Set End')},{r('Start')}+SprintLength-1)"),
         Col("Working Days", width=WIDTHS["G"], formula=f"NETWORKDAYS.INTL({r('Start')},{r('End')},{WD})", center=True),
         Col("Tasks Starting", width=WIDTHS["H"], formula=f'IF({has},"",COUNTIF(tsk_Sprint,{r("Sprint")}))', center=True),
-        Col("Planned Work", width=11, fmt="#,##0.0", formula=f'IF({has},"",{work_between(r("_FirstWD"), r("_LastWD"))})',
-            note="Hours of task work falling in the sprint."),
-        Col("Capacity", width=11, fmt="#,##0.0",
-            note="Sum of Work resources' Max Units x HoursPerDay x working days, less the leave of the people in the "
-                 "Resource Report's sprint grids (Resources sheet, leave months).",
-            formula=(f'IF({has},"",SUMIFS(res_MaxUnits,res_Type,"Work")*HoursPerDay*{r("Working Days")}'
-                     f'-{team_leave_hours("spr_LeaveGrid", r("No"))})')),
-        Col("Utilisation", width=10, fmt="0%",
-            formula=f'IF(OR({has},N({r("Capacity")})=0),"",{r("Planned Work")}/{r("Capacity")})'),
+        Col("Available Days", width=10, fmt="0.0", center=True, formula=f'IF({has},"",SUM(INDEX(cap_Days,0,{r("No")})))',
+            note="Everyone's working days in the sprint, within their Start / End, less holidays and leave, x "
+                 "Allocation % (Resources > available days)."),
+        Col("Capacity", width=10, fmt="0.0", center=True, formula=f'IF({has},"",SUM(INDEX(cap_Points,0,{r("No")})))',
+            note="Delivery capacity in story points: available days x each person's Focus % (1 person-day = 1 "
+                 "point). Committed Points turn red above it."),
+        Col("Advisory / Overhead", width=10, fmt="0.0", center=True,
+            formula=f'IF({has},"",{r("Available Days")}-{r("Capacity")})',
+            note="Allocated days that aren't delivery: ceremonies and meetings (the rest of each Focus %) and "
+                 "advisory roles (Focus % = 0)."),
+        Col("Planned Days", width=10, fmt="0.0", center=True,
+            formula=f'IF({has},"",{work_between(r("_FirstWD"), r("_LastWD"))}/HoursPerDay)',
+            note="Person-days of task work falling in the sprint (each task's work spread over its working days)."),
+        Col("Load", width=9, fmt="0%", center=True,
+            formula=f'IF(OR({has},N({r("Available Days")})=0),"",{r("Planned Days")}/{r("Available Days")})',
+            note="Planned days / available days. Red above 100%."),
         Col("Status", width=10, center=True,
             formula=f'IF({has},"",IF(StatusDate>{r("End")},"Closed",IF(StatusDate>={r("Start")},"Active","Future")))'),
         # story points. Done = detail tasks finished in the sprint; remaining = scope minus everything done by the
         # sprint end (or the status date), so the columns are a release burndown
-        Col("Points Capacity", "in", 9, "0.#", center=True,
-            note="Optional: story points the team can take on in the sprint. Committed Points turn red above it."),
         Col("Committed Points", width=10, fmt="0.#", center=True,
             formula=f'IF({has},"",SUMIFS(tsk_LeafPoints,tsk_Sprint,{r("Sprint")}))',
             note="Story points of the tasks in this sprint (Tasks > Sprint)."),
@@ -154,7 +164,8 @@ def _sprint_table(wb, ws, blank, n_sprints):
          for k in range(LEAVE_MONTHS)]
     L = add_table(ws, "SprintTable", HEADER_ROW, 2, cols, n_sprints, autofilter=False)
     for column, defined in {"Sprint": "spr_Name", "Start": "spr_Start", "End": "spr_End", "Working Days": "spr_WorkDays",
-                            "Planned Work": "spr_Work", "Capacity": "spr_Capacity", "Status": "spr_Status",
+                            "Planned Days": "spr_PlannedDays", "Available Days": "spr_AvailableDays",
+                            "Capacity": "spr_Capacity", "Status": "spr_Status",
                             "Committed Points": "spr_Committed", "Done Points": "spr_Done", "Velocity": "spr_Velocity",
                             "Remaining Points": "spr_Remaining", "_FirstWD": "spr_FirstWD", "_LastWD": "spr_LastWD"}.items():
         name(wb, defined, f"SprintTable[{column}]")
@@ -167,10 +178,10 @@ def _sprint_table(wb, ws, blank, n_sprints):
     cf.add(f"{start}{first}:{end}{last}", FormulaRule(formula=[f'${L["Sprint"]}{first}=""'], font=Font(color="D9D9D9")))
     cf.add(f"{start}{first}:{end}{last}", FormulaRule(formula=[f'${L["Status"]}{first}="Active"'], fill=fill("FFF2CC"),
                                                       font=Font(bold=True)))
-    cf.add(f"{L['Utilisation']}{first}:{L['Utilisation']}{last}",
-           FormulaRule(formula=[f"AND(ISNUMBER(${L['Utilisation']}{first}),${L['Utilisation']}{first}>1)"],
+    cf.add(f"{L['Load']}{first}:{L['Load']}{last}",
+           FormulaRule(formula=[f"AND(ISNUMBER(${L['Load']}{first}),${L['Load']}{first}>1)"],
                        font=Font(color="C00000", bold=True), fill=fill("FFC7CE")))
-    pc, cp = L["Points Capacity"], L["Committed Points"]
+    pc, cp = L["Capacity"], L["Committed Points"]
     cf.add(f"{cp}{first}:{cp}{last}", FormulaRule(
         formula=[f"AND(N(${pc}{first})>0,N(${cp}{first})>${pc}{first})"], font=Font(color="C00000", bold=True),
         fill=fill("FFC7CE")))
@@ -193,15 +204,31 @@ def _release(wb, ws, top):
     return top + len(KPIS) + 3
 
 
-def _backlog(ws, top):
-    """The current sprint's tasks (the list's hidden _Task column is column A)."""
+def _backlog(wb, ws, top):
+    """The tasks of the sprint picked in "Sprint to show" (blank = the current sprint), with its totals; the list's
+    hidden _Task column is column A. ShownSprint and its dates are defined names, so the burndown and Tasks'
+    _CurrentSprintKey follow the same pick."""
+    ws.cell(top, 4, "Sprint to show (pick one; blank = the current sprint)").font = font(bold=True)
+    pick = ws.cell(top, 5)
+    pick.font, pick.border, pick.alignment = INPUT_FONT, BOX, Alignment(horizontal="center")
+    rule = DataValidation(type="list", formula1="=spr_Name")
+    ws.add_data_validation(rule)
+    rule.add(pick.coordinate)
+    name(wb, "ShowSprintInput", f"{SHEET}!$E${top}")
+    name(wb, "ShownSprint", 'IF(ShowSprintInput="",CurrentSprint,ShowSprintInput)')
+    name(wb, "ShownSprintStart", 'IF(ShownSprint="","",INDEX(spr_Start,MATCH(ShownSprint,spr_Name,0)))')
+    name(wb, "ShownSprintEnd", 'IF(ShownSprint="","",INDEX(spr_End,MATCH(ShownSprint,spr_Name,0)))')
+    total = ws.cell(top + 1, 4, '="Committed "&agl_CurCommitted&" points of "&agl_CurCapacity&" capacity; done "&'
+                                'agl_CurDone&"; "&COUNTIF(tsk_Sprint,ShownSprint)&" tasks"')
+    total.font = NOTE_FONT
+    top += 4
     ranked_table(ws, "SprintBacklog", top, 1, "tsk_CurrentSprintKey", BACKLOG_ROWS, [
         Show("UID", "tsk_UID", "num", width=WIDTHS["B"]),
         Show("Story Points", "tsk_StoryPoints", "num", width=WIDTHS["C"], fmt="0.#;;-"),
         Show("Task", "tsk_Name", width=WIDTHS["D"]), Show("Finish", "tsk_FcFinish", "date", WIDTHS["E"], DATE),
-        Show("Progress", "tsk_Progress", "num", WIDTHS["F"], "0%"), Show("Status", "tsk_Status", width=WIDTHS["G"]),
+        Show("Stage", "tsk_Stage", width=WIDTHS["F"]), Show("Status", "tsk_Status", width=WIDTHS["G"]),
         Show("Resources", "tsk_ResourceNames", width=WIDTHS["H"]),
-    ], label='"CURRENT SPRINT BACKLOG ("&agl_Current&")"')
+    ], label='"SPRINT BACKLOG ("&IF(ShownSprint="","no sprint",ShownSprint)&")"')
     return top + BACKLOG_ROWS + 3
 
 
@@ -210,18 +237,18 @@ def _burndown(ws, top):
     b = Tab("SprintBurndown")
     day = b.row("Day")
     k = f"ROW()-ROW({b.head('Day')})"
-    ws.cell(top - 1, 4, "CURRENT SPRINT BURNDOWN (story points of the tasks in the sprint)").font = \
+    ws.cell(top - 1, 4, "SPRINT BURNDOWN (the sprint shown above: story points of its tasks)").font = \
         font(bold=True, color="1F4E78")
     L = add_table(ws, "SprintBurndown", top, 4, [
         Col("Day", width=WIDTHS["D"], fmt=DATE,
-            formula=f'IF(OR(CurrentSprint="",{k}>CurrentSprintEnd-CurrentSprintStart+1),"",CurrentSprintStart+{k}-1)'),
+            formula=f'IF(OR(ShownSprint="",{k}>ShownSprintEnd-ShownSprintStart+1),"",ShownSprintStart+{k}-1)'),
         Col("Remaining", width=WIDTHS["E"], fmt="0.#", formula=(
-            f'IF(OR({day}="",{day}>StatusDate),"",agl_CurCommitted-SUMIFS(tsk_LeafPoints,tsk_Sprint,CurrentSprint,'
+            f'IF(OR({day}="",{day}>StatusDate),"",agl_CurCommitted-SUMIFS(tsk_LeafPoints,tsk_Sprint,ShownSprint,'
             f'tsk_DoneDate,"<="&{day}))'),
             note="Committed points not yet done at the end of the day (blank after the status date)."),
         Col("Ideal", width=WIDTHS["F"], fmt="0.#", formula=(
-            f'IF({day}="","",agl_CurCommitted*MAX(0,1-NETWORKDAYS.INTL(CurrentSprintStart,{day},WorkWeek,Holidays)/'
-            f'MAX(1,NETWORKDAYS.INTL(CurrentSprintStart,CurrentSprintEnd,WorkWeek,Holidays))))'),
+            f'IF({day}="","",agl_CurCommitted*MAX(0,1-NETWORKDAYS.INTL(ShownSprintStart,{day},WorkWeek,Holidays)/'
+            f'MAX(1,NETWORKDAYS.INTL(ShownSprintStart,ShownSprintEnd,WorkWeek,Holidays))))'),
             note="Straight line over the sprint's working days."),
         # chart copies: text labels (blank rows stay blank) and #N/A for days not reached, which charts leave out
         Col("_ChartDay", "help", WIDTHS["G"], formula=f'IF({day}="","",TEXT({day},"dd-mmm"))'),

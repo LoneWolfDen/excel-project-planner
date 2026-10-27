@@ -113,15 +113,28 @@ def read_planner(data):
     key_of.update({f"Pred{k} {label}": f"{x}{k}" for k in range(1, 10) for x, label in (("P", "UID"), ("T", "Type"),
                                                                                        ("L", "Lag"))})
     key_of.update({"Resource": "Res", "Units": "Units"})      # before v1.7: one person + the Assignments sheet
-    tasks = []
+    tasks, costed = [], 0
     for rec in _records(tables, "Tasks", RENAMED["Tasks"]):
         row = {key_of[h]: v for h, v in rec.items() if h in key_of and v not in (None, "")}
+        if isinstance(rec.get("Actual Cost"), (int, float)):       # typed on Tasks before v1.8: now calculated
+            row["Notes"] = f'{row.get("Notes") or ""} [Actual cost typed before v1.8: {rec["Actual Cost"]:g}]'.strip()
+            costed += 1
         tasks.append(take_links(row))
+    if costed:
+        warnings.append(f"{costed} tasks had a typed Actual Cost: cost is now worked out on the Cost sheet (work done "
+                        "x day rates), so each value is kept in the task's Notes.")
+    if any(isinstance(r.get("Baseline Cost"), (int, float)) for r in _records(tables, "Tasks")):
+        warnings.append("Baseline Cost is no longer typed: the Cost sheet's budget is the baseline's work at today's "
+                        "day rates.")
     while tasks and not tasks[-1].get("Name"):
         tasks.pop()
 
-    resources = [(r.get("Resource Name"), r.get("Initials"), r.get("Group"), r.get("Max Units"), r.get("Std Rate"),
-                  r.get("Email"), r.get("Type") or "Work")
+    # before v1.8: Max Units and an hourly Std Rate on Resources; since: Allocation %, and day rates on the Cost sheet
+    hours = settings.get("HoursPerDay") or 8
+    day_rates = {r.get("Resource"): r.get("Day Rate") for r in _records(tables, "RateCard") if r.get("Resource")}
+    resources = [(r.get("Resource Name"), r.get("Initials"), r.get("Group"), r.get("Allocation %", r.get("Max Units")),
+                  day_rates.get(r["Resource Name"], None if r.get("Std Rate") is None else r["Std Rate"] * hours),
+                  r.get("Email"), r.get("Type") or "Work", r.get("Start"), r.get("End"), r.get("Focus %"))
                  for r in _records(tables, "ResourceTable") if r.get("Resource Name")]
     holidays = [(r["Date"], r.get("Description")) for r in _records(tables, "HolidayTable") if r.get("Date")]
     leave, months = {}, None
@@ -147,6 +160,23 @@ def read_planner(data):
             copies[new] = ([headers.get(h, h) for h in head], rows)
     if any(t in tables for t in LOGS):
         copies["Log"] = _merge_logs(tables, warnings)
+    if "StatusHistory" in copies and "BAC" in copies["StatusHistory"][0]:   # before v1.8: cost on History too
+        head, rows = copies["StatusHistory"]
+        cost = ["Status Date", "BAC", "PV", "EV", "AC", "CPI", "EAC"]
+        copies["CostHistory"] = (cost, [[row[head.index(h)] if h in head else None for h in cost] for row in rows])
+        copies["StatusHistory"] = (["% Done" if h == "% Earned" else h for h in head], rows)
+    if "StatusRAG" in copies and "Area" in copies["StatusRAG"][0]:     # rows are copied by position: drop the gone row
+        head, rows = copies["StatusRAG"]
+        area = head.index("Area")
+        for row in rows:
+            if row[area] == "Cost performance" and any(row[head.index(h)] not in (None, "")
+                                                       for h in ("PM RAG", "Comment") if h in head):
+                warnings.append("The Cost performance RAG is now on the Cost sheet (from CPI), so its PM RAG and "
+                                "comment were not carried.")
+        copies["StatusRAG"] = (head, [row for row in rows if row[area] != "Cost performance"])
+    if any(isinstance(r.get("Points Capacity"), (int, float)) for r in _records(tables, "SprintTable")):
+        warnings.append("Points Capacity per sprint is now calculated from people (Resources: allocation, leave, "
+                        "Focus %), so the typed values were not carried.")
     default = Sizes()
     sizes = Sizes(tasks=max(default.tasks, len(tasks)), resources=max(default.resources, len(resources)),
                   sprints=max(default.sprints, len(tables.get("SprintTable", (None, None, []))[2])))

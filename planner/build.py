@@ -23,21 +23,22 @@ from .gantt import build_gantt
 from .instructions import build_instructions
 from .msp import build_msp_resources, build_msp_tasks
 from .core import name
+from .cost import build_cost
 from .history import build_history
 from .log import build_log
 from .report_resources import build_resource_report
 from .report_schedule import build_schedule_report
 from .roadmap import build_roadmap
-from .resources import build_resources
+from .resources import RESOURCES, build_resources
 from .settings import build_holidays, build_lists, build_settings, build_stages
 from .status import build_status
 from .tasks import build_tasks, take_people, take_stage
 
 ORDER = ["Start", "Status", "Roadmap", "Schedule Report", "Resource Report", "Agile", "Log", "History", "Settings",
-         "Tasks", "Gantt", "Resources", "MSP_Tasks", "MSP_Resources"]
+         "Tasks", "Gantt", "Resources", "Cost", "MSP_Tasks", "MSP_Resources"]
 TAB_COLOURS = {"Start": "1F4E78", "Status": "548235", "Tasks": "2F75B5", "Gantt": "2F75B5", "Roadmap": "548235",
                "Resources": "7030A0", "Log": "C55A11", "Agile": "548235", "Schedule Report": "548235",
-               "Resource Report": "548235", "History": "C55A11", "Settings": "BF8F00",
+               "Resource Report": "548235", "History": "C55A11", "Settings": "BF8F00", "Cost": "806000",
                "MSP_Tasks": "595959", "MSP_Resources": "595959"}
 @dataclass(frozen=True)
 class Sizes:
@@ -67,7 +68,7 @@ class ProjectData:
     Tasks are dicts keyed by the Tasks input keys (UID, Level, Name, Dur, P1, T1, L1, ..., BS, BF, BD, BW, BC)."""
     settings: dict = field(default_factory=dict)       # {setting name: value}, e.g. {"ProjectStartDate": date}
     tasks: list = field(default_factory=list)
-    resources: list = field(default_factory=list)      # (name, initials, group, max units, rate, email, type)
+    resources: list = field(default_factory=list)      # (name, initials, group, allocation, day rate, email, type)
     holidays: list = field(default_factory=list)       # (date, description)
     leave: dict = field(default_factory=dict)          # {person: {"Nov-26": "16, 17(0.5)"}}
     leave_months: list = None                          # leave month headers (Resources sheet columns)
@@ -96,8 +97,9 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
     build_lists(wb)
     build_stages(wb, data.stages if data else None)
     build_holidays(wb, blank, holidays=data.holidays if data else None)
+    people = data.resources if data else [] if blank else list(RESOURCES)
     build_resources(wb, blank, sizes.resources, data.resources if data else None, data.leave if data else None,
-                    data.leave_months if data else None)
+                    data.leave_months if data else None, sizes.sprints, sizes.grid_resources)
     more = {}                                          # people beyond the first: into each task's Resources text
     for uid, resource, units in (data.assignments if data is not None else sample.assignments(blank, stress)):
         more.setdefault(uid, []).append((resource, units))
@@ -116,6 +118,7 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
     build_schedule_report(wb)
     build_roadmap(wb)
     build_resource_report(wb, sizes.grid_resources, sizes.weeks, sizes.sprints)
+    build_cost(wb, blank, n_tasks, people, sizes.resources)
     build_instructions(wb, sizes, import_wizard)
     name(wb, "PlannerVersion", f'"{VERSION}"')
     wb._sheets = [wb[n] for n in ORDER if n in wb.sheetnames]

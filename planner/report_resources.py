@@ -29,7 +29,7 @@ def build_resource_report(wb, n_resources, n_weeks=DEFAULT_WEEKS, n_sprints=26):
     title(ws, None)
     ws["A1"] = '=ProjectName&"  -  Resource Report"'
     ws["A2"] = ('="Weeks from "&TEXT(ResourceWeekStart,"ddd dd-mmm-yyyy")&" (Settings > ResourceWeekStart). Hours are '
-                'each task\'s work spread over its forecast working days; red = more than Max Units x HoursPerDay x '
+                'each task\'s work spread over its forecast working days; red = more than Allocation % x HoursPerDay x '
                 'working days in the week, less leave (Resources sheet, leave months)."')
     ws.column_dimensions["A"].width = 3
 
@@ -67,16 +67,14 @@ def _summary(ws, top, n_resources):
     from_table = lambda col: f'IF({blank},"",INDEX(ResourceTable[{col}],{k}))'
     week_row = lambda grid: f"INDEX({grid},{k},0)"
     ws.cell(top - 1, 2, "RESOURCES").font = font(bold=True, color="1F4E78")
-    add_table(ws, "ResourceSummary", top, 2, [
+    L = add_table(ws, "ResourceSummary", top, 2, [
         Col("Resource", width=22, formula=f'IFERROR(INDEX(res_Name,{k})&"","")'),
-        Col("Max Units", width=10, fmt="0%", formula=from_table("Max Units"), center=True),
+        Col("Allocation", width=10, fmt="0%", formula=from_table("Allocation %"), center=True),
         Col("Tasks", width=10, fmt="0", formula=from_table("Tasks"), center=True),
         Col("Work", width=10, fmt="#,##0", formula=from_table("Work"), note="Assigned hours."),
         Col("Work Done", width=10, fmt="#,##0", formula=f'IF({blank},"",{by_resource("Done", res)})',
             note="Work x Progress."),
         Col("Remaining", width=10, fmt="#,##0", formula=f'IF({blank},"",{t.row("Work")}-{t.row("Work Done")})'),
-        Col("Cost", width=10, fmt="#,##0", formula=from_table("Cost")),
-        Col("Actual Cost", width=10, fmt="#,##0", formula=from_table("Actual Cost")),
         Col("Late Tasks", width=10, fmt="0", center=True,
             formula=f'IF({blank},"",{count_by_resource(res, ',tsk_LateKey,">0"')})',
             note="Unfinished tasks forecast to finish after plan, or not started on time (Schedule Report)."),
@@ -93,11 +91,11 @@ def _summary(ws, top, n_resources):
             note="Working days of leave in the weeks shown below (Resources sheet, leave months)."),
     ], n_resources, autofilter=False)
     first, last = top + 1, top + n_resources
-    over = f"N{first}:N{last}"
-    ws.conditional_formatting.add(over, FormulaRule(formula=[f"N(N{first})>0"], font=Font(color="9C0006", bold=True),
-                                                    fill=fill("FFC7CE")))
-    ws.conditional_formatting.add(f"M{first}:M{last}", FormulaRule(
-        formula=[f"AND(ISNUMBER(M{first}),M{first}>1)"], font=Font(color="9C0006", bold=True)))
+    w, u = L["Weeks Over"], L["Peak Use"]
+    ws.conditional_formatting.add(f"{w}{first}:{w}{last}", FormulaRule(
+        formula=[f"N({w}{first})>0"], font=Font(color="9C0006", bold=True), fill=fill("FFC7CE")))
+    ws.conditional_formatting.add(f"{u}{first}:{u}{last}", FormulaRule(
+        formula=[f"AND(ISNUMBER({u}{first}),{u}{first}>1)"], font=Font(color="9C0006", bold=True)))
 
 
 def _grid(wb, ws, kind, top, n_resources, n_weeks, heading, util_offset=0):
@@ -107,7 +105,7 @@ def _grid(wb, ws, kind, top, n_resources, n_weeks, heading, util_offset=0):
     origin = f"rw_{kind.capitalize()}Origin"
     name(wb, origin, f"'{SHEET}'!$B${top}")
     header_cell(ws.cell(top, 2), "Resource")
-    header_cell(ws.cell(top, 3), "Max Units")
+    header_cell(ws.cell(top, 3), "Allocation")
     i = f"(ROW()-ROW({origin})-1)"               # resource number (row 1 below the working-days row)
     j = f"(COLUMN()-COLUMN({origin})-1)"          # week number
     week = f"(ResourceWeekStart+7*({j}-1))"
@@ -124,7 +122,7 @@ def _grid(wb, ws, kind, top, n_resources, n_weeks, heading, util_offset=0):
     L = get_column_letter
     if kind == "load":
         name(wb, "rw_WeekDays", f"'{SHEET}'!${L(first_col)}${top + 1}:${L(last_col)}${top + 1}")
-    resource, units = f"INDEX(res_Name,{i})", f"INDEX(res_MaxUnits,{i})"
+    resource, units = f"INDEX(res_Name,{i})", f"INDEX(res_Allocation,{i})"
     first_row, last_row = top + 2, top + 1 + n_resources
     for r in range(first_row, last_row + 1):
         ws.cell(r, 2, f'=IFERROR({resource}&"","")').font = font(bold=True)
@@ -153,7 +151,7 @@ def _grid(wb, ws, kind, top, n_resources, n_weeks, heading, util_offset=0):
             formula=[f"AND(ISNUMBER({util_cell}),{util_cell}>1)"], fill=fill("FFC7CE"), font=Font(color="9C0006", bold=True)))
         # team totals: the chart below plots them
         totals = [("Team hours", f"SUM(INDEX(rw_Load,0,{j}))"),
-                  ("Team capacity", f'SUMIFS(res_MaxUnits,res_Type,"Work")*HoursPerDay*INDEX(rw_WeekDays,{j})'
+                  ("Team capacity", f'SUMIFS(res_Allocation,res_Type,"Work")*HoursPerDay*INDEX(rw_WeekDays,{j})'
                                     f'-{team_leave_hours("rw_Leave", j)}')]
         for n, (label, formula) in enumerate(totals):
             r = last_row + 1 + n
@@ -266,7 +264,7 @@ def _sprint_grid(wb, ws, kind, top, n_sprints, n_resources, heading, util_offset
     origin = f"{kind}_Origin"
     name(wb, origin, f"'{SHEET}'!$B${top}")
     header_cell(ws.cell(top, 2), "Resource")
-    header_cell(ws.cell(top, 3), "Max Units")
+    header_cell(ws.cell(top, 3), "Allocation")
     i = f"(ROW()-ROW({origin})-1)"                 # resource number (row 1 below the sprint-start row)
     j = f"(COLUMN()-COLUMN({origin})-1)"            # sprint number
     sprint_name = f"INDEX(spr_Name,{j})"
@@ -281,7 +279,7 @@ def _sprint_grid(wb, ws, kind, top, n_sprints, n_resources, heading, util_offset
         d.alignment = Alignment(horizontal="center")
         ws.column_dimensions[L(c)].width = 9                      # as the weekly grids' columns
     ws.cell(top + 1, 2, "Sprint start").font = font(italic=True, size=9)
-    resource, units = f"INDEX(res_Name,{i})", f"INDEX(res_MaxUnits,{i})"
+    resource, units = f"INDEX(res_Name,{i})", f"INDEX(res_Allocation,{i})"
     first_row, last_row = top + 2, top + 1 + n_resources
     for r in range(first_row, last_row + 1):
         ws.cell(r, 2, f'=IFERROR({resource}&"","")').font = font(bold=True)
@@ -294,7 +292,7 @@ def _sprint_grid(wb, ws, kind, top, n_sprints, n_resources, heading, util_offset
                 fmt = "#,##0;;-"
             else:
                 load = f"INDEX(load_Grid,{i},{j})"
-                capacity = f"({units}*HoursPerDay*(INDEX(spr_WorkDays,{j})-INDEX(spr_LeaveGrid,{i},{j})))"
+                capacity = f"(N(INDEX(cap_Days,{i},{j}))*HoursPerDay)"      # Resources: dates, leave, allocation
                 v = (f'=IFERROR(IF(OR({resource}="",{sprint_name}="",N({units})=0),"",'
                      f'IF({capacity}<=0,IF(N({load})>0,9.99,""),{load}/{capacity})),"")')
                 fmt = "0%;;-"

@@ -36,7 +36,7 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 | Decisions / Changes | Decision log; change request log with schedule and cost impact (totals on the Status Report) |
 | History | Status snapshot (copy, paste as values each reporting date) and trend charts: finish, earned value S-curve, SPI / CPI, burn-up |
 | Settings | Everything else, with defaults: rescheduling, units, custom working days, Gantt scale, sprint calendar, RAG thresholds |
-| Tasks | Entry table. Shown: UID, Level, Task Name, Duration, predecessors by UID (FS/SS/FF/SF + lag), resource, % complete, actual start / finish, notes, the forecast dates, status, critical, and **Issues** (everything wrong on the row, in words). Collapsed sections (click + above): scheduling (deadline, mode, constraints), schedule detail (planned dates, variances, late dates, slack, checks), cost (work, over-allocation, cost, actual cost), agile (sprint, story points), baseline (set and compare), earned value. Each input shows what to type when selected |
+| Tasks | Entry table. Shown: UID, Level, Task Name, Duration, Predecessors (`12, 14SS+2d`, by UID), Resources (`Alex Chen, JL[50%]`), % complete, actual start / finish, notes, the forecast dates, status, critical, and **Issues** (everything wrong on the row, in words). Collapsed sections (click + above): scheduling (deadline, mode, constraints), schedule detail (planned dates, variances, late dates, slack, checks), cost (work, over-allocation, cost, actual cost), agile (sprint, story points), baseline (set and compare), earned value. Each input shows what to type when selected |
 | Gantt | Planned outline, done / remaining / critical / late bars, summaries, milestones, deadlines, status-date line (conditional formatting only, no formulas); day, week, month or quarter scale; outline grouping (1 2 3 buttons) and a Show-to-level filter |
 | Roadmap | One-page view for sponsors: phases and milestones with dates on an 18-month timeline (forecast, done, late, planned, missed deadlines) |
 | Resources | Resource sheet with max units and rates; assigned hours and cost |
@@ -77,9 +77,11 @@ goals, PM RAG and notes) is carried over by column name; the formulas, sheets an
   python scripts/build_planner.py Big_Planner.xlsx --blank --recalc --tasks 2000 --resources 100 --assignments 500 \
       --grid-resources 60 --sprints 52 --gantt-columns 365 --weeks 52
   ```
-- More than one person on a task: the first goes on Tasks (Resource, Units), each other person is a row on the
-  Assignments sheet (Task UID, Resource, Units). Each person's work is the task's duration x their units (MS Project's
-  fixed units; no effort-driven split), and every per-resource total, grid and over-allocation flag includes them.
+- Predecessors are one cell per task, by UID: `12, 14SS+2d` (types FS / SS / FF / SF, lag in working days, up to 4).
+  Resources are one cell too: names or initials from the Resources sheet, comma-separated, with an optional share of
+  their time: `Alex Chen, JL[50%]` (up to 4 people). Each person's work is the task's duration x their units (MS
+  Project's fixed units; no effort-driven split), and every per-resource total, grid and over-allocation flag
+  includes them. Anything the cells can't read is explained in Issues.
 - Insert tasks with right-click → Insert → Table Rows Above (formulas fill in), then give the row `NextFreeUID`.
 - **A predecessor must be a detail task listed above its successor.** It keeps the schedule and the critical path consistent. Links that break it (or point to the task itself, an empty row or a missing UID) are ignored and explained in Link Check. Plans imported from MS Project may need reordering.
 - The status date is a typed date (Ctrl+; for today), not `TODAY()`, so it doesn't force a full recalculation after every edit. Update it when you report progress.

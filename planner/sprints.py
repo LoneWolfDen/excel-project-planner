@@ -8,6 +8,7 @@ from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
 from .core import (BOX, CALC_FONT, DATE, LABEL_FONT, NOTE_FONT, Col, Tab, add_table, fill, font, header_cell, name)
+from .tasks import people
 from .leave import leave_days, leave_row, month_column, month_start, team_leave_hours
 
 LEAVE_MONTHS = 3        # calendar months a sprint can touch (any sprint up to about two months long)
@@ -23,20 +24,22 @@ def work_upto(d, resource=None):
 
     W(D) = SUMIFS(work, finish < D) + D * SUMIFS(work per day, running on D) - SUMIFS(work before start, running on D).
     Three SUMIFS are far cheaper than a SUMPRODUCT over every task, and SUMIFS needs no array formulas. They run
-    over Tasks (each task's Resource) and over the Assignments sheet (the other people), which has the same columns."""
-    def part(p, resource_col):
-        res = f',{p}{resource_col},{resource}' if resource else ""
-        running = f'{p}StartWD,"<="&{d},{p}FinishWD,">="&{d}{res}'
-        return (f'SUMIFS({p}{"LeafWork" if p == "tsk_" else "Work"},{p}FinishWD,"<"&{d},{p}FinishWD,">0"{res})'
-                f'+{d}*SUMIFS({p}WorkPerWD,{running})-SUMIFS({p}WorkBeforeStart,{running})')
-    return f"({part('tsk_', 'Resource')}+{part('asg_', 'Resource')})"
+    once per person slot of a task (tasks.PERSON_FIELDS), each filtered by that slot's resource."""
+    parts = []
+    for work, wpd, before, who in zip(people("Work"), people("WPD"), people("WBefore"), people("Name")):
+        res = f",{who},{resource}" if resource else ""
+        running = f'tsk_StartWD,"<="&{d},tsk_FinishWD,">="&{d}{res}'
+        part = (f'SUMIFS({work},tsk_FinishWD,"<"&{d},tsk_FinishWD,">0"{res})'
+                f'+{d}*SUMIFS({wpd},{running})-SUMIFS({before},{running})')
+        # a slot no task uses is skipped (IF only evaluates the branch it takes), so extra people cost nothing
+        # until a plan has them
+        parts.append(part if not parts else f"IF(MaxPeople>={len(parts) + 1},{part},0)")
+    return "(" + "+".join(parts) + ")"
 
 
-def work_between(start, end, resource=None):
-    """Hours of task work scheduled from date start to date end (inclusive), counting working days only:
-    the difference of two cumulative totals (work_upto)."""
-    first = f"NETWORKDAYS.INTL(ProjectStart,{start},{WD})"
-    last = f"NETWORKDAYS.INTL(ProjectStart,{end},{WD})"
+def work_between(first, last, resource=None):
+    """Hours of task work scheduled on working days first..last (numbers counted from the project start, worked out
+    once per sprint in SprintTable's _FirstWD / _LastWD): the difference of two cumulative totals (work_upto)."""
     return f"({work_upto(last, resource)}-{work_upto(f'({first}-1)', resource)})"
 
 
@@ -58,7 +61,7 @@ def build_sprints(wb, blank, n_sprints, n_resources):
         Col("Working Days", width=9, formula=f"NETWORKDAYS.INTL({r('Start')},{r('End')},{WD})", center=True),
         Col("Goal", "in", 36, values=[] if blank else GOALS),
         Col("Tasks Starting", width=9, formula=f'IF({has},"",COUNTIF(tsk_Sprint,{r("Sprint")}))', center=True),
-        Col("Planned Work", width=11, fmt="#,##0.0", formula=f'IF({has},"",{work_between(r("Start"), r("End"))})',
+        Col("Planned Work", width=11, fmt="#,##0.0", formula=f'IF({has},"",{work_between(r("_FirstWD"), r("_LastWD"))})',
             note="Hours of task work falling in the sprint."),
         Col("Capacity", width=11, fmt="#,##0.0",
             note="Sum of Work resources' Max Units x HoursPerDay x working days, less the leave of the people in the "
@@ -96,6 +99,9 @@ def build_sprints(wb, blank, n_sprints, n_resources):
             note="Straight line from the total scope to zero at the last sprint."),
         # charts plot "" as zero; #N/A leaves a gap, so the burndown chart reads this copy (hidden)
         Col("_ChartRemaining", "help", 8, formula=f'IF({r("Remaining Points")}="",NA(),{r("Remaining Points")})'),
+        Col("_FirstWD", "help", 6, formula=f"NETWORKDAYS.INTL(ProjectStart,{r('Start')},{WD})",
+            note="The sprint's first day as a working-day number from the project start (for the work totals)."),
+        Col("_LastWD", "help", 6, formula=f"NETWORKDAYS.INTL(ProjectStart,{r('End')},{WD})"),
     ] + [Col(f"_LeaveCol{k}", "help", 6, formula=month_column(month_start(r("Start"), k)),
              note="LeaveTable column of a month the sprint touches (for the leave look-ups).")
          for k in range(LEAVE_MONTHS)]
@@ -103,7 +109,7 @@ def build_sprints(wb, blank, n_sprints, n_resources):
     for column, defined in {"Sprint": "spr_Name", "Start": "spr_Start", "End": "spr_End", "Working Days": "spr_WorkDays",
                             "Planned Work": "spr_Work", "Capacity": "spr_Capacity", "Status": "spr_Status",
                             "Committed Points": "spr_Committed", "Done Points": "spr_Done", "Velocity": "spr_Velocity",
-                            "Remaining Points": "spr_Remaining"}.items():
+                            "Remaining Points": "spr_Remaining", "_FirstWD": "spr_FirstWD", "_LastWD": "spr_LastWD"}.items():
         name(wb, defined, f"SprintTable[{column}]")
     first, last = 6, 5 + n_sprints
     cf = ws.conditional_formatting
@@ -161,7 +167,7 @@ def _grid(wb, ws, kind, top, n_sprints, n_resources, heading, util_offset=0):
         u.number_format = "0%"
         for c in range(4, 4 + n_sprints):
             if kind == "load":
-                hours = work_between(f"INDEX(spr_Start,{j})", f"INDEX(spr_End,{j})", resource)
+                hours = work_between(f"INDEX(spr_FirstWD,{j})", f"INDEX(spr_LastWD,{j})", resource)
                 v = f'=IFERROR(IF(OR({resource}="",{sprint_name}=""),"",{hours}),"")'
                 fmt = "#,##0;;-"
             else:

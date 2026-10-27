@@ -24,7 +24,6 @@ from openpyxl.utils import column_index_from_string, get_column_letter
 from openpyxl.worksheet.cell_range import MultiCellRange
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from .assignments import KEY_STEP, MAX_LISTED, over_allocated
 from .core import (DATE, LABEL_FONT, NOTE_FONT, Col, Tab, add_table, col_range, fill, name, title)
 
 TABLE = "Tasks"
@@ -33,6 +32,19 @@ T = Tab(TABLE)
 WD = "WorkWeek,Holidays"
 LINKS = 4                   # predecessor links per task: Pred1 ... Pred4 (raise it here; every link column follows)
 LINK_NUMBERS = range(1, LINKS + 1)
+PEOPLE = 4                  # people per task in the Resources cell; the first uses the Resource / _Leaf... columns
+MORE_PEOPLE = range(2, PEOPLE + 1)
+# per-person values other sheets total by resource: (first person's defined name, name for person k)
+PERSON_FIELDS = {"Name": ("tsk_Resource", "tsk_Res{k}"), "Work": ("tsk_LeafWork", "tsk_Res{k}Work"),
+                 "Cost": ("tsk_LeafCost", "tsk_Res{k}Cost"), "AC": ("tsk_ResourceAC", "tsk_Res{k}AC"),
+                 "Done": ("tsk_LeafWorkDone", "tsk_Res{k}Done"), "WPD": ("tsk_WorkPerWD", "tsk_Res{k}WPD"),
+                 "WBefore": ("tsk_WorkBeforeStart", "tsk_Res{k}WBefore")}
+
+
+def people(field):
+    """The defined names holding one per-person value, first person first: people("Work") = [tsk_LeafWork, ...]."""
+    first, more = PERSON_FIELDS[field]
+    return [first] + [more.format(k=k) for k in MORE_PEOPLE]
 # MS Project's constraint types, in the order of its ConstraintType codes (0 = As Soon As Possible ... 7)
 CONSTRAINTS = ["As Soon As Possible", "As Late As Possible", "Must Start On", "Must Finish On", "Start No Earlier Than",
                "Start No Later Than", "Finish No Earlier Than", "Finish No Later Than"]
@@ -40,15 +52,17 @@ CONSTRAINTS = ["As Soon As Possible", "As Late As Possible", "Must Start On", "M
 # key -> column name (= header text = structured-reference name)
 N = {
     "ID": "ID", "UID": "UID", "WBS": "WBS", "Level": "Level", "Show": "Show", "Name": "Task Name", "Mode": "Mode", "Dur": "Duration",
-    **{f"{x}{k}": f"Pred{k} {label}" for k in LINK_NUMBERS for x, label in (("P", "UID"), ("T", "Type"), ("L", "Lag"))},
+    "PredIn": "Predecessors",
+    **{f"{x}{k}": f"_Pred{k}{label}" for k in LINK_NUMBERS for x, label in (("I", "Text"), ("P", "UID"), ("T", "Type"),
+                                                                             ("L", "Lag"))},
     "CType": "Constraint", "Cons": "Constraint Date", "DL": "Deadline",
     "PS": "Planned Start", "PF": "Planned Finish", "AS": "Actual Start", "AF": "Actual Finish",
     "FS": "Forecast Start", "FF": "Forecast Finish", "SVar": "Start Var", "Var": "Finish Var",
     "LS": "Late Start", "LF": "Late Finish", "TS": "Total Slack", "FSl": "Free Slack", "Crit": "Critical",
     "DLChk": "Deadline Check", "LinkChk": "Link Check", "Issues": "Issues", "Pct": "% Complete", "Prog": "Progress", "Status": "Status",
-    "Res": "Resource", "Units": "Units", "OverAlloc": "Over-allocated", "Work": "Work", "Cost": "Cost", "ACin": "Actual Cost", "SprIn": "Planned Sprint",
+    "ResIn": "Resources", "Res": "_Resource1", "Units": "_Units1", "OverAlloc": "Over-allocated", "Work": "Work", "Cost": "Cost", "ACin": "Actual Cost", "SprIn": "Planned Sprint",
     "Sprint": "Sprint", "SP": "Story Points",
-    "PredTxt": "Predecessors", "Notes": "Notes",
+    "PredTxt": "Predecessors by ID", "Notes": "Notes",
     "SrcS": "BL Source Start", "SrcF": "BL Source Finish", "SrcD": "BL Source Duration", "SrcW": "BL Source Work",
     "SrcC": "BL Source Cost", "BS": "Baseline Start", "BF": "Baseline Finish", "BD": "Baseline Duration",
     "BW": "Baseline Work", "BC": "Baseline Cost", "DVar": "Duration Var", "WVar": "Work Var", "CVar": "Cost Var",
@@ -61,7 +75,11 @@ N = {
     "CT": "_ConstraintCode", "CStart": "_ConstraintStart", "CLow": "_ConstraintLow", "CHigh": "_ConstraintHigh",
     "LCS": "_LeafCalcStart", "LCF": "_LeafCalcFinish", "LFS": "_LeafFcstStart", "LFF": "_LeafFcstFinish",
     "LProg": "_LeafProgress", "LWork": "_LeafWork", "LCost": "_LeafCost", "LTW": "_LeafTotalWork",
-    "LTC": "_LeafTotalCost", "PAC": "_ResourceAC", "ResTxt": "Resource Names",
+    "LTC": "_LeafTotalCost", "PAC": "_ResourceAC", "ResTxt": "Resource Names", "NPeople": "_People",
+    **{f"Ri{k}": f"_Res{k}Text" for k in range(1, PEOPLE + 1)},
+    **{f"{x}{k}": f"_Res{k}{label}" for k in MORE_PEOPLE for x, label in (
+        ("Rs", ""), ("Ru", "Units"), ("Rw", "Work"), ("Rc", "Cost"), ("Rp", "WorkPerWD"), ("Rb", "WorkBefore"),
+        ("Rd", "WorkDone"), ("Ra", "AC"))},
     "SuccLF": "_SuccessorFinishLimit", "LastSucc": "_LastSuccessorRow",
     "LLF": "_LeafLateFinish", "LLS": "_LeafLateStart", "LTS": "_LeafTotalSlack", "LCrit": "_LeafCritical",
     "CPS": "_CalcStart", "CPF": "_CalcFinish",
@@ -86,7 +104,7 @@ NAMES = {
     "TS": "tsk_TotalSlack", "FSl": "tsk_FreeSlack", "Crit": "tsk_Critical", "DLChk": "tsk_DeadlineCheck", "LinkChk": "tsk_LinkCheck", "Issues": "tsk_Issues",
     "Pct": "tsk_PctInput", "Prog": "tsk_Progress", "Status": "tsk_Status", "Res": "tsk_Resource",
     "Units": "tsk_Units", "Work": "tsk_Work", "Cost": "tsk_Cost", "Sprint": "tsk_Sprint",
-    "PredTxt": "tsk_Predecessors", "Notes": "tsk_Notes", "BS": "tsk_BaseStart", "BF": "tsk_BaseFinish",
+    "PredTxt": "tsk_Predecessors", "PredIn": "tsk_PredecessorsInput", "Notes": "tsk_Notes", "BS": "tsk_BaseStart", "BF": "tsk_BaseFinish",
     "BD": "tsk_BaseDuration", "BW": "tsk_BaseWork", "BC": "tsk_BaseCost", "SrcD": "tsk_SourceDuration",
     "DVar": "tsk_DurationVariance", "WVar": "tsk_WorkVariance", "CVar": "tsk_CostVariance",
     "IsSum": "tsk_IsSummary", "IsLeaf": "tsk_IsLeaf", "CPS": "tsk_CalcStart", "CPF": "tsk_CalcFinish",
@@ -100,7 +118,9 @@ NAMES = {
     "OverAlloc": "tsk_OverAllocated", "SP": "tsk_StoryPoints", "SprIn": "tsk_PlannedSprint", "LWDone": "tsk_LeafWorkDone", "DoneDate": "tsk_DoneDate",
     "LPts": "tsk_LeafPoints", "CurKey": "tsk_CurrentSprintKey", "LFF": "tsk_LeafFcstFinish",
     "LProg": "tsk_LeafProgress", "LCost": "tsk_LeafCost", "LTC": "tsk_LeafTotalCost", "PAC": "tsk_ResourceAC",
-    "ResTxt": "tsk_ResourceNames",
+    "ResTxt": "tsk_ResourceNames", "ResIn": "tsk_ResourcesInput", "NPeople": "tsk_People",
+    **{f"{x}{k}": f"tsk_Res{k}{label}" for k in MORE_PEOPLE for x, label in (
+        ("Rs", ""), ("Rw", "Work"), ("Rc", "Cost"), ("Rp", "WPD"), ("Rb", "WBefore"), ("Rd", "Done"), ("Ra", "AC"))},
 }
 
 
@@ -193,9 +213,54 @@ def pred_text(k, by_id):
             f'{typ}&IF({lg}=0,"",IF({lg}>0,"+","")&{lg}&"d")))')
 
 
+def links_text(links):
+    """The Predecessors cell for (UID, type, lag) links: [(12, "FS", 0), (14, "SS", 2)] -> "12, 14SS+2d"."""
+    out = []
+    for uid, typ, lag in links:
+        if not uid:
+            continue
+        typ, lag = (typ or "FS").upper(), int(lag or 0)
+        text = str(int(uid)) + ("" if typ == "FS" and not lag else typ)
+        out.append(text + (f"{lag:+d}d" if lag else ""))
+    return ", ".join(out)
+
+
+def take_links(row):
+    """Replace a row's P1 / T1 / L1 ... keys (older layouts, the sample, MS Project) with its Predecessors text."""
+    links = []
+    k = 1
+    while any(f"{x}{k}" in row for x in "PTL"):
+        links.append((row.pop(f"P{k}", None), row.pop(f"T{k}", None), row.pop(f"L{k}", None)))
+        k += 1
+    if links and not row.get("PredIn"):
+        row["PredIn"] = links_text(links) or None
+    return row
+
+
+def take_people(row, more=()):
+    """Replace a row's Res / Units keys, plus more (resource, units) people, with its Resources text:
+    "Alex Chen, Jordan Lee[50%]". Used for the sample, MS Project imports and older workbooks."""
+    found = [(row.pop("Res", None), row.pop("Units", None))] + list(more)
+    text = ", ".join(f"{name}" + ("" if units in (None, "", 1) else f"[{round(units * 100)}%]")
+                     for name, units in found if name)
+    if text and not row.get("ResIn"):
+        row["ResIn"] = text
+    return row
+
+
 def each_link(template):
     """template(k) for every link, comma-separated: the arguments of a MAX over all links."""
     return ",".join(template(k) for k in LINK_NUMBERS)
+
+
+def over_allocated(resource, start, finish):
+    """True when resource is over 100% (Resource Report utilisation, after leave) in a week from start to finish.
+    Only the weeks in the Resource Report window and the resources in its grid are known; others count as not over."""
+    week_of = lambda d: f"(INT(({d}-ResourceWeekStart)/7)+1)"
+    first, last = f"MAX(1,{week_of(start)})", f"MIN(COLUMNS(rw_Util),{week_of(finish)})"
+    row = f"MATCH({resource},res_Name,0)"
+    return (f"IFERROR(IF({first}>{last},FALSE(),"
+            f"COUNTIF(INDEX(rw_Util,{row},{first}):INDEX(rw_Util,{row},{last}),\">1\")>0),FALSE())")
 
 
 def formulas():
@@ -218,17 +283,35 @@ def formulas():
     f["IsSum"] = f'AND({nm}<>"",{R("NextLvl")}>{R("Lvl")})'
     f["Desc"] = f'IF({s},COUNTIF({C("WBS")},{R("WBS")}&".*"),0)'
     f["IsLeaf"] = f'IF(AND({nm}<>"",NOT({s})),1,0)'
-    # links
+    # links: the Predecessors cell (`12, 14SS+2d`, by UID) split into one helper column per link. Read from an input
+    # only, so none of this is volatile or recalculated when another cell changes.
+    links = f'SUBSTITUTE(SUBSTITUTE(UPPER({R("PredIn")}),";",",")," ","")'
+    item_at = lambda k: f'TRIM(MID(SUBSTITUTE({links},",",REPT(" ",99)),{(k - 1) * 99 + 1},99))'
     for k in LINK_NUMBERS:
+        item = R(f"I{k}")
+        # empty cell, or the previous link was the last: stop before splitting the text again
+        before = f'{R("PredIn")}=""' if k == 1 else f'{R(f"I{k - 1}")}=""'
+        f[f"I{k}"] = f'IF({before},"",{item_at(k)})'
+        cut = f'MIN(FIND("F",{item}&"F"),FIND("S",{item}&"S"),FIND("+",{item}&"+"),FIND("-",{item}&"-"))'
+        rest = f"MID({item},{cut},99)"
+        typed = f'OR(LEFT({rest},1)="F",LEFT({rest},1)="S")'
+        lag = f'SUBSTITUTE(IF({typed},MID({rest},3,99),{rest}),"D","")'
+        f[f"P{k}"] = f'IF({item}="","",IFERROR(VALUE(LEFT({item},{cut}-1)),""))'
+        f[f"T{k}"] = f'IF({item}="","",IF({typed},LEFT({rest},2),"FS"))'
+        f[f"L{k}"] = f'IF({item}="","",IF({lag}="",0,IFERROR(VALUE({lag}),"?")))'
+        unreadable = (f'AND({item}<>"",OR({R(f"P{k}")}="",ISNA(MATCH({R(f"T{k}")},{{"FS","SS","FF","SF"}},0)),'
+                      f'NOT(ISNUMBER({R(f"L{k}")}))))')
         f[f"R{k}"] = pred_pos(f"P{k}")
-        f[f"M{k}"] = link_problem(f"P{k}", f"R{k}")
+        f[f"M{k}"] = (f'IF({unreadable},"can\'t read "&{item}&" (type UIDs like 12 or 12SS+2d, comma-separated)",'
+                      f'{link_problem(f"P{k}", f"R{k}")})')
         f[f"D{k}"] = driver(k, "LCS", "LCF")
         f[f"E{k}"] = driver(k, "LFS", "LFF")
     ctype = R("CType")
     f["LinkChk"] = (f'IF({blank},"",TRIM(' + "&".join(
         f'IF({R(f"M{k}")}<>"","Pred {k}: "&{R(f"M{k}")}&". ","")' for k in LINK_NUMBERS) +
         f'&IF(AND({ctype}<>"",N({R("Cons")})=0,{ctype}<>"{CONSTRAINTS[0]}",{ctype}<>"{CONSTRAINTS[1]}"),'
-        f'"Constraint ignored: enter a Constraint Date.","")))')
+        f'"Constraint ignored: enter a Constraint Date.","")'
+        f'&IF({R(f"I{LINKS}")}="","",IF({item_at(LINKS + 1)}<>""," Only the first {LINKS} predecessors are used.",""))))')
     # constraints, as MS Project schedules them (it honours constraint dates over links). The code is MS Project's
     # ConstraintType; a date with a blank Constraint means Start No Earlier Than. _ConstraintStart turns the date into
     # a start date (a finish constraint ends the task on the date); Low / High bound the start: Must Start / Finish On
@@ -253,20 +336,32 @@ def formulas():
     f["LFF"] = (f'IF(NOT({leaf}),"",IF(N({R("AF")})>0,{R("AF")},IF(N({R("Dur")})<=0,{R("LFS")},'
                 f'IF(AND(N({R("AS")})>0,RescheduleAfterStatus="Yes"),MAX({natural},{remaining}),{natural}))))')
     f["LProg"] = f'IF(NOT({leaf}),0,IF(N({R("AF")})>0,1,MIN(1,N({R("Pct")}))))'
-    f["LWork"] = (f'IF(OR(NOT({leaf}),{R("Res")}=""),0,'
-                  f'N({R("Dur")})*HoursPerDay*IF({R("Units")}="",DefaultUnits,{R("Units")}))')
-    f["LCost"] = f'IF({R("LWork")}=0,0,{R("LWork")}*IFERROR(INDEX(res_Rate,MATCH({R("Res")},res_Name,0)),0))'
-    # more people on the task (Assignments sheet): the task's totals add their work and cost. _LeafWork / _LeafCost
-    # stay the Resource column's person's share, which the per-resource totals sum.
-    extra = lambda col: f'IF({leaf},SUMIFS({col},asg_TaskUID,{R("UID")},asg_Valid,1),0)'
-    f["LTW"] = f'{R("LWork")}+{extra("asg_Work")}'
-    f["LTC"] = f'{R("LCost")}+{extra("asg_Cost")}'
-    units = R("Units")
-    own = f'IF({R("Res")}="","",", "&{R("Res")}&IF(OR({units}="",{units}=1),"","["&ROUND({units}*100,0)&"%]"))'
-    listed = "&".join(f'IFERROR(", "&INDEX(asg_Text,MATCH({R("UID")}*{KEY_STEP}+{n},asg_Key,0)),"")'
-                      for n in range(1, MAX_LISTED + 1))
-    more = f'COUNTIFS(asg_TaskUID,{R("UID")},asg_Valid,1)-{MAX_LISTED}'
-    f["ResTxt"] = (f'IF(OR({blank},{s}),"",MID({own}&{listed}&IF({more}>0," +"&{more}&" more",""),3,999))')
+    # people: the Resources cell (`Alex Chen, JL[50%]`: names or initials, optional units) split into one set of
+    # helper columns per person. The first person uses _Resource1 / _Units1 and the _Leaf... columns; the others
+    # their own. Each person's work = Duration x HoursPerDay x their units (MS Project's fixed-units default).
+    item = lambda k: f'TRIM(MID(SUBSTITUTE({R("ResIn")},",",REPT(" ",99)),{(k - 1) * 99 + 1},99))'
+    person = {1: ("Res", "Units", "LWork", "LCost")} | {k: (f"Rs{k}", f"Ru{k}", f"Rw{k}", f"Rc{k}") for k in MORE_PEOPLE}
+    for k, (nm_k, u_k, w_k, c_k) in person.items():
+        text = R(f"Ri{k}")                        # this person's part of the cell, split out once
+        before = f'OR({blank},{R("ResIn")}="")' if k == 1 else f'{R(f"Ri{k - 1}")}=""'
+        f[f"Ri{k}"] = f'IF({before},"",{item(k)})'
+        who = f'TRIM(LEFT({text},FIND("[",{text}&"[")-1))'
+        f[nm_k] = (f'IF({text}="","",IFERROR(INDEX(res_Name,MATCH({who},res_Name,0)),'
+                   f'IFERROR(INDEX(res_Name,MATCH({who},res_Initials,0)),{who})))')
+        share = (f'IFERROR(VALUE(SUBSTITUTE(MID({text},FIND("[",{text})+1,FIND("]",{text}&"]")-FIND("[",{text})-1),'
+                 f'" ","")),"")')
+        f[u_k] = f'IF(ISERROR(FIND("[",{text})),"",IF(N({share})>10,{share}/100,{share}))'
+        f[w_k] = (f'IF(OR(NOT({leaf}),{R(nm_k)}=""),0,IF(ISNA(MATCH({R(nm_k)},res_Name,0)),0,'   # unknown: Issues
+                  f'N({R("Dur")})*HoursPerDay*IF({R(u_k)}="",DefaultUnits,{R(u_k)})))')
+        f[c_k] = f'IF({R(w_k)}=0,0,{R(w_k)}*IFERROR(INDEX(res_Rate,MATCH({R(nm_k)},res_Name,0)),0))'
+    # the task's totals add everyone; the per-resource totals (Resources, reports, Sprints) sum each person's columns
+    f["NPeople"] = f'IF(NOT({leaf}),0,' + "+".join(f'({R(person[k][0])}<>"")' for k in person) + ")"
+    f["LTW"] = "+".join(R(person[k][2]) for k in person)
+    f["LTC"] = "+".join(R(person[k][3]) for k in person)
+    named = lambda k: (f'IF({R(person[k][0])}="","",", "&{R(person[k][0])}&IF(OR({R(person[k][1])}="",'
+                       f'{R(person[k][1])}=1),"","["&ROUND({R(person[k][1])}*100,0)&"%]"))')
+    f["ResTxt"] = (f'IF(OR({blank},{s}),"",MID(' + "&".join(named(k) for k in person) +
+                   f'&IF({R(f"Ri{PEOPLE}")}="","",IF({item(PEOPLE + 1)}<>""," +more","")),3,999))')
     # critical path: backward pass. Each successor row works out, per link, the latest its predecessor may finish
     # (FS / FF directly; SS / SF via the predecessor's duration, an input) and stores it as a key; the predecessor
     # then takes one MAXIFS over the rows below. A task's late finish is the earliest of those limits, its deadline
@@ -345,6 +440,9 @@ def formulas():
     f["FWD"] = f'IF({has_work},MAX({R("SWD")},NETWORKDAYS.INTL(ProjectStart,{R("XFF")},{WD})),0)'
     f["WPD"] = f'IF({has_work},{R("LWork")}/({R("FWD")}-{R("SWD")}+1),0)'
     f["WBefore"] = f'{R("WPD")}*({R("SWD")}-1)'
+    for k in MORE_PEOPLE:
+        f[f"Rp{k}"] = f'IF(AND({has_work},{R(f"Rw{k}")}>0),{R(f"Rw{k}")}/({R("FWD")}-{R("SWD")}+1),0)'
+        f[f"Rb{k}"] = f'{R(f"Rp{k}")}*MAX(0,{R("SWD")}-1)'
     # progress roll-up and the milestone list
     f["WtDur"] = f'IF({leaf},MAX(N({R("Dur")}),0.1),0)'
     f["WtDone"] = f'{R("WtDur")}*{R("LProg")}'
@@ -361,6 +459,8 @@ def formulas():
     f["LAC"] = f'IF(NOT({leaf}),0,IF({R("ACin")}="",{R("LTC")}*{R("LProg")},N({R("ACin")})))'
     # the Resource column's person's share of it (by cost; all of it when the task has no cost)
     f["PAC"] = f'IF({R("LTC")}=0,{R("LAC")},{R("LAC")}*{R("LCost")}/{R("LTC")})'
+    for k in MORE_PEOPLE:
+        f[f"Ra{k}"] = f'IF({R("LTC")}=0,0,{R("LAC")}*{R(f"Rc{k}")}/{R("LTC")})'
     f["Budget"] = rollup("SUM", "LBud")
     f["PV"] = rollup("SUM", "LPV")
     f["EV"] = rollup("SUM", "LEV")
@@ -381,14 +481,16 @@ def formulas():
     # resource and agile reports. A task is done on its Actual Finish (or its forecast finish when it is marked
     # 100% without one); story points count on detail tasks only.
     f["LWDone"] = f'{R("LWork")}*{R("LProg")}'
+    for k in MORE_PEOPLE:
+        f[f"Rd{k}"] = f'{R(f"Rw{k}")}*{R("LProg")}'
     f["DoneDate"] = f'IF(AND({leaf},{R("LProg")}>=1),IF(N({R("AF")})>0,{R("AF")},{R("XFF")}),"")'
     f["LPts"] = f'IF({leaf},N({R("SP")}),0)'
     # over-allocation (Resource Report weekly utilisation, after leave): Yes when any of the task's people is over
-    # 100% in a week the task runs (Assignments rows work theirs out). Only weeks in the Resource Report window and
-    # its first resources are known.
-    own_over = f'AND({R("Res")}<>"",{over_allocated(R("Res"), R("XFS"), R("XFF"))})'
-    f["OverAlloc"] = (f'IF(OR(NOT({leaf}),{R("LProg")}>=1),"",IF(OR({own_over},'
-                      f'COUNTIFS(asg_TaskUID,{R("UID")},asg_OverAllocated,"Yes")>0),"Yes",""))')
+    # 100% in a week the task runs. Only weeks in the Resource Report window and its first resources are known.
+    # (a sum of IFs, not OR / AND: those would evaluate every person's look-up, including the empty slots)
+    over = "+".join(f'IF({R(person[k][0])}="",0,IF({over_allocated(R(person[k][0]), R("XFS"), R("XFF"))},1,0))'
+                    for k in person)
+    f["OverAlloc"] = f'IF(OR(NOT({leaf}),{R("LProg")}>=1),"",IF({over}>0,"Yes",""))'
     f["CurKey"] = f'IF(AND({leaf},CurrentSprint<>"",{R("Sprint")}=CurrentSprint),{R("Idx")},"")'
     # everything wrong on the row, in words, so a user looks in one place (the check columns keep the detail)
     uid, res = R("UID"), R("Res")
@@ -396,7 +498,10 @@ def formulas():
                    f'&IF(N({uid})=0,"No UID: give the row Settings > NextFreeUID. ",'
                    f'IF(COUNTIF({C("UID")},{uid})>1,"UID "&{uid}&" is used twice. ",""))'
                    f'&IF({R("WBS")}="?","Level is more than 1 below the row above. ","")'
-                   f'&IF({res}="","",IF(ISNA(MATCH({res},res_Name,0)),{res}&" is not on Resources. ",""))'
+                   + "".join(f'&IF({R(person[k][0])}="","",IF(ISNA(MATCH({R(person[k][0])},res_Name,0)),'
+                             f'{R(person[k][0])}&" is not on Resources. ",""))' for k in person)
+                   + f'&IF({R(f"Ri{PEOPLE}")}="","",IF({item(PEOPLE + 1)}<>"",'
+                     f'"Only the first {PEOPLE} people in Resources are used. ",""))'
                    f'&IF({R("OverAlloc")}="Yes","Over-allocated: see the Resource Report. ","")'
                    f'&IF(LEFT({R("DLChk")},4)="Late","Misses its deadline ("&LOWER({R("DLChk")})&"). ","")))')
     return f
@@ -421,10 +526,9 @@ LAYOUT = [
     ("Mode", "in", 8, None, True, "Auto = scheduled from predecessors and the constraint. Manual = starts on the "
                                   "Constraint Date (finish constraints: finishes on it)."),
     ("Dur", "in", 9, None, True, "Working days. 0 = milestone."),
-] + [row for k in LINK_NUMBERS for row in (
-    (f"P{k}", "in", 7, None, True, "UID of a predecessor: a detail task above this one."),
-    (f"T{k}", "in", 6, None, True, "FS, SS, FF or SF (blank = FS)."),
-    (f"L{k}", "in", 6, None, True, "Lag in working days (negative = lead)."))] + [
+    ("PredIn", "in", 16, None, False, "Tasks that must come first, by UID, comma-separated: 12 = after 12 finishes; "
+                                      "12SS+2d = 2 days after 12 starts; FS, SS, FF, SF; lag in working days (- = "
+                                      f"lead). Up to {LINKS}; each must be a detail task above this one."),
     ("CType", "in", 20, None, False, "MS Project constraint (dropdown). Blank = Start No Earlier Than when a Constraint "
                                      "Date is entered, otherwise As Soon As Possible. Constraint dates win over links."),
     ("Cons", "in", 15, DATE, False, "Date for the Constraint. Manual tasks are pinned to it."),
@@ -449,9 +553,10 @@ LAYOUT = [
     ("Pct", "in", 9, "0%", False, "Enter 0-100%. An Actual Finish counts as 100%."),
     ("Prog", "calc", 9, "0%", False, "% Complete, rolled up to summaries (duration-weighted)."),
     ("Status", "calc", 12, None, True, None),
-    ("Res", "in", 16, None, False, "The task's person (dropdown). More people on the task: Assignments sheet."),
-    ("Units", "in", 7, "0%", False, "Share of the resource's time (blank = DefaultUnits)."),
-    ("ResTxt", "calc", 22, None, False, "Everyone on the task: Resource plus the Assignments sheet's rows for its UID "
+    ("ResIn", "in", 20, None, False, f"Who does it: names or initials from Resources, comma-separated, with an optional "
+                                     f"share of their time, e.g. Alex Chen, JL[50%] (blank = DefaultUnits). Up to "
+                                     f"{PEOPLE} people."),
+    ("ResTxt", "calc", 22, None, False, "Everyone on the task, by full name with units: the Resources cell, checked "
                                         "(MS Project's Resource Names)."),
     ("OverAlloc", "calc", 9, None, True, "Yes when this task's resource is over 100% of capacity (after leave) in a "
                                          "week the task runs: see Resource Report. Only weeks shown there count."),
@@ -485,6 +590,8 @@ LAYOUT = [
 ] + [(k, "help", 11, DATE if k in HELPER_DATES else None, False, None)
      for k in ("Lvl", "Idx", "Parent", "NextLvl", "IsSum", "Desc", "IsLeaf", *each("R"), "CT", "CStart", "CLow",
                "CHigh", "LCS", "LCF", "LFS", "LFF",
+               *[f"{x}{k}" for k in LINK_NUMBERS for x in "IPTL"], *[f"Ri{k}" for k in range(1, PEOPLE + 1)], "Res", "Units", "NPeople",
+               *[f"{x}{k}" for k in MORE_PEOPLE for x in ("Rs", "Ru", "Rw", "Rc", "Rp", "Rb", "Rd", "Ra")],
                "LProg", "LWork", "LCost", "LTW", "LTC", "PAC", *each("F"), *each("K"), "LastSucc", "SuccLF", "LLF", "LLS",
                "LTS", "LCrit", "Shift", "XCS", "XCF", "XFS", "XFF", "CPS", "CPF", *each("M"), *each("D"), *each("E"),
                "SWD", "FWD", "WPD", "WBefore", "WtDur", "WtDone", "UPredTxt", "MKey",
@@ -495,8 +602,8 @@ LAYOUT = [
 # an Excel column group, collapsed, whose +/- button sits on its first (key) column, which stays visible. (Excel would
 # merge groups that touch, so every section keeps one visible column.) Nothing is removed: + shows the rest.
 SECTIONS = [
-    ("PLAN: type in the blue columns", None, ["ID", "UID", "WBS", "Level", "Name", "Dur", *[f"{x}{k}" for k in LINK_NUMBERS for x in "PTL"],
-                                              "Res", "Units", "Pct", "AS", "AF", "Notes", "FS", "FF", "Status", "Crit", "Issues", "Show"]),
+    ("PLAN: type in the blue columns", None, ["ID", "UID", "WBS", "Level", "Name", "Dur", "PredIn",
+                                              "ResIn", "Pct", "AS", "AF", "Notes", "FS", "FF", "Status", "Crit", "Issues", "Show"]),
     ("SCHEDULING", "DL", ["Mode", "CType", "Cons"]),
     ("DETAIL", "Var", ["PS", "PF", "SVar", "LS", "LF", "TS", "FSl", "DLChk", "LinkChk", "Prog", "PredTxt"]),
     ("COST", "Work", ["ResTxt", "OverAlloc", "Cost", "ACin"]),
@@ -593,12 +700,11 @@ PROMPTS = {
                                "rows below it becomes a summary."),
     "Name": ("Task name", "What the task is, e.g. Build login page. Leave the row blank to end the plan."),
     "Dur": ("Duration (working days)", "e.g. 5. 0 = a milestone. Summaries roll up: leave them blank."),
-    **{f"P{k}": (f"Predecessor {k}", "The UID of a task that must come first, e.g. 12. It must be a detail task "
-                                     "above this one.") for k in LINK_NUMBERS},
-    **{f"T{k}": ("Link type", "FS (finish-to-start, the default when blank), SS, FF or SF.") for k in LINK_NUMBERS},
-    **{f"L{k}": ("Lag (working days)", "e.g. 2 = two days after; -1 = a day of overlap. Blank = 0.") for k in LINK_NUMBERS},
-    "Res": ("Resource", "Who does it (from the Resources sheet). More people: add rows on the Assignments sheet."),
-    "Units": ("Units", "Share of the person's time, e.g. 50%. Blank = Settings > DefaultUnits."),
+    "PredIn": ("Predecessors (by UID)", "e.g. 12, 14SS+2d: after 12 finishes and 2 working days after 14 starts. "
+                                        "Types FS (default), SS, FF, SF; - = lead. Each must be a detail task above "
+                                        "this one."),
+    "ResIn": ("Resources", "Who does it: names or initials from Resources, comma-separated. Add a share of "
+                           "their time in brackets, e.g. Alex Chen, JL[50%]. Pick one from the list or type several."),
     "Pct": ("% Complete", "0% - 100%. An Actual Finish counts as 100%."),
     "AS": ("Actual Start", "The day work really started. Leave blank until it starts."),
     "AF": ("Actual Finish", "The day it really finished: the task counts as 100% complete."),
@@ -630,23 +736,18 @@ def _validation_and_formatting(ws, L, n_rows):
     dv(DataValidation(type="list", formula1="=L_Mode"), "Mode")
     dv(DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0", showErrorMessage=True,
                       error="Duration is in working days (0 = milestone)."), "Dur")
-    dv(DataValidation(type="whole", operator="greaterThanOrEqual", formula1="1", showErrorMessage=True,
-                      error="Enter the UID of another task. Problems are explained in the Link Check column."), *each("P"))
-    dv(DataValidation(type="list", formula1="=L_DepType"), *each("T"))
-    dv(DataValidation(type="whole", operator="between", formula1="-365", formula2="365"), *each("L"))
     dv(DataValidation(type="list", formula1="=L_Constraint"), "CType")
     dv(DataValidation(type="date", operator="greaterThan", formula1="1"), "Cons", "DL", "AS", "AF")
     dv(DataValidation(type="decimal", operator="between", formula1="0", formula2="1", showErrorMessage=True,
                       error="Enter 0% - 100%."), "Pct")
-    dv(DataValidation(type="list", formula1="=res_Name"), "Res")
-    dv(DataValidation(type="decimal", operator="between", formula1="0", formula2="10"), "Units")
+    dv(DataValidation(type="list", formula1="=res_Name", showErrorMessage=False), "ResIn")   # pick one, or type several
     dv(DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0"), "ACin", "SP")
     dv(DataValidation(type="list", formula1="=spr_Name"), "SprIn")
-    dv(DataValidation(allow_blank=True), "Name", "Notes")          # prompts only: any text
+    dv(DataValidation(allow_blank=True), "Name", "Notes", "PredIn")          # prompts only: any text
 
     cf = ws.conditional_formatting
     cf.add(f"A{first}:{L['ACt']}{last}", FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(bold=True), fill=fill("DDEBF7")))
-    for k in ("Dur", *each("P"), *each("T"), *each("L"), "CType", "Cons", "AS", "AF", "Pct", "Res", "Units", "ACin", "SprIn", "SP"):
+    for k in ("Dur", "PredIn", "CType", "Cons", "AS", "AF", "Pct", "ResIn", "ACin", "SprIn", "SP"):
         cf.add(rng(k), FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(color="A6A6A6", italic=True, bold=True)))
     for status, colour in STATUS_COLOURS.items():
         cf.add(rng("Status"), FormulaRule(formula=[f'{at("Status")}="{status}"'], font=Font(color=colour, bold=True)))

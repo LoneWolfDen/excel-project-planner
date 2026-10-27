@@ -1,6 +1,8 @@
 """Sample project, and a generator that repeats it to make large stress-test workbooks."""
 import datetime as dt
 
+from .tasks import take_links
+
 D = dt.date
 
 # Level, Task Name, Mode, Duration, Pred1 UID, Type, Lag, Pred2 UID, Type, Lag, Constraint Date, Deadline,
@@ -51,7 +53,7 @@ STORY_POINTS = {2: 3, 3: 2, 6: 8, 7: 5, 8: 5, 12: 5, 13: 8, 14: 5, 16: 5, 17: 8,
 
 # Other inputs (by task number): constraint types and a third predecessor.
 EXTRA = {22: {"CType": "Start No Earlier Than"}, 24: {"P3": 21, "T3": "FS"}}
-# More people on a task (Assignments sheet): (task number, resource, units). Task number = UID in the sample.
+# More people on a task (beyond the first, in its Resources cell): (task number, resource, units). Task number = UID.
 ASSIGNMENTS = [(7, "Jordan Lee", 0.5), (17, "Casey Kim", 0.5), (21, "Sam Rivera", 0.5), (22, "Taylor Morgan", None)]
 
 
@@ -72,7 +74,7 @@ def tasks(blank=False, stress=0):
     if blank:
         return []
     if not stress:
-        return [_row(i, t) for i, t in enumerate(TASKS)]
+        return [take_links(dict(_row(i, t), UID=i + 1)) for i, t in enumerate(TASKS)]
     rows = []
     n = len(TASKS)
     for copy in range(stress):
@@ -84,5 +86,6 @@ def tasks(blank=False, stress=0):
             if copy and row["Level"] == 2 and row["Name"] == "Project charter & scope statement":
                 row["P1"], row["T1"] = copy * n, "FS"      # chain the copies: each starts after the previous ends
             row["Name"] = f"{row['Name']} ({copy + 1})"
-            rows.append(row)
+            row["UID"] = copy * n + i + 1
+            rows.append(take_links(row))
     return rows

@@ -14,7 +14,7 @@ from openpyxl.utils import get_column_letter
 
 from .core import BOX, CALC_FILL, CALC_FONT, Col, Tab, add_table, fill, font, header_cell, name, title
 from .leave import leave_days, leave_row, month_column, month_start, team_leave_hours
-from .resources import by_resource
+from .resources import by_resource, count_by_resource
 from .sprints import work_upto
 
 SHEET = "Resource Report"
@@ -61,17 +61,16 @@ def _summary(ws, top, n_resources):
         Col("Max Units", width=10, fmt="0%", formula=from_table("Max Units"), center=True),
         Col("Tasks", width=10, fmt="0", formula=from_table("Tasks"), center=True),
         Col("Work", width=10, fmt="#,##0", formula=from_table("Work"), note="Assigned hours."),
-        Col("Work Done", width=10, fmt="#,##0", formula=f'IF({blank},"",{by_resource("tsk_LeafWorkDone", "asg_WorkDone", res)})',
+        Col("Work Done", width=10, fmt="#,##0", formula=f'IF({blank},"",{by_resource("Done", res)})',
             note="Work x Progress."),
         Col("Remaining", width=10, fmt="#,##0", formula=f'IF({blank},"",{t.row("Work")}-{t.row("Work Done")})'),
         Col("Cost", width=10, fmt="#,##0", formula=from_table("Cost")),
         Col("Actual Cost", width=10, fmt="#,##0", formula=from_table("Actual Cost")),
         Col("Late Tasks", width=10, fmt="0", center=True,
-            formula=f'IF({blank},"",COUNTIFS(tsk_Resource,{res},tsk_LateKey,">0")+SUMIFS(asg_Late,asg_Resource,{res}))',
+            formula=f'IF({blank},"",{count_by_resource(res, ',tsk_LateKey,">0"')})',
             note="Unfinished tasks forecast to finish after plan, or not started on time (Schedule Report)."),
         Col("Open Critical", width=10, fmt="0", center=True,
-            formula=f'IF({blank},"",COUNTIFS(tsk_Resource,{res},tsk_Critical,"Yes",tsk_IsLeaf,1)'
-                    f'+SUMIFS(asg_Critical,asg_Resource,{res}))'),
+            formula=f'IF({blank},"",{count_by_resource(res, ',tsk_Critical,"Yes",tsk_IsLeaf,1')})'),
         Col("Peak Week (h)", width=10, fmt="#,##0", center=True, formula=f'IF({blank},"",MAX({week_row("rw_Load")}))',
             note="Most hours in any week shown in the grid below."),
         Col("Peak Use", width=10, fmt="0%", center=True, formula=f'IF({blank},"",MAX({week_row("rw_Util")}))',
@@ -233,14 +232,18 @@ def _cumulative(wb, ws, top, n_resources, n_weeks):
     b = f"(COLUMN()-COLUMN({origin})-2)"
     day = f"(ResourceWeekStart+7*{b}-1)"
     resource = f"INDEX(res_Name,{i})"
-    total = by_resource("tsk_LeafWork", "asg_Work", resource)
-    upto = work_upto(f"NETWORKDAYS.INTL(ProjectStart,{day},{WD})", resource)
+    total = by_resource("Work", resource)
+    upto = work_upto(f"INDEX(rw_CumWD,{b}+1)", resource)
     formula = (f'=IFERROR(IF({resource}="","",IF({day}<ProjectStart,0,IF({day}>=ProjectFinish,{total},{upto}))),"")')
     first_col, last_col = 4, 4 + n_weeks
+    L = get_column_letter
+    # each boundary's working-day number, once per column instead of in every cell's SUMIFS
+    for c in range(first_col, last_col + 1):
+        ws.cell(top, c, f"=MAX(0,NETWORKDAYS.INTL(ProjectStart,{day},{WD}))").font = CALC_FONT
+    name(wb, "rw_CumWD", f"'{SHEET}'!${L(first_col)}${top}:${L(last_col)}${top}")
     for r in range(top + 1, top + 1 + n_resources):
         for c in range(first_col, last_col + 1):
             ws.cell(r, c, formula).font = CALC_FONT
-    L = get_column_letter
     name(wb, "rw_Cum", f"'{SHEET}'!${L(first_col)}${top + 1}:${L(last_col)}${top + n_resources}")
     for r in range(top, top + 1 + n_resources):
         ws.row_dimensions[r].hidden = True

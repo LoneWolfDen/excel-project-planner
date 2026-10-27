@@ -106,6 +106,8 @@ def settings_rows(blank, max_sprints):
          '=IF(CurrentSprint="","",INDEX(spr_End,MATCH(CurrentSprint,spr_Name,0)))', DATE, False, ""),
         ("TotalPoints", "Total story points (calculated)", "=SUM(tsk_LeafPoints)", "0.#", False,
          "Story points on all detail tasks: the release scope for burndown and burn-up."),
+        ("MaxPeople", "Most people on one task (calculated)", "=MAX(tsk_People)", "0", False,
+         "Per-resource totals skip the person slots no task uses, so a plan with one person per task stays fast."),
         ("CriticalSlackDays", "Critical when total slack is at most (days)", 0, "0", True,
          "0 = only tasks with no slack (or negative slack from a missed deadline) are critical, like MS Project."),
         ("ProjectFinish", "Forecast project finish (calculated)", "=MAX(tsk_LeafFcstFinish)", DATE, False,

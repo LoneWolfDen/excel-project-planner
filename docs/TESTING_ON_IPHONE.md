@@ -40,8 +40,8 @@ Tick each one and note anything odd (a screenshot is ideal).
 **Ripple test (edit something)**
 - [ ] Change Task 2's Duration from 3 to 5. Planned dates of tasks 2, 3, 4 and later move by 2 working days.
 - [ ] Undo, or set it back to 3.
-- [ ] Type `7` in Task 7's "Pred1 UID" (a link to itself). Link Check shows "Pred 1: links to itself." and no circular-reference warning appears. Undo.
-- [ ] Type `21` in Task 8's "Pred2 UID" (a task further down). Link Check shows "Pred 2: UID 21 is below this task: move it above." Undo.
+- [ ] Type `7` in Task 7's "Predecessors" (a link to itself). Link Check shows "Pred 1: links to itself." and no circular-reference warning appears. Undo.
+- [ ] Type `6, 21` in Task 8's "Predecessors" (a second link, to a task further down). Link Check shows "Pred 2: UID 21 is below this task: move it above." Undo.
 - [ ] On Settings, change `GanttPeriod` from 1 to 7. The Gantt switches to weeks. Set it back to 1.
 
 **Gantt sheet**

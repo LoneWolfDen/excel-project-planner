@@ -8,11 +8,12 @@ UIDs and sizes are worked out by the builder. Every other input table (the logs,
 PM RAG and notes, resource notes) is then copied onto the new workbook column by column, matched by table and
 header. Dropdown lists keep the new template's values and add any the user had added.
 
-Inputs that a version renamed or moved are mapped in RENAMED and in the per-version steps below; workbooks carry
-their version in the PlannerVersion name (absent before v1.7). The same code runs on the command line
+Inputs that a version renamed or moved are mapped in RENAMED, RENAMED_TABLES and LOGS and in the steps below;
+workbooks carry their version in the PlannerVersion name (absent before v1.7). The same code runs on the command line
 (scripts/upgrade_planner.py) and in the browser page docs/export.html.
 """
 import io
+import re
 
 import openpyxl
 from openpyxl.utils import get_column_letter
@@ -22,9 +23,16 @@ from .core import BOX, HEADER_FILLS, INPUT_FONT
 
 # Tasks headers an older version used, and the column they are now
 RENAMED = {"Tasks": {"Start No Earlier Than": "Constraint Date"}}
+# tables a version renamed: old name -> (new name, {old header: new header})
+RENAMED_TABLES = {"ListRAIDType": ("ListLogType", {"RAID Type": "Log Type"})}
+# before v1.7 the Log was three tables: old table -> (Type of its rows, or None to keep theirs, {old header: Log's})
+LOGS = {"RAIDLog": (None, {}),
+        "DecisionLog": ("Decision", {"Date": "Raised", "Decision": "Title", "RAID Ref": "Related Ref"}),
+        "ChangeLog": ("Change", {"Requested By": "Owner", "Reason": "Options and Reasons"})}
 # tables the builder fills from ProjectData; everything else with inputs is copied by header
-BUILT = {"Tasks", "HolidayTable", "LeaveTable", "AssignmentTable"}
+BUILT = {"Tasks", "HolidayTable", "LeaveTable", "AssignmentTable"} | set(LOGS)
 INPUT_FILL = HEADER_FILLS["in"].start_color.rgb[-6:]
+MONTH = re.compile(r"^[A-Z][a-z]{2}-\d\d$")          # a leave month header: Nov-26
 
 
 class UpgradeError(Exception):
@@ -79,8 +87,8 @@ def read_planner(data):
     """(ProjectData, copies, Sizes, warnings, version) from an older planner workbook's bytes. copies: the other
     input tables, {table: (headers, rows)}, for copy_inputs."""
     from .build import ProjectData, Sizes
-    from .settings import settings_rows
-    from .tasks import LAYOUT, N
+    from .settings import settings_rows, week_preset
+    from .tasks import LAYOUT, N, take_links
     try:
         wb = openpyxl.load_workbook(io.BytesIO(data))
     except Exception as e:                                   # not a zip / not a workbook
@@ -97,11 +105,18 @@ def read_planner(data):
         if is_input and v is not None:
             settings[n] = v
 
+    if "WorkingWeek" not in settings:                # before v1.7 the week was only the seven Yes / No days
+        settings["WorkingWeek"] = week_preset(settings)
+
     key_of = {N[k]: k for k, kind, *_ in LAYOUT if kind == "in"}
+    # before v1.7 each link was three inputs (Pred1 UID / Type / Lag ...): they become the Predecessors text
+    key_of.update({f"Pred{k} {label}": f"{x}{k}" for k in range(1, 10) for x, label in (("P", "UID"), ("T", "Type"),
+                                                                                       ("L", "Lag"))})
+    key_of.update({"Resource": "Res", "Units": "Units"})      # before v1.7: one person + the Assignments sheet
     tasks = []
     for rec in _records(tables, "Tasks", RENAMED["Tasks"]):
         row = {key_of[h]: v for h, v in rec.items() if h in key_of and v not in (None, "")}
-        tasks.append(row)
+        tasks.append(take_links(row))
     while tasks and not tasks[-1].get("Name"):
         tasks.pop()
 
@@ -110,22 +125,64 @@ def read_planner(data):
                  for r in _records(tables, "ResourceTable") if r.get("Resource Name")]
     holidays = [(r["Date"], r.get("Description")) for r in _records(tables, "HolidayTable") if r.get("Date")]
     leave, months = {}, None
-    if "LeaveTable" in tables:
-        months = [h for h in tables["LeaveTable"][1] if h and h != "Resource"]
-        for r in _records(tables, "LeaveTable"):
-            if r.get("Resource"):
-                leave[r["Resource"]] = {m: str(r[m]) for m in months if r.get(m) not in (None, "")}
+    # leave: a Leave sheet before v1.7, month columns on Resources (Nov-26 ...) since
+    source, key = ("LeaveTable", "Resource") if "LeaveTable" in tables else ("ResourceTable", "Resource Name")
+    if source in tables:
+        months = [h for h in tables[source][1] if isinstance(h, str) and MONTH.match(h)] or None
+        for r in _records(tables, source):
+            entries = {m: str(r[m]) for m in months or [] if r.get(m) not in (None, "")}
+            if r.get(key) and entries:
+                leave[r[key]] = entries
+    people = {r[0] for r in resources}
+    for person in sorted(set(leave) - people):
+        warnings.append(f"Leave for {person} was not carried: {person} is not on the Resources sheet.")
+        del leave[person]
     assignments = [(r["Task UID"], r.get("Resource"), r.get("Units"))
                    for r in _records(tables, "AssignmentTable") if r.get("Task UID")]
 
     copies = {name: (head, rows) for name, (_, head, rows) in tables.items() if name not in BUILT}
+    for old, (new, headers) in RENAMED_TABLES.items():
+        if old in copies:
+            head, rows = copies.pop(old)
+            copies[new] = ([headers.get(h, h) for h in head], rows)
+    if any(t in tables for t in LOGS):
+        copies["Log"] = _merge_logs(tables, warnings)
     default = Sizes()
     sizes = Sizes(tasks=max(default.tasks, len(tasks)), resources=max(default.resources, len(resources)),
-                  sprints=max(default.sprints, len(tables.get("SprintTable", (None, None, []))[2])),
-                  assignments=max(default.assignments, len(assignments)))
+                  sprints=max(default.sprints, len(tables.get("SprintTable", (None, None, []))[2])))
     project = ProjectData(settings=settings, tasks=tasks, resources=resources, holidays=holidays, leave=leave,
                           leave_months=months, assignments=assignments)
     return project, copies, sizes, warnings, version
+
+
+def _merge_logs(tables, warnings):
+    """The RAID, decision and change logs of a v1.6 or older workbook as one Log table (headers, rows). RAID items
+    keep their Ref; decisions and change requests get the next free ones (the Log has one Ref sequence), and a
+    warning lists them so references typed in notes can be updated. The rows after them carry on the numbering."""
+    from .log import ROWS
+    items, warned = [], {}
+    for table, (kind, headers) in LOGS.items():
+        for rec in _records(tables, table, headers):
+            if rec.get("Title") in (None, ""):
+                continue
+            if kind:
+                rec["Type"] = kind
+            items.append((table, rec))
+    refs = [rec["Ref"] for table, rec in items if table == "RAIDLog" and isinstance(rec.get("Ref"), (int, float))]
+    ref = int(max(refs, default=0))
+    for table, rec in items:
+        if table != "RAIDLog" or not isinstance(rec.get("Ref"), (int, float)):
+            ref += 1
+            if rec.get("Ref") not in (None, ""):
+                warned.setdefault(rec["Type"], []).append(f"{rec['Type']} {rec['Ref']} is now {rec['Type']} {ref}")
+            rec["Ref"] = ref
+    for kind, moves in warned.items():
+        warnings.append(f"{kind} refs now follow the Log's numbering ({', '.join(moves)}): update any notes that "
+                        "quote the old numbers.")
+    head = ["Ref", "Type"] + sorted({h for _, rec in items for h in rec} - {"Ref", "Type"})
+    rows = [[rec.get(h) for h in head] for _, rec in items]
+    rows += [[ref + k] + [None] * (len(head) - 1) for k in range(1, ROWS - len(rows) + 1)]   # the free Refs
+    return head, rows
 
 
 def copy_inputs(wb, copies, warnings):

@@ -1,7 +1,30 @@
-"""Instructions sheet."""
+"""Start sheet: the six settings a plan needs (written by planner.settings), a quick start, the weekly update, and
+the full reference below them."""
 from openpyxl.styles import Alignment
+from openpyxl.worksheet.hyperlink import Hyperlink
 
-from .core import CALC_FILL, HEADER_FILLS, HEADER_FONT, INPUT_FONT, font
+from .core import CALC_FILL, HEADER_FILLS, HEADER_FONT, INPUT_FONT, NOTE_FONT, font
+from .settings import ESSENTIAL, START, START_ROW
+
+# (label, text, sheet to link to)
+QUICK_START = [
+    ("1. Your project", "Fill in the blue cells above: name, manager, start date, working week and hours per day. "
+                        "Everything else has a sensible default on Settings.", None),
+    ("2. People", "List the people (or roles) with their availability, hourly rate and any leave (by month, on the "
+                  "same row).", "Resources"),
+    ("3. Tasks", "One row per task: Level (1 = phase, 2 = task ...), Task Name, Duration in working days, the UID of "
+                 "the tasks that must come first (Predecessors, e.g. 12 or 12, 14SS+2d) and who does it (Resources). That's a plan: dates, the "
+                 "critical path, the Gantt and the reports follow. Optional columns are grouped: click + above "
+                 "a section to show them.", "Tasks"),
+    ("4. Check", "Fix anything in the Issues column (red), then look at the Gantt and the Roadmap.", "Gantt"),
+    ("5. Baseline", "When the plan is agreed, freeze it: on Tasks open the BASELINE section (+), copy the 5 'BL "
+                    "Source' columns and Paste Special > Values onto the 5 Baseline columns.", "Tasks"),
+]
+WEEKLY = [
+    ("Status sheet", "The weekly update starts on the Status sheet: type the status date at its top, then follow "
+                     "the steps under it (progress on Tasks, the Log, the RAG, the commentary, the History "
+                     "snapshot).", "Status"),
+]
 
 
 def text(sizes, wizard=False):
@@ -9,15 +32,17 @@ def text(sizes, wizard=False):
         ("REQUIREMENTS", None),
         ("Excel version", "Excel 2019 or Microsoft 365 (Windows or Mac), or Excel for the web. No macros needed."),
         ("HOW IT WORKS", None),
-        ("1. Settings", "Set project start and status date (both typed dates; Ctrl+; enters today), working week "
-                        "(Mon-Sun Yes/No), hours/day, Gantt scale and sprint calendar. Add holidays on 'Holidays'. "
-                        "Update the status date whenever you report progress."),
-        ("2. Resources", "List people/roles with Max Units and hourly rate. They appear in the Resource dropdown on Tasks and "
-                         "in sprint capacity. More than one person on a task: put the first on Tasks (Resource, Units) "
-                         "and add a row on the Assignments sheet (Task UID, Resource, Units) for each of the others."),
+        ("1. Settings", "Project start (a typed date; Ctrl+; enters today), working week and hours/day are at the "
+                        "top of this sheet; the status date is at the top of the Status sheet. Settings holds the rest (Gantt scale, sprint calendar, "
+                        "RAG thresholds ...). Holidays are listed on Settings, below the settings. Update the status date whenever you report "
+                        "progress."),
+        ("2. Resources", "List people/roles with Max Units and hourly rate. Type their names (or initials) in the "
+                         "Resources column on Tasks: several people are comma-separated, with an optional share of "
+                         "their time, e.g. 'Alex Chen, JL[50%]'."),
         ("3. Tasks", "One row per task. Enter Level (1 = phase/summary, 2 = task, 3 = sub-task...), Task Name, Duration in "
-                     "working days (0 = milestone), and up to four predecessors by UID with link type (FS, SS, FF, SF) and lag in "
-                     "days (negative = lead). A row becomes a SUMMARY automatically when the rows beneath it have a higher "
+                     "working days (0 = milestone), and Predecessors: the UIDs of up to four tasks that must come first, comma-separated, "
+                     "each with an optional link type (FS, SS, FF, SF) and lag in days (negative = lead), e.g. "
+                     "'12, 14SS+2d'. A row becomes a SUMMARY automatically when the rows beneath it have a higher "
                      "level; its dates, work, cost and progress roll up. Optional Deadline: Deadline Check shows 'Late by Nd'. "
                      "Hover over a column header for what it means."),
         ("4. Set the baseline", "When the plan is agreed: on Tasks, select the 5 'BL Source' columns (all task rows), Copy, then "
@@ -39,40 +64,39 @@ def text(sizes, wizard=False):
         ("6b. Roadmap", "One landscape page for sponsors: phases and milestones with their dates, drawn by month (blue "
                         "= forecast, green = done, amber = late vs plan, outline = planned, purple = milestone, red = "
                         "deadline missed). Settings > RoadmapStart scrolls the 18 months shown."),
-        ("7. Sprints", "Sprint calendar from Settings. Each task is tagged with the sprint its forecast start falls in. Work "
-                       "hours are prorated across sprints per resource, compared against capacity (Max Units x Hours/day x "
-                       "working days); over-allocations turn red. Optional agile columns: Story Points and Planned "
-                       "Sprint on Tasks (Planned Sprint wins over the automatic sprint), Points Capacity on Sprints; "
-                       "the table then shows committed and done points, velocity and the release burndown."),
-        ("8. Dashboard", "KPIs (including overall RAG, SPI, CPI, missed deadlines, link problems), status counts, upcoming "
-                         "milestones and sprint load vs capacity."),
-        ("9. Status Report", "For steering meetings: overall RAG and RAG by area (schedule, SPI, CPI, deadlines, critical "
-                             "path, plan quality), calculated from the thresholds on Settings (RAG...). Type a PM RAG to "
-                             "override one and say why in Comment. Earned value (BAC, PV, EV, AC, SPI, CPI, EAC, VAC, TCPI) "
-                             "and a commentary box for the period."),
-        ("10. Schedule Report", "Phase summary with RAG, all milestones, late tasks, tasks starting and due in the "
+        ("7. Agile", "Sprint calendar from Settings. Each task is tagged with the sprint its forecast start falls in. Work "
+                     "hours are prorated across sprints and compared against capacity (Max Units x Hours/day x "
+                     "working days, less leave). Optional agile columns: Story Points and Planned Sprint on Tasks "
+                     "(Planned Sprint wins over the automatic sprint), Points Capacity per sprint; the sheet then shows "
+                     "committed and done points, velocity, the release forecast, the current sprint's backlog and "
+                     "daily burndown, and the charts. Each person's load by sprint is on the Resource Report."),
+        ("8. Status", "The weekly page, printable on one page: the status date and this week's steps, overall RAG and "
+                      "RAG by area (schedule, SPI, CPI, deadlines, critical path, RAID, plan quality) calculated from "
+                      "the thresholds on Settings (RAG...); pick a PM RAG to override one and say why in Comment. Then "
+                      "key figures, tasks by status, next milestones, earned value (BAC, PV, EV, AC, SPI, CPI, EAC, "
+                      "VAC, TCPI), the top open RAID items, change control, the commentary for the period and the "
+                      "snapshot row for History."),
+        ("9. Schedule Report", "Phase summary with RAG, all milestones, late tasks, tasks starting and due in the "
                                 "look-ahead window (Settings > LookaheadDays) and open critical tasks. Lists update with "
                                 "every edit; drag a list's bottom corner down to show more rows."),
-        ("11. Resource Report", "Per resource: work, done, remaining, cost, actual cost, late and critical tasks, peak "
-                                "week and weeks over capacity. Weekly hours and utilisation grids by week from "
-                                "Settings > ResourceWeekStart (red = over capacity), and a team hours vs capacity chart."),
-        ("12. Agile Report", "Story points: scope, done, remaining, velocity (last 3 closed sprints) and the sprint it "
-                             "forecasts finishing in; the current sprint's backlog and daily burndown; release burndown "
-                             "and committed vs done charts."),
-        ("Leave", "Leave sheet: one row per person, one column per month (Jan-26 ... Dec-28; add a month by typing e.g. "
-                  "Jan-29 in the next header cell). Type the days off: '16, 17(0.5)' under Nov-26 = all of 16 November "
+        ("10. Resource Report", "Per resource: work, done, remaining, cost, actual cost, late and critical tasks, peak "
+                                "week and weeks over capacity. Hours and utilisation grids by week from "
+                                "Settings > ResourceWeekStart and by sprint (red = over capacity), leave by week, and a "
+                                "team hours vs capacity chart."),
+        ("Leave", "On Resources, to the right of each person's details: one column per month (Jan-26 ... Dec-28; add a month by inserting a column "
+                  "among the months and typing e.g. Jan-29). Type the days off: '16, 17(0.5)' under Nov-26 = all of 16 November "
                   "and half of the 17th. Weekends and holidays are ignored. Leave lowers capacity on the Resource "
-                  "Report and Sprints and can make a task Over-allocated; it does not move task dates."),
-        ("13. RAID", "Risks, assumptions, issues and dependencies: owner, due date, probability and impact (1-5). Score "
-                     "= probability x impact (issues count as probability 5); Rating from Settings > RAIDHighScore / "
-                     "RAIDMediumScore; Overdue when not closed past its due date. Link a task by UID. The Status Report "
-                     "lists the top open items and rates RAID amber when any open item is High."),
-        ("14. Decisions and Changes", "Decision log (what, options and reasons, who, status) and change request log "
-                                      "(schedule and cost impact, status, who decided). The Status Report totals "
-                                      "approved and pending changes. Approving a change doesn't edit the plan: update "
-                                      "the tasks, and re-baseline if the sponsor agrees."),
-        ("15. History", "On each reporting date, copy the SnapshotNow row on History and Paste Special > Values onto the "
-                        "first empty row of StatusHistory. Trend charts: forecast vs planned finish, earned value "
+                  "Report and the Agile sheet and can make a task Over-allocated; it does not move task dates."),
+        ("11. Log", "One list for risks, assumptions, issues, dependencies (RAID), decisions and change requests: "
+                    "pick the Type, then fill in the columns that aren't grey. RAID: probability and impact (1-5); "
+                    "Score = probability x impact (issues count as probability 5); Rating from Settings > "
+                    "RAIDHighScore / RAIDMediumScore. Decisions and changes: options and reasons, who decided and "
+                    "when; a change's schedule and cost impact. Overdue when still open past its due date. Link a "
+                    "task by UID and another item by its Ref. The Status sheet lists the top open RAID items, rates "
+                    "RAID amber when any open one is High and totals approved and pending changes. Approving a "
+                    "change doesn't edit the plan: update the tasks, and re-baseline if the sponsor agrees."),
+        ("12. History", "On each reporting date, copy the SnapshotNow row at the bottom of the Status sheet and Paste "
+                        "Special > Values onto the first empty row of History's StatusHistory. Trend charts: forecast vs planned finish, earned value "
                         "S-curve, SPI / CPI and a story-point burn-up that shows scope changes."),
         ("Earned value", "Set a baseline first: without one, Budget = current Cost and PV follows the current plan, so "
                          "SPI and CPI only show progress against the latest plan. PV = budget of work planned before the "
@@ -105,12 +129,11 @@ def text(sizes, wizard=False):
         ("Rescheduling", "Settings > RescheduleAfterStatus = Yes moves incomplete work to after the status date (like MS "
                          "Project 'Update Project'), so late tasks push successors."),
         ("Capacity", f"Tables grow when you add rows: Tasks starts with {sizes.tasks} rows, Resources {sizes.resources}, "
-                     f"Assignments {sizes.assignments}, "
-                     f"Sprints {sizes.sprints}, Holidays 100. The Gantt shows the first {sizes.tasks} "
+                     f"SprintTable {sizes.sprints}, Log 150, Holidays 100. The Gantt shows the first {sizes.tasks} "
                      f"tasks (the Gantt says so when there are more); the Gantt timeline has {sizes.gantt_columns} columns; "
-                     f"the per-resource grids on Sprints and Resource Report show the first {sizes.grid_resources} "
+                     f"the per-resource grids on the Resource Report show the first {sizes.grid_resources} "
                      f"resources and the Resource Report {sizes.weeks} weeks. To change these sizes, rebuild with "
-                     "scripts/build_planner.py --tasks / --resources / --assignments / --grid-resources / --sprints / "
+                     "scripts/build_planner.py --tasks / --resources / --grid-resources / --sprints / "
                      "--gantt-columns / --weeks (see README)."),
         ("Speed", "An edit recalculates in well under a second for typical plans (about 0.05 s for 200 tasks). Each change "
                   "to the build is timed in CI; see docs/ARCHITECTURE.md in the repository. Keep the status date typed "
@@ -131,10 +154,10 @@ def text(sizes, wizard=False):
                       "scripts/upgrade_planner.py old.xlsx new.xlsx). Everything you typed is carried over."),
     ] + (WIZARD if wizard else []) + [
         ("NAMES AND TABLES (Formulas > Name Manager)", None),
-        ("Tables", "Tasks, ResourceTable, AssignmentTable, SprintTable, HolidayTable, GanttView, KPIs, StatusSummary, "
+        ("Tables", "Tasks, ResourceTable, SprintTable, HolidayTable, GanttView, KPIs, StatusSummary, "
                    "NextMilestones, OverallStatus, StatusRAG, EarnedValue, StatusNotes, PhaseSummary, MilestoneReport, "
                    "LateTasks, StartingSoon, DueSoon, CriticalTasks, ResourceSummary, AgileKPIs, SprintBacklog, SprintBurndown, "
-                   "RAIDLog, DecisionLog, ChangeLog, TopRAID, ChangeControl, SnapshotNow, StatusHistory and the List* "
+                   "Log, TopRAID, ChangeControl, SnapshotNow, StatusHistory and the List* "
                    "dropdown tables. Inside a table, formulas read [@Column] (this row)."),
         ("Settings", "ProjectStart, StatusDate, StatusWorkday, WorkWeek, Holidays, HoursPerDay, DefaultUnits, "
                      "RescheduleAfterStatus, GanttStart, GanttPeriod, OutlineShowLevel, RoadmapStart, Sprint1Start, SprintLength, SprintCount, SprintPrefix, "
@@ -145,8 +168,8 @@ def text(sizes, wizard=False):
         ("Task columns", "tsk_ID, tsk_UID, tsk_WBS, tsk_Name, tsk_Duration, tsk_PlanStart, tsk_FcFinish, tsk_Status, tsk_Resource, "
                          "tsk_Work, tsk_Cost ... each is Tasks[Column], so it grows with the table. Other sheets read Tasks "
                          "only through these names."),
-        ("Resources / Sprints", "res_Name, res_MaxUnits, res_Rate, ...  spr_Name, spr_Start, spr_End, spr_WorkDays, spr_Capacity, "
-                                "spr_Work"),
+        ("Resources / sprints / Log", "res_Name, res_MaxUnits, res_Rate, ...  spr_Name, spr_Start, spr_End, spr_WorkDays, "
+                                      "spr_Capacity, spr_Work ...  log_Type, log_Status, log_Rating, log_Open ..."),
         ("Key formulas", "Calculated start = WORKDAY.INTL(MIN(MAX(ProjectStart, [@_ConstraintLow], predecessor drivers), "
                          "[@_ConstraintHigh]) - 1, 1, WorkWeek, Holidays).  Predecessor driver (FS) = WORKDAY.INTL(OFFSET(Tasks[[#Headers],[_LeafCalcFinish]], "
                          "[@_Pred1Pos], 0), 1 + Lag, WorkWeek, Holidays).  Planned Start = Baseline Start if set, "
@@ -174,13 +197,30 @@ WIZARD = [
 
 
 def build_instructions(wb, sizes, wizard=False):
-    ws = wb.create_sheet("Instructions")
-    ws.column_dimensions["A"].width = 3
+    ws = wb[START]                                  # created by build_settings, which wrote the essential settings
     ws.column_dimensions["B"].width = 28
     ws.column_dimensions["C"].width = 110
-    ws["B1"] = "Project Planner - MS Project-compatible Excel template"
+    ws["B1"] = "Project Planner - start here"
     ws["B1"].font = font(size=18, bold=True, color="1F4E78")
-    r = 3
+    ws["B2"] = "Blue = type here. Grey = calculated. Every sheet works in Excel alone: desktop, web and iPhone."
+    ws["B2"].font = NOTE_FONT
+    _header(ws, START_ROW - 1, "YOUR PROJECT")
+    r = START_ROW + len(ESSENTIAL) + 1
+    for heading, steps in (("QUICK START", QUICK_START), ("EVERY WEEK", WEEKLY)):
+        _header(ws, r, heading)
+        r += 1
+        for label, body, sheet in steps:
+            ws.cell(r, 2, label).font = font(bold=True)
+            c = ws.cell(r, 3, body + (f"  Go to {sheet}." if sheet else ""))
+            c.alignment = Alignment(wrap_text=True, vertical="top")
+            if sheet:                               # a link inside the workbook (a hyperlink, not a formula)
+                c.hyperlink = Hyperlink(ref=c.coordinate, location=f"'{sheet}'!A1")
+                c.font = font(color="1F4E78", underline="single")
+            r += 1
+        r += 1
+    ws.freeze_panes = "A3"
+    _header(ws, r, "REFERENCE")
+    r += 1
     for label, body in text(sizes, wizard):
         if body is None:
             r += 1
@@ -197,3 +237,9 @@ def build_instructions(wb, sizes, wizard=False):
                 c.fill = CALC_FILL
         r += 1
     return ws
+
+
+def _header(ws, r, label):
+    ws.cell(r, 2, label).font = HEADER_FONT
+    ws.cell(r, 2).fill = HEADER_FILLS["in"]
+    ws.cell(r, 3).fill = HEADER_FILLS["in"]

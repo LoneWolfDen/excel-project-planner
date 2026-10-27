@@ -17,7 +17,8 @@ import io
 import re
 import xml.etree.ElementTree as ET
 
-from .tasks import CONSTRAINTS, LINK_NUMBERS, LINKS, each
+from .settings import week_preset
+from .tasks import CONSTRAINTS, LINK_NUMBERS, LINKS, PEOPLE, each, take_links
 
 NS = "{http://schemas.microsoft.com/project}"
 LINK_TYPES = {0: "FF", 1: "FS", 2: "SF", 3: "SS"}
@@ -129,6 +130,7 @@ def read_project(data):
         for name, working in zip(DAY_SETTINGS, week or []):
             if working is not None:
                 settings[name] = "Yes" if working else "No"
+        settings["WorkingWeek"] = week_preset(settings)
         holidays = [(d, "From MS Project") for d in sorted(set(off))]
         if partial:
             warnings.append(f"{len(partial)} part-day calendar exceptions were not imported (whole days only).")
@@ -182,6 +184,8 @@ def read_project(data):
         warnings.append(f"{below} links point to a task listed below its successor; Link Check on Tasks shows them "
                         "(move the predecessor above).")
 
+    for row in tasks:
+        take_links(row)                                   # P1 / T1 / L1 ... -> the Predecessors text
     months = _leave_months(start, leave)
     return ProjectData(settings=settings, tasks=tasks, resources=resources, holidays=holidays, leave=leave,
                        leave_months=months, assignments=more), warnings
@@ -226,11 +230,14 @@ def _task(t, uid, hours, assignments, warnings):
         dropped = ", ".join(_text(link, "PredecessorUID") for link in links[LINKS:])
         _warn(row, warnings, f"only {LINKS} predecessors are kept; dropped UID {dropped}")
 
-    if assignments:            # the person with the most work goes on Tasks, the others on the Assignments sheet
+    if assignments:            # into the task's Resources cell, the person with the most work first
         ranked = sorted(assignments, key=lambda a: -a[0])
         _, name, units = ranked[0]
         row["Res"], row["Units"] = name, None if units == 1 else units
-        row["_more"] = [(uid, n, None if u == 1 else u) for _, n, u in ranked[1:]]
+        row["_more"] = [(uid, n, None if u == 1 else u) for _, n, u in ranked[1:PEOPLE]]
+        if len(ranked) > PEOPLE:
+            _warn(row, warnings, f"only {PEOPLE} people per task are kept; dropped "
+                                 + ", ".join(n for _, n, _ in ranked[PEOPLE:]))
     for a in t.findall(NS + "ExtendedAttribute"):
         if _text(a, "FieldID") == NUMBER1:
             row["SP"] = _float(a, "Value") or None
@@ -243,7 +250,7 @@ def _task(t, uid, hours, assignments, warnings):
 
 
 def _leave_months(start, leave):
-    """Leave sheet headers: from the project's first month for three years, and any month that has leave."""
+    """Leave month headers (Resources sheet): from the project's first month for three years, and any month that has leave."""
     from .leave import month_labels
     first = (start.year, start.month) if start else (2026, 1)
     labels = month_labels(first, 36)

@@ -14,11 +14,11 @@ How the workbook is put together, and the rules every change follows. These rule
    A1 ranges appear only where Excel allows nothing else: conditional formatting, data validation and chart
    series. Excel shifts those itself when rows or columns are inserted.
 2. **One formula per column.** Inside a table every row of a column holds the same formula text: a calculated
-   column. Excel fills it into inserted rows automatically. Grids outside tables (Sprints load and utilisation,
+   column. Excel fills it into inserted rows automatically. Grids outside tables (Resource Report load and utilisation,
    Gantt header dates) also use one formula per grid, located by `ROW()`/`COLUMN()` offsets.
 3. **Inputs and formulas never mix.** Blue text = input, grey fill = formula, light-grey header = hidden helper.
    Summaries roll up rather than reading inputs.
-4. **Readable formulas.** Columns have short, plain names (`Forecast Finish`, `Pred1 UID`); helper columns start
+4. **Readable formulas.** Columns have short, plain names (`Forecast Finish`, `Predecessors`); helper columns start
    with `_` (`_CalcStart`, `_Pred1Pos`). Each helper does one job so the visible formulas stay short. Header comments
    explain units and meaning.
 5. **Cheap to recalculate.** Volatile functions (`OFFSET`, `INDIRECT`, `TODAY`, `NOW`, `RAND`, `CELL`, `INFO`) make
@@ -34,21 +34,20 @@ How the workbook is put together, and the rules every change follows. These rule
 
 | Sheet | Table(s) | What is calculated there |
 |---|---|---|
-| Settings | (named cells) | Project start, status date, calendar mask (`WorkWeek`), Gantt and sprint settings |
-| Tasks | `Tasks` | All scheduling: WBS, summaries, links, planned / forecast dates, variances, progress, work, cost |
+| Start | (named cells) | The five essential settings (`ESSENTIAL` in `planner/settings.py`), quick start, reference |
+| Settings | (named cells) | The other settings, calendar mask (`WorkWeek`, from the Working week preset or the seven day rows), Gantt and sprint settings |
+| Tasks | `Tasks` | All scheduling: WBS, summaries, links, planned / forecast dates, variances, progress, work, cost. Columns are in `SECTIONS`: the essentials, then one collapsed Excel column group per optional section, each with one visible key column (Excel merges groups that touch); the helpers are a level-2 group |
 | Gantt | `GanttView` + timeline | Task panel reads Tasks by position; timeline = conditional formatting only |
-| Resources | `ResourceTable` | Assigned tasks, work, cost per resource |
-| Sprints | `SprintTable` + 2 grids | Sprint calendar, capacity, load and utilisation per resource |
-| Holidays | `HolidayTable` | Non-working dates (`Holidays` = `HolidayTable[Date]`) |
+| Resources | `ResourceTable` | Assigned tasks, work, cost per resource, then one leave column per month (`leave_Grid` / `leave_Months` name only the month columns, so the leave look-ups never depend on the calculated columns) |
+| Settings (below the settings) | `HolidayTable` | Non-working dates (`Holidays` = `HolidayTable[Date]`) |
 | MSP_Tasks / MSP_Resources | `MSPTasks`, `MSPResources` | MS Project field names, for the Import Wizard; only with `--import-wizard-sheets` |
-| Dashboard | `KPIs`, `StatusSummary`, `NextMilestones` | Project KPIs |
-| Status Report | `OverallStatus`, `StatusRAG`, `EarnedValue`, `StatusNotes` | RAG by area, earned value (`evm_*` names) |
+| Status | `OverallStatus`, `StatusRAG`, `KPIs`, `StatusSummary`, `NextMilestones`, `EarnedValue`, `TopRAID`, `ChangeControl`, `StatusNotes`, `SnapshotNow` | The weekly page: status date (`StatusDateInput`), RAG by area, key figures, earned value (`evm_*` names), the snapshot row |
 | Schedule Report | `PhaseSummary`, `MilestoneReport`, `LateTasks`, `StartingSoon`, `DueSoon`, `CriticalTasks` | Ranked lists |
-| Resource Report | `ResourceSummary` + 2 week grids | Weekly hours (`rw_Load`) and utilisation (`rw_Util`) per resource |
-| Agile Report | `AgileKPIs`, `SprintBacklog`, `SprintBurndown` | Velocity forecast (`agl_*` names), current sprint |
-| RAID / Decisions / Changes | `RAIDLog`, `DecisionLog`, `ChangeLog` | Score, rating, overdue, linked task (`raid_*`, `dec_*`, `chg_*` names) |
-| History | `SnapshotNow`, `StatusHistory` | This status date's numbers; pasted history for trend charts |
-| Lists | `List*` | Dropdown values (`L_DepType`, `L_Mode`, ...) |
+| Resource Report | `ResourceSummary` + week and sprint grids | Hours (`rw_Load`, `load_Grid`) and utilisation (`rw_Util`) per resource by week and by sprint, leave by week (`rw_Leave`) and by sprint (`spr_LeaveGrid`, hidden) |
+| Agile | `SprintTable`, `AgileKPIs`, `SprintBacklog`, `SprintBurndown` | Sprint calendar, capacity, points and velocity (`spr_*`), release forecast (`agl_*`), current sprint |
+| Log | `Log` | RAID items, decisions and change requests: score, rating, overdue, waiting, linked task (`log_*` names; `log_Open` = 1 while open) |
+| History | `StatusHistory` | Pasted snapshots for the trend charts |
+| Settings (columns G onward, collapsed) | `List*` | Dropdown values (`L_DepType`, `L_Mode`, ...) |
 
 Code: `planner/core.py` (styles, `add_table`, structured-reference helpers), one module per sheet, `planner/build.py`
 (command line, LibreOffice recalculation). `scripts/build_planner.py` is the entry point.
@@ -146,18 +145,24 @@ The plan moves by the same number of days as the forecast, so an ALAP task adds 
 - Bar labels and colours from a Settings table are not built: conditional formatting can't show per-row text or take
   a colour from a cell, so both would need a formula in every timeline cell (30,000 on the sample Gantt).
 
-## Assignments (several people on a task)
+## Text inputs: Predecessors and Resources
 
-A task's first person stays on Tasks (Resource, Units), so the common case is still one row; the Assignments sheet
-(AssignmentTable) holds one row per extra person. Each row looks its task up once (`_TaskPos`, a MATCH on UID) and
-works out its own work, cost and time-phasing (`_StartWD`, `_FinishWD`, `_WorkPerWD`, `_WorkBeforeStart`: the same
-columns Tasks has), from Tasks columns that never read the Assignments sheet back, so it can't be circular or move a
-date. Per-resource figures are therefore two SUMIFS, one over Tasks (`tsk_Resource`) and one over this table
-(`asg_Resource`): `resources.by_resource` and `sprints.work_upto` write both. Tasks adds the rows' work and cost to the
-task (`_LeafTotalWork`, `_LeafTotalCost`) while `_LeafWork` / `_LeafCost` stay the first person's share. Resource Names
-lists the extra people by `_Key` = Task UID x 1000 + n (the n-th valid row of the task), one MATCH per name, because
-Excel 2019 has no TEXTJOIN-free way to join a filtered list; past four names it adds "+n more". A task's Actual Cost is
-shared between its people by cost.
+A task's links and people are each one cell, as in MS Project: Predecessors `12, 14SS+2d` (by UID: Excel can't
+rewrite typed text when rows move, so typed links can't use the row ID) and Resources `Alex Chen, JL[50%]` (names or
+initials, optional units). Formulas split each cell into hidden per-link / per-person columns
+(`_Pred1Text`, `_Pred1UID`, `_Pred1Type`, `_Pred1Lag` ...; `_Res2Text`, `_Res2`, `_Res2Units`, `_Res2Work` ...), with
+`TRIM(MID(SUBSTITUTE(text, ",", REPT(" ", 99)), (k-1) x 99 + 1, 99))` for the k-th item: no array formulas, no
+TEXTSPLIT. Each slot looks only once the one before it found something, so empty cells cost almost nothing. These
+read inputs only, so they are not volatile; the scheduling and reports read the parsed columns exactly as they read
+the old input columns.
+
+The first person uses `_Resource1` / `_Units1` and the `_Leaf...` columns; people 2-4 have their own work, cost,
+time-phasing, work done and actual cost columns (`tasks.PERSON_FIELDS`). Per-resource figures sum one SUMIFS per person
+slot (`resources.by_resource`, `workload.work_upto`), and each slot beyond the first is wrapped in
+`IF(MaxPeople >= k, ...)`: MaxPeople (Settings) is the most people on any task, so a plan with one person per task pays
+for one slot only. Week and sprint boundaries are turned into working-day numbers once (`rw_CumWD`, SprintTable
+`_FirstWD` / `_LastWD`) instead of inside every grid cell's SUMIFS. A task's Actual Cost is shared between its
+people by cost.
 
 ## Reports
 
@@ -187,10 +192,10 @@ column is found by its header (so months can be added) and each person's row onc
 Leave changes capacity only; the grids read inputs, so a task edit doesn't recalculate them.
 
 **History without macros.** A formula can't remember last week's value, so status history works like the baseline:
-`SnapshotNow` is one row of formulas (names only) and the PM pastes it as values into `StatusHistory`, an input
-table the trend charts read. A macro or script may automate the copy, but the workbook never depends on it.
+`SnapshotNow`, at the bottom of the Status sheet, is one row of formulas (names only) and the PM pastes it as values
+into History's `StatusHistory`, an input table the trend charts read. A macro or script may automate the copy, but the workbook never depends on it.
 
-Weekly resource hours use the same SUMIFS spreading as the sprint load (`sprints.work_between`), anchored on
+Weekly resource hours use the same SUMIFS spreading as the sprint load (`workload.work_between`), anchored on
 `rw_LoadOrigin`; story points are done on a task's Actual Finish (`_DoneDate`), and per-sprint points are columns
 of `SprintTable`, so the release burndown is one formula per column.
 
@@ -220,8 +225,23 @@ Tasks, people, assignments, holidays, leave and settings go through `ProjectData
 builder sizes the tables and keeps UIDs unique; every other input table (logs, status history, sprint goals, PM RAG
 and notes) is copied column by column onto the new template's input columns (blue headers) with the same header.
 Dropdown lists keep the template's values and add the user's own. Each workbook carries `PlannerVersion`; a change
-that moves an input adds its mapping (`RENAMED`, or a step in `read_planner`) and a fixture of the old layout under
-`tests/fixtures/`, and `tests/test_upgrade.py` checks that the upgraded plan schedules exactly as the old one did.
+that moves an input adds its mapping (`RENAMED`, `RENAMED_TABLES`, `LOGS`, or a step in `read_planner`) and a fixture
+of the old layout under `tests/fixtures/`, and `tests/test_upgrade.py` checks that the upgraded plan schedules exactly
+as the old one did. Tables copy by name wherever their sheet now is (the Status, Agile and Log sheets of v1.7 took
+over `StatusRAG`, `StatusNotes`, `SprintTable` and the rest unchanged). The three logs of v1.6 merge into the one
+`Log`: RAID items keep their Ref, decisions and change requests take the next free ones, and a warning lists the new
+numbers.
+
+## One log, typed rows
+
+The Log holds six kinds of item in one table rather than three sheets. Every row has the same core (Ref, Type, Title,
+Owner, Raised, Due, Status, linked task, Update); the columns only one kind needs (probability and impact for RAID
+items, options and reasons for decisions and changes, schedule and cost impact for changes) are greyed out by
+conditional formatting on rows of another type, and their formulas return blank there, so the Status sheet's
+`COUNTIFS` / `SUMIFS` read the whole Log by `log_Type`. "Still open" is one helper column, `_Open` (the status is
+not one of Closed, Approved, Rejected, Superseded, Implemented), used by the overdue flag, the waiting days, the
+top RAID list and History. The Status dropdown is a data-validation `IF` on the row's Type that picks one of three
+lists, so no `INDIRECT` is needed.
 
 ## Excel version
 

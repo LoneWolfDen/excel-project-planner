@@ -1,8 +1,8 @@
-"""History sheet: status snapshots for trend charts (Excel Tables "SnapshotNow" and "StatusHistory").
+"""History sheet: status snapshots for trend charts (Excel Table "StatusHistory").
 
-A formula can't remember last week's value, so history is kept the way the baseline is: SnapshotNow shows this
-status date's numbers (formulas), and on each reporting date the PM copies that row and pastes it as values onto
-the first empty row of StatusHistory (inputs). The trend charts read StatusHistory: forecast vs planned finish,
+A formula can't remember last week's value, so history is kept the way the baseline is: SnapshotNow, at the
+bottom of the Status sheet, shows this status date's numbers (formulas), and on each reporting date the PM copies
+that row and pastes it as values onto the first empty row of StatusHistory (inputs). The trend charts read StatusHistory: forecast vs planned finish,
 earned value S-curve, SPI / CPI, and a story-point burn-up that shows scope changes. Nothing here needs a macro;
 a macro or script would only automate the same copy and paste.
 """
@@ -31,9 +31,9 @@ FIELDS = [
     ("EAC", "evm_EAC", "#,##0"),
     ("Points Done", "agl_Done", "0.#"),
     ("Total Points", "TotalPoints", "0.#"),
-    ("Open Risks", 'COUNTIFS(raid_Type,"Risk",raid_Status,"<>Closed")', "0"),
-    ("Open Issues", 'COUNTIFS(raid_Type,"Issue",raid_Status,"<>Closed")', "0"),
-    ("Pending Changes", 'COUNTIF(chg_Status,"Submitted")+COUNTIF(chg_Status,"Under Review")', "0"),
+    ("Open Risks", 'COUNTIFS(log_Type,"Risk",log_Open,1)', "0"),
+    ("Open Issues", 'COUNTIFS(log_Type,"Issue",log_Open,1)', "0"),
+    ("Pending Changes", 'COUNTIFS(log_Type,"Change",log_Open,1)', "0"),
     ("RAG", "ProjectRAG", "@"),
 ]
 HISTORY_ROWS = 60
@@ -59,20 +59,18 @@ def sample_history():
 def build_history(wb, blank):
     ws = wb.create_sheet("History")
     title(ws, "Status History",
-          "On each reporting date: select the SnapshotNow row below, Copy, then click the first empty row of "
-          "StatusHistory and Paste Special > Values. The trend charts update from StatusHistory.")
+          "On each reporting date: on the Status sheet, select the SnapshotNow row at the bottom, Copy, then click "
+          "the first empty row of the table below and Paste Special > Values. The trend charts update from it.")
     ws.column_dimensions["A"].width = 3
-    add_table(ws, "SnapshotNow", 4, 2, [Col(h, width=11 if fmt != DATE else 13, fmt=fmt, formula=f, center=True)
-                                         for h, f, fmt in FIELDS], 1, autofilter=False)
     data = [] if blank else sample_history()
-    top = 8
-    ws.cell(top - 1, 2, "StatusHistory: one row per reporting date (values pasted from SnapshotNow)").font = \
+    top = 5
+    ws.cell(top - 1, 2, "StatusHistory: one row per reporting date (values pasted from Status > SnapshotNow)").font = \
         font(bold=True, color="1F4E78")
     add_table(ws, "StatusHistory", top, 2, [Col(h, "in", 11 if fmt != DATE else 13, fmt, center=True,
                                                 values=[row[i] for row in data])
                                             for i, (h, _, fmt) in enumerate(FIELDS)], HISTORY_ROWS)
     _charts(ws, top)
-    ws.freeze_panes = "C5"
+    ws.freeze_panes = f"C{top + 1}"
     return ws
 
 

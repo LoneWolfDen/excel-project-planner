@@ -123,12 +123,18 @@ class ExportTest(unittest.TestCase):
         self.assertEqual((text(resources["Priya Sharma"], "MaxUnits"), text(resources["Priya Sharma"], "StandardRate")),
                          ("0.5", "95"))
         uid_of = {text(r, "UID"): n for n, r in resources.items()}
-        assignments = {int(text(a, "TaskUID")): (uid_of[text(a, "ResourceUID")], float(text(a, "Units")), text(a, "Work"))
-                       for a in self.root.iter(NS + "Assignment")}
+        assignments = {}
+        for a in self.root.iter(NS + "Assignment"):
+            assignments.setdefault(int(text(a, "TaskUID")), []).append(
+                (uid_of[text(a, "ResourceUID")], float(text(a, "Units")), text(a, "Work")))
         expected = {u: r for u, r in self.sheet.items() if r["Resource"] and not r["_IsSummary"]}
         self.assertEqual(sorted(assignments), sorted(expected))
-        self.assertEqual(assignments[18], ("Casey Kim", 0.5, "PT12H0M0S"))     # 3 days at 50%
-        self.assertEqual(assignments[2], ("Priya Sharma", 1.0, "PT24H0M0S"))
+        self.assertEqual(assignments[18], [("Casey Kim", 0.5, "PT12H0M0S")])     # 3 days at 50%
+        self.assertEqual(assignments[2], [("Priya Sharma", 1.0, "PT24H0M0S")])
+        # the Assignments sheet's people follow the task's own: 5 days, Alex full time and Jordan at 50%
+        self.assertEqual(assignments[7], [("Alex Chen", 1.0, "PT40H0M0S"), ("Jordan Lee", 0.5, "PT20H0M0S")])
+        self.assertEqual(text(self.tasks[7], "Work"), "PT60H0M0S")
+        self.assertEqual(sum(len(v) for v in assignments.values()), len(expected) + 4)
 
     def test_elements_in_ms_project_order(self):
         # MS Project reports a file with elements out of order as corrupt; every tag must be in ORDER
@@ -208,7 +214,7 @@ class ExportEditsTest(unittest.TestCase):
         self.assertEqual((text(base, "Number"), day(text(base, "Start")), day(text(base, "Finish"))),
                          ("0", dt.date(2026, 11, 10), dt.date(2026, 11, 19)))
         self.assertEqual((text(base, "Duration"), text(base, "Work"), text(base, "Cost")),
-                         ("PT64H0M0S", "PT64H0M0S", "4160"))
+                         ("PT64H0M0S", "PT96H0M0S", "6720"))            # Taylor, and Sam at 50%
         self.assertEqual(text(tasks[21], "Duration"), "PT80H0M0S")               # the current plan, not the baseline
         self.assertEqual([text(l, "PredecessorUID") for l in tasks[23].findall(NS + "PredecessorLink")], ["21"])
 
@@ -317,6 +323,7 @@ class ImportTest(unittest.TestCase):
                          (dt.date(2027, 3, 1), dt.date(2027, 3, 2), 2, 15, 800))
         self.assertEqual((survey["Res"], survey["Units"]), ("Ben Okafor", 0.5))
         self.assertEqual((rows[12]["Res"], rows[12]["Units"]), ("Ana Silva", None))     # the one with the most work
+        self.assertEqual(project.assignments, [(12, "Ben Okafor", 0.5)])                # the other: Assignments sheet
         self.assertEqual((rows[12]["P1"], rows[12]["T1"], rows[12]["L1"]), (11, "FS", 1))   # 1 elapsed day
         self.assertIsNone(rows[12].get("L2"))                                              # % lag dropped
         self.assertEqual([(rows[13][f"P{k}"], rows[13][f"T{k}"]) for k in (1, 2, 3)], [(11, "FS"), (12, "FF"), (40, "FS")])
@@ -331,7 +338,7 @@ class ImportTest(unittest.TestCase):
         joined = "\n".join(warnings)
         for expected in ("part-day", "Task 10 (Plan): links on a summary task", "lag in %", "elapsed lag",
                          "Task 20 (Move day): only 4 predecessors are kept; dropped UID 40",
-                         "kept Ana Silva, not Ben Okafor", "3 links point to a task listed below its successor"):
+                         "3 links point to a task listed below its successor"):
             self.assertIn(expected, joined)
         self.assertNotIn("constraint", joined)
         self.assertIn("[From MS Project: only 4 predecessors are kept", rows[20]["Notes"])
@@ -371,7 +378,7 @@ class ImportRecalcTest(unittest.TestCase):
             keys = ["UID", "Level", "Task Name", "Mode", "Duration", *[f"Pred{k} {x}" for k in tasks.LINK_NUMBERS
                                                                         for x in ("UID", "Type", "Lag")],
                     "Constraint", "Constraint Date", "Deadline", "Actual Start", "Actual Finish",
-                    "% Complete", "Resource", "Units", "Actual Cost", "Story Points", "Notes", "Forecast Start",
+                    "% Complete", "Resource", "Units", "Resource Names", "Actual Cost", "Story Points", "Notes", "Forecast Start",
                     "Forecast Finish", "Late Finish", "Total Slack", "Work", "Cost", "Status", "Critical"]
             blank = (None, "", 0)
             diffs = [(w["UID"], k, w[k], g[k]) for w, g in zip(want, got) for k in keys
@@ -386,6 +393,9 @@ class ImportRecalcTest(unittest.TestCase):
             people = lambda w: [(r["Resource Name"], r["Max Units"], r["Std Rate"], r["Type"])
                                 for r in table_rows(w, "Resources", "ResourceTable") if r["Resource Name"]]
             self.assertEqual(people(wb), people(original))
+            extra = lambda w: [(r["Task UID"], r["Resource"], r["Units"], r["Work"])
+                               for r in table_rows(w, "Assignments", "AssignmentTable") if r["Task UID"]]
+            self.assertEqual(extra(wb), extra(original))
 
     def test_ms_project_file_builds_a_working_workbook(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -197,6 +197,9 @@ def read_plan(data):
         "holidays": sorted({d for d in (_date(h.get("Date")) for h in wb.table("HolidayTable")) if d}),
         "tasks": tasks,
         "resources": [r for r in wb.table("ResourceTable") if _text(r.get("Resource Name")).strip()],
+        # more people on tasks (workbooks before v1.5 have no Assignments sheet); _Valid = 1 for the rows Tasks uses
+        "assignments": [a for a in (wb.table("AssignmentTable") if "AssignmentTable" in wb.tables else [])
+                        if _num(a.get("_Valid")) == 1],
     }
 
 
@@ -382,7 +385,12 @@ def to_mspdi(plan):
                 raise ExportError(f"Task {t['UID']} ({t['Task Name']}) uses resource '{name}', which isn't on the "
                                   "Resources sheet.")
             units = _num(t.get("Units"), None)
-            assignments.append((int(t["UID"]), resources[name], plan["units"] if units is None else units, work))
+            assignments.append((int(t["UID"]), resources[name], plan["units"] if units is None else units,
+                                _num(t.get("_LeafWork"), work)))
+    for a in plan["assignments"]:                # checked by the sheet: a detail task, a resource on Resources
+        units = _num(a.get("Units"), None)
+        assignments.append((int(a["Task UID"]), resources[a["Resource"]], plan["units"] if units is None else units,
+                            _num(a.get("Work"))))
 
     res_el = _sub(p, "Resources")
     for uid, r in enumerate(plan["resources"], start=1):

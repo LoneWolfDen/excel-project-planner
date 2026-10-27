@@ -22,11 +22,14 @@ def work_upto(d, resource=None):
     """Hours of task work scheduled up to and including working day d (counted from the project start).
 
     W(D) = SUMIFS(work, finish < D) + D * SUMIFS(work per day, running on D) - SUMIFS(work before start, running on D).
-    Three SUMIFS are far cheaper than a SUMPRODUCT over every task, and SUMIFS needs no array formulas."""
-    res = f',tsk_Resource,{resource}' if resource else ""
-    running = f'tsk_StartWD,"<="&{d},tsk_FinishWD,">="&{d}{res}'
-    return (f'(SUMIFS(tsk_LeafWork,tsk_FinishWD,"<"&{d},tsk_FinishWD,">0"{res})'
-            f'+{d}*SUMIFS(tsk_WorkPerWD,{running})-SUMIFS(tsk_WorkBeforeStart,{running}))')
+    Three SUMIFS are far cheaper than a SUMPRODUCT over every task, and SUMIFS needs no array formulas. They run
+    over Tasks (each task's Resource) and over the Assignments sheet (the other people), which has the same columns."""
+    def part(p, resource_col):
+        res = f',{p}{resource_col},{resource}' if resource else ""
+        running = f'{p}StartWD,"<="&{d},{p}FinishWD,">="&{d}{res}'
+        return (f'SUMIFS({p}{"LeafWork" if p == "tsk_" else "Work"},{p}FinishWD,"<"&{d},{p}FinishWD,">0"{res})'
+                f'+{d}*SUMIFS({p}WorkPerWD,{running})-SUMIFS({p}WorkBeforeStart,{running})')
+    return f"({part('tsk_', 'Resource')}+{part('asg_', 'Resource')})"
 
 
 def work_between(start, end, resource=None):

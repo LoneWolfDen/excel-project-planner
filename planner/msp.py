@@ -14,7 +14,6 @@ def build_msp_tasks(wb, n_rows):
     show = lambda col: f'IF({blank},"",{t(col)})'
     not_summary = lambda expr: f'IF({blank},"",IF({t("tsk_IsSummary")},"",{expr}))'
     date = lambda col: f'IF({blank},"",IF(N({t(col)})=0,"",{t(col)}))'
-    units = t("tsk_Units")
     code, names = t("tsk_ConstraintCode"), ",".join(f'"{c}"' for c in CONSTRAINTS)
     cols = [
         Col("ID", width=5, formula=show("tsk_ID")),
@@ -27,9 +26,7 @@ def build_msp_tasks(wb, n_rows):
         Col("Finish", width=12, fmt=SHORT_DATE, formula=show("tsk_FcFinish")),
         Col("Predecessors", width=14, formula=not_summary(t("tsk_Predecessors"))),
         Col("Unique ID Predecessors", width=14, formula=not_summary(t("tsk_UIDPredecessors"))),
-        Col("Resource Names", width=22, formula=(
-            f'IF({blank},"",IF({t("tsk_Resource")}="","",{t("tsk_Resource")}&'
-            f'IF(OR({units}="",{units}=1),"","["&ROUND({units}*100,0)&"%]")))')),
+        Col("Resource Names", width=22, formula=f'IF({blank},"",{t("tsk_ResourceNames")}&"")'),
         Col("% Complete", width=9, formula=not_summary(f'ROUND({t("tsk_Progress")}*100,0)')),
         Col("Actual Start", width=12, fmt=SHORT_DATE, formula=date("tsk_ActStart")),
         Col("Actual Finish", width=12, fmt=SHORT_DATE, formula=date("tsk_ActFinish")),

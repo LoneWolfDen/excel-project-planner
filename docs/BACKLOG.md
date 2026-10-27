@@ -96,7 +96,7 @@ flowchart LR
 
 | ID | Item | Pri | Size | How | Acceptance criteria |
 |---|---|---|---|---|---|
-| [B-301](https://github.com/LoneWolfDen/excel-project-planner/issues/30) | Multiple resources per task (assignments) | P1 | L | F | Assignments sheet (Task UID, Resource, Units); work and cost per assignment; Tasks shows `A[50%],B`; resource totals and sprint load use assignments; MSP export carries all. |
+| [B-301](https://github.com/LoneWolfDen/excel-project-planner/issues/30) | ✅ Multiple resources per task (assignments) | P1 | L | F | v1.5: Assignments sheet (Task UID, Resource, Units) for the people beyond Tasks > Resource; work and cost per assignment; Tasks shows `A[50%], B` in Resource Names; resource totals, weekly and sprint load and over-allocation include them; MSP export and import carry all. |
 | [B-302](https://github.com/LoneWolfDen/excel-project-planner/issues/31) | Cost model | P2 | M | F | Overtime rate, cost per use, fixed cost per task; Material = quantity × rate (no hours); Cost resources take an amount. |
 | [B-303](https://github.com/LoneWolfDen/excel-project-planner/issues/32) | Resource availability and leave | P2 | M | F | Leave sheet (resource, from, to); part-time max units by date range; capacity excludes leave. |
 | [B-304](https://github.com/LoneWolfDen/excel-project-planner/issues/33) | ✅ Weekly resource usage | P1 | M | F | Resource × week grid of hours counting working days only, over-allocation in red, resource histogram chart. |

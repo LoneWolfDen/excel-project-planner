@@ -132,7 +132,7 @@ class StructureTest(Tmp):
     def test_sheets(self):
         self.assertEqual(self.wb.sheetnames, ["Instructions", "Dashboard", "Status Report", "Schedule Report",
                                               "Resource Report", "Agile Report", "RAID", "Decisions", "Changes",
-                                              "History", "Settings", "Tasks", "Gantt", "Resources", "Sprints",
+                                              "History", "Settings", "Tasks", "Gantt", "Resources", "Assignments", "Sprints",
                                               "Holidays", "Leave", "MSP_Tasks", "MSP_Resources", "Lists"])
 
     def test_named_ranges(self):
@@ -511,7 +511,7 @@ class ReportTest(Tmp):
 
     def test_earned_value(self):
         bac, pv, ev, ac = self.expected_evm(self.wb)
-        self.assertEqual(bac, 58040)                        # = total cost: no baseline yet
+        self.assertEqual(bac, 58040 + 10980)                # = total cost: no baseline yet (10,980 = Assignments)
         self.assertEqual(ac - ev, 760 + 560 + 680)          # three tasks have an Actual Cost entered
         for n, want in (("BAC", bac), ("PV", pv), ("EV", ev), ("AC", ac)):
             self.assertAlmostEqual(self.evm(self.wb, n), want, places=6, msg=n)
@@ -540,8 +540,8 @@ class ReportTest(Tmp):
             set_input(wb, 21, "Dur", 10)                    # cost grows, the budget doesn't
         wb = recalc(self.path, self.dir, baseline_then_grow)
         bac, pv, ev, ac = self.expected_evm(wb)
-        self.assertEqual(bac, 58040)
-        self.assertAlmostEqual(self.evm(wb, "BAC"), 58040)
+        self.assertEqual(bac, 69020)
+        self.assertAlmostEqual(self.evm(wb, "BAC"), 69020)
         self.assertAlmostEqual(self.evm(wb, "PV"), pv, places=6)
         self.assertAlmostEqual(self.evm(wb, "EAC"), ac + (bac - ev) / (ev / ac), places=6)
 
@@ -686,19 +686,23 @@ class ResourceReportTest(Tmp):
     def expected(self, wb):
         holidays = {d(r["Date"]) for r in table_rows(wb, "Holidays", "HolidayTable") if r["Date"]}
         hours = {}
-        for t in table_rows(wb, "Tasks", "Tasks"):
-            if t["_IsLeaf"] != 1 or not t["Resource"] or not t["Work"]:
+        tasks = {t["UID"]: t for t in table_rows(wb, "Tasks", "Tasks") if t["_IsLeaf"] == 1}
+        people = [(t, t["Resource"], t["_LeafWork"]) for t in tasks.values() if t["Resource"]]
+        people += [(tasks[a["Task UID"]], a["Resource"], a["Work"])           # the Assignments sheet's extra people
+                   for a in table_rows(wb, "Assignments", "AssignmentTable") if a["_Valid"] == 1]
+        for t, person, work in people:
+            if not work:
                 continue
             days, day = [], t["Forecast Start"]
             while day <= max(t["Forecast Finish"], t["Forecast Start"]):
                 if day.weekday() < 5 and day not in holidays:
                     days.append(day)
                 day += dt.timedelta(days=1)
-            row = hours.setdefault(t["Resource"], [0] * 26)
+            row = hours.setdefault(person, [0] * 26)
             for day in days:
                 week = (day - self.START).days // 7
                 if 0 <= week < 26:
-                    row[week] += t["Work"] / len(days)
+                    row[week] += work / len(days)
         return hours
 
     def check(self, wb):
@@ -717,7 +721,8 @@ class ResourceReportTest(Tmp):
         self.check(wb)
         summary = {r["Resource"]: r for r in table_rows(wb, "Resource Report", "ResourceSummary") if r["Resource"]}
         jordan = summary["Jordan Lee"]
-        self.assertEqual((jordan["Work"], jordan["Work Done"], jordan["Remaining"]), (208, 80, 128))
+        # 20 h of it on Solution architecture (Assignments sheet, done)
+        self.assertEqual((jordan["Work"], jordan["Work Done"], jordan["Remaining"]), (228, 100, 128))
         # over capacity in 2 weeks only because of leave: 30-Oct, and 21-23 Dec around the holidays
         self.assertEqual((jordan["Late Tasks"], jordan["Open Critical"], jordan["Weeks Over"]), (2, 3, 2))
         self.assertEqual(sum(r["Actual Cost"] for r in summary.values()), named_cell(wb, "evm_AC").value)
@@ -740,6 +745,45 @@ class ResourceReportTest(Tmp):
         summary = {r["Resource"]: r for r in table_rows(wb, "Resource Report", "ResourceSummary") if r["Resource"]}
         self.assertEqual(summary["Jordan Lee"]["Weeks Over"], over)
         self.assertAlmostEqual(summary["Jordan Lee"]["Peak Use"], max(u or 0 for u in util["Jordan Lee"]))
+
+
+@unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+class AssignmentsTest(Tmp):
+    """More people on a task: the Assignments sheet's rows add work, cost, names and over-allocation."""
+
+    def test_assignments(self):
+        rows = [(999, "Casey Kim", None), (11, "Casey Kim", None), (7, "Alex Chen", None), (7, "Jordan Lee", None),
+                (7, "Nobody", None), (14, "Priya Sharma", None), (14, "Morgan Patel", None), (14, "Casey Kim", None),
+                (14, "Sam Rivera", None), (14, "Taylor Morgan", 2)]
+
+        def edit(wb):
+            ws = wb["Assignments"]
+            col = columns(ws)
+            for i, row in enumerate(rows):          # after the sample's 4 rows
+                for header, value in zip(("Task UID", "Resource", "Units"), row):
+                    ws.cell(FIRST + 4 + i, col[header]).value = value
+
+        wb = recalc(self.path, self.dir, edit)
+        self.assertEqual(errors_in(wb), [])
+        sheet = table_rows(wb, "Assignments", "AssignmentTable")
+        self.assertEqual([r["Check"] or "" for r in sheet[4:9]], [
+            "UID 999 not found", "UID 11 is a summary: assign one of its tasks", "Already the task's Resource (Tasks)",
+            "Listed twice", "Nobody is not on Resources"])
+        self.assertEqual([r["Work"] for r in sheet[4:9]], [0] * 5)          # ignored rows add nothing
+        t = Tasks(wb)
+        # payment gateway: 6 days x 8 h for Jordan (Tasks) and four more people, and Taylor at 200%
+        self.assertEqual(t.get(14, "Resource Names"),
+                         "Jordan Lee, Priya Sharma, Morgan Patel, Casey Kim, Sam Rivera +1 more")
+        self.assertEqual(t.get(14, "Work"), 48 * 5 + 96)
+        self.assertEqual(t.get(7, "Resource Names"), "Alex Chen, Jordan Lee[50%]")
+        # Taylor is booked 200% in the week of 02-Nov through the Assignments row only
+        self.assertEqual(sheet[13]["_OverAllocated"], "Yes")
+        self.assertEqual(t.get(14, "Over-allocated"), "Yes")
+        resources = {r["Resource Name"]: r for r in table_rows(wb, "Resources", "ResourceTable") if r["Resource Name"]}
+        self.assertEqual((resources["Taylor Morgan"]["Tasks"], resources["Taylor Morgan"]["Work"]), (3, 112 + 96))
+        leaves = [r for r in table_rows(wb, "Tasks", "Tasks") if r["_IsLeaf"] == 1]
+        self.assertAlmostEqual(sum(r["Work"] for r in resources.values() if r["Work"]), sum(r["Work"] for r in leaves))
+        self.assertAlmostEqual(sum(r["Cost"] for r in resources.values() if r["Cost"]), sum(r["Cost"] for r in leaves))
 
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")

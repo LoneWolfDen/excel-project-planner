@@ -15,6 +15,11 @@ NAMES = {"Resource Name": "res_Name", "Initials": "res_Initials", "Group": "res_
          "Max Units": "res_MaxUnits", "Std Rate": "res_Rate", "Email": "res_Email"}
 
 
+def by_resource(task_col, assignment_col, resource):
+    """A per-resource total: the tasks whose Resource is this person plus their rows on the Assignments sheet."""
+    return f"SUMIFS({task_col},tsk_Resource,{resource})+SUMIFS({assignment_col},asg_Resource,{resource})"
+
+
 def build_resources(wb, blank, n_rows=50, resources=None):
     """resources: (name, initials, group, max units, rate, email[, type]) rows replacing the sample (an import)."""
     ws = wb.create_sheet("Resources")
@@ -32,14 +37,17 @@ def build_resources(wb, blank, n_rows=50, resources=None):
         Col("Max Units", "in", 10, "0%", values=[d[3] for d in data], note="Availability: 100% = full time."),
         Col("Std Rate", "in", 12, "#,##0.00", values=[d[4] for d in data], note="Standard rate per hour."),
         Col("Email", "in", 26, values=[d[5] for d in data]),
-        Col("Tasks", "calc", 9, "0", f'IF({nm}="","",COUNTIFS(tsk_Resource,{nm},tsk_IsLeaf,1))',
-            note="Detail tasks assigned to this resource."),
-        Col("Work", "calc", 13, "#,##0.0", f'IF({nm}="","",SUMIFS(tsk_Work,tsk_Resource,{nm},tsk_IsLeaf,1))',
+        Col("Tasks", "calc", 9, "0", f'IF({nm}="","",COUNTIFS(tsk_Resource,{nm},tsk_IsLeaf,1)'
+                                     f'+COUNTIFS(asg_Resource,{nm},asg_Valid,1))',
+            note="Detail tasks assigned to this resource (Tasks > Resource, and the Assignments sheet)."),
+        Col("Work", "calc", 13, "#,##0.0", f'IF({nm}="","",{by_resource("tsk_LeafWork", "asg_Work", nm)})',
             note="Assigned work (hours)."),
-        Col("Cost", "calc", 13, "#,##0.00", f'IF({nm}="","",SUMIFS(tsk_Cost,tsk_Resource,{nm},tsk_IsLeaf,1))',
+        Col("Cost", "calc", 13, "#,##0.00", f'IF({nm}="","",{by_resource("tsk_LeafCost", "asg_Cost", nm)})',
             note="Assigned cost."),
-        Col("Actual Cost", "calc", 13, "#,##0.00", f'IF({nm}="","",SUMIFS(tsk_LeafAC,tsk_Resource,{nm}))',
-            note="Cost to date: Actual Cost entered on Tasks, or Cost x Progress where blank."),
+        Col("Actual Cost", "calc", 13, "#,##0.00",
+            f'IF({nm}="","",{by_resource("tsk_ResourceAC", "asg_ActualCost", nm)})',
+            note="Cost to date: Actual Cost entered on Tasks (shared by cost between the task's people), or Cost x "
+                 "Progress where blank."),
         Col("Notes", "in", 30),
     ], n_rows)
     for column, defined in NAMES.items():

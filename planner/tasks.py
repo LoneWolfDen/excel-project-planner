@@ -20,6 +20,7 @@ from openpyxl.formatting.rule import FormulaRule
 from openpyxl.styles import Font
 from openpyxl.worksheet.datavalidation import DataValidation
 
+from .assignments import KEY_STEP, MAX_LISTED, over_allocated
 from .core import (DATE, LABEL_FONT, NOTE_FONT, Col, Tab, add_table, col_range, fill, name, title)
 
 TABLE = "Tasks"
@@ -55,7 +56,8 @@ N = {
         ("R", "Pos"), ("M", "Problem"), ("D", "PlanDriver"), ("E", "FcstDriver"), ("F", "FinishKey"), ("K", "SlackKey"))},
     "CT": "_ConstraintCode", "CStart": "_ConstraintStart", "CLow": "_ConstraintLow", "CHigh": "_ConstraintHigh",
     "LCS": "_LeafCalcStart", "LCF": "_LeafCalcFinish", "LFS": "_LeafFcstStart", "LFF": "_LeafFcstFinish",
-    "LProg": "_LeafProgress", "LWork": "_LeafWork", "LCost": "_LeafCost",
+    "LProg": "_LeafProgress", "LWork": "_LeafWork", "LCost": "_LeafCost", "LTW": "_LeafTotalWork",
+    "LTC": "_LeafTotalCost", "PAC": "_ResourceAC", "ResTxt": "Resource Names",
     "SuccLF": "_SuccessorFinishLimit", "LastSucc": "_LastSuccessorRow",
     "LLF": "_LeafLateFinish", "LLS": "_LeafLateStart", "LTS": "_LeafTotalSlack", "LCrit": "_LeafCritical",
     "CPS": "_CalcStart", "CPF": "_CalcFinish",
@@ -93,6 +95,8 @@ NAMES = {
     "StartKey": "tsk_StartSoonKey", "DueKey": "tsk_DueSoonKey", "CritKey": "tsk_CriticalKey",
     "OverAlloc": "tsk_OverAllocated", "SP": "tsk_StoryPoints", "SprIn": "tsk_PlannedSprint", "LWDone": "tsk_LeafWorkDone", "DoneDate": "tsk_DoneDate",
     "LPts": "tsk_LeafPoints", "CurKey": "tsk_CurrentSprintKey", "LFF": "tsk_LeafFcstFinish",
+    "LProg": "tsk_LeafProgress", "LCost": "tsk_LeafCost", "LTC": "tsk_LeafTotalCost", "PAC": "tsk_ResourceAC",
+    "ResTxt": "tsk_ResourceNames",
 }
 
 
@@ -247,6 +251,17 @@ def formulas():
     f["LWork"] = (f'IF(OR(NOT({leaf}),{R("Res")}=""),0,'
                   f'N({R("Dur")})*HoursPerDay*IF({R("Units")}="",DefaultUnits,{R("Units")}))')
     f["LCost"] = f'IF({R("LWork")}=0,0,{R("LWork")}*IFERROR(INDEX(res_Rate,MATCH({R("Res")},res_Name,0)),0))'
+    # more people on the task (Assignments sheet): the task's totals add their work and cost. _LeafWork / _LeafCost
+    # stay the Resource column's person's share, which the per-resource totals sum.
+    extra = lambda col: f'IF({leaf},SUMIFS({col},asg_TaskUID,{R("UID")},asg_Valid,1),0)'
+    f["LTW"] = f'{R("LWork")}+{extra("asg_Work")}'
+    f["LTC"] = f'{R("LCost")}+{extra("asg_Cost")}'
+    units = R("Units")
+    own = f'IF({R("Res")}="","",", "&{R("Res")}&IF(OR({units}="",{units}=1),"","["&ROUND({units}*100,0)&"%]"))'
+    listed = "&".join(f'IFERROR(", "&INDEX(asg_Text,MATCH({R("UID")}*{KEY_STEP}+{n},asg_Key,0)),"")'
+                      for n in range(1, MAX_LISTED + 1))
+    more = f'COUNTIFS(asg_TaskUID,{R("UID")},asg_Valid,1)-{MAX_LISTED}'
+    f["ResTxt"] = (f'IF(OR({blank},{s}),"",MID({own}&{listed}&IF({more}>0," +"&{more}&" more",""),3,999))')
     # critical path: backward pass. Each successor row works out, per link, the latest its predecessor may finish
     # (FS / FF directly; SS / SF via the predecessor's duration, an input) and stores it as a key; the predecessor
     # then takes one MAXIFS over the rows below. A task's late finish is the earliest of those limits, its deadline
@@ -292,8 +307,8 @@ def formulas():
     f["CPF"] = rollup("MAX", "XCF")
     f["FS"] = rollup("MIN", "XFS")
     f["FF"] = rollup("MAX", "XFF")
-    f["Work"] = rollup("SUM", "LWork")
-    f["Cost"] = rollup("SUM", "LCost")
+    f["Work"] = rollup("SUM", "LTW")
+    f["Cost"] = rollup("SUM", "LTC")
     f["Prog"] = (f'IF({blank},"",IF({s},IFERROR(SUM({block("WtDone")})/SUM({block("WtDur")}),0),{R("LProg")}))')
     f["PS"] = f'IF({blank},"",IF(N({R("BS")})>0,{R("BS")},{R("CPS")}))'
     f["PF"] = f'IF({blank},"",IF(N({R("BF")})>0,{R("BF")},{R("CPF")}))'
@@ -320,7 +335,7 @@ def formulas():
     f["CVar"] = variance("Cost", "BC")
     # time-phased work, in working days counted from the project start (used by Sprints with SUMIFS):
     # work up to working day D = SUMIFS(work, finish < D) + D x SUMIFS(work/day, running on D) - SUMIFS(work before start)
-    has_work = f'AND({leaf},{R("LWork")}>0)'
+    has_work = f'AND({leaf},{R("LTW")}>0)'
     f["SWD"] = f'IF({has_work},NETWORKDAYS.INTL(ProjectStart,{R("XFS")},{WD}),0)'
     f["FWD"] = f'IF({has_work},MAX({R("SWD")},NETWORKDAYS.INTL(ProjectStart,{R("XFF")},{WD})),0)'
     f["WPD"] = f'IF({has_work},{R("LWork")}/({R("FWD")}-{R("SWD")}+1),0)'
@@ -335,10 +350,12 @@ def formulas():
     ps, pf = R("PS"), R("PF")
     f["PlanPct"] = (f'IF(NOT({leaf}),0,IF({pf}<StatusDate,1,IF({ps}>=StatusDate,0,'
                     f'IFERROR(MIN(1,NETWORKDAYS.INTL({ps},StatusDate-1,{WD})/NETWORKDAYS.INTL({ps},{pf},{WD})),0))))')
-    f["LBud"] = f'IF(NOT({leaf}),0,IF({R("BC")}="",{R("LCost")},N({R("BC")})))'
+    f["LBud"] = f'IF(NOT({leaf}),0,IF({R("BC")}="",{R("LTC")},N({R("BC")})))'
     f["LPV"] = f'{R("LBud")}*{R("PlanPct")}'
     f["LEV"] = f'{R("LBud")}*{R("LProg")}'
-    f["LAC"] = f'IF(NOT({leaf}),0,IF({R("ACin")}="",{R("LCost")}*{R("LProg")},N({R("ACin")})))'
+    f["LAC"] = f'IF(NOT({leaf}),0,IF({R("ACin")}="",{R("LTC")}*{R("LProg")},N({R("ACin")})))'
+    # the Resource column's person's share of it (by cost; all of it when the task has no cost)
+    f["PAC"] = f'IF({R("LTC")}=0,{R("LAC")},{R("LAC")}*{R("LCost")}/{R("LTC")})'
     f["Budget"] = rollup("SUM", "LBud")
     f["PV"] = rollup("SUM", "LPV")
     f["EV"] = rollup("SUM", "LEV")
@@ -361,14 +378,12 @@ def formulas():
     f["LWDone"] = f'{R("LWork")}*{R("LProg")}'
     f["DoneDate"] = f'IF(AND({leaf},{R("LProg")}>=1),IF(N({R("AF")})>0,{R("AF")},{R("XFF")}),"")'
     f["LPts"] = f'IF({leaf},N({R("SP")}),0)'
-    # over-allocation (Resource Report weekly utilisation, after leave): Yes when the task's resource is over 100% in
-    # any week the task runs. Only weeks in the Resource Report window and its first resources are known.
-    week_of = lambda d: f"(INT(({d}-ResourceWeekStart)/7)+1)"
-    first, last = f"MAX(1,{week_of(R('XFS'))})", f"MIN(COLUMNS(rw_Util),{week_of(R('XFF'))})"
-    util_row = f"MATCH({R('Res')},res_Name,0)"
-    weeks = f"INDEX(rw_Util,{util_row},{first}):INDEX(rw_Util,{util_row},{last})"
-    f["OverAlloc"] = (f'IF(OR(NOT({leaf}),{R("Res")}="",{R("LProg")}>=1),"",IFERROR(IF({first}>{last},"",'
-                      f'IF(COUNTIF({weeks},">1")>0,"Yes","")),""))')
+    # over-allocation (Resource Report weekly utilisation, after leave): Yes when any of the task's people is over
+    # 100% in a week the task runs (Assignments rows work theirs out). Only weeks in the Resource Report window and
+    # its first resources are known.
+    own_over = f'AND({R("Res")}<>"",{over_allocated(R("Res"), R("XFS"), R("XFF"))})'
+    f["OverAlloc"] = (f'IF(OR(NOT({leaf}),{R("LProg")}>=1),"",IF(OR({own_over},'
+                      f'COUNTIFS(asg_TaskUID,{R("UID")},asg_OverAllocated,"Yes")>0),"Yes",""))')
     f["CurKey"] = f'IF(AND({leaf},CurrentSprint<>"",{R("Sprint")}=CurrentSprint),{R("Idx")},"")'
     return f
 
@@ -416,11 +431,13 @@ LAYOUT = [
     ("Pct", "in", 9, "0%", False, "Enter 0-100%. An Actual Finish counts as 100%."),
     ("Prog", "calc", 9, "0%", False, "% Complete, rolled up to summaries (duration-weighted)."),
     ("Status", "calc", 12, None, True, None),
-    ("Res", "in", 16, None, False, None),
+    ("Res", "in", 16, None, False, "The task's person (dropdown). More people on the task: Assignments sheet."),
     ("Units", "in", 7, "0%", False, "Share of the resource's time (blank = DefaultUnits)."),
+    ("ResTxt", "calc", 22, None, False, "Everyone on the task: Resource plus the Assignments sheet's rows for its UID "
+                                        "(MS Project's Resource Names)."),
     ("OverAlloc", "calc", 9, None, True, "Yes when this task's resource is over 100% of capacity (after leave) in a "
                                          "week the task runs: see Resource Report. Only weeks shown there count."),
-    ("Work", "calc", 9, "#,##0.0", False, "Hours = Duration x HoursPerDay x Units."),
+    ("Work", "calc", 9, "#,##0.0", False, "Hours = Duration x HoursPerDay x Units, for each person on the task."),
     ("Cost", "calc", 11, "#,##0.00", False, None),
     ("ACin", "in", 11, "#,##0.00", False, "Cost to date of a detail task. Blank = Cost x Progress (as MS Project "
                                           "calculates it). Summaries roll up in the AC column."),
@@ -450,7 +467,7 @@ LAYOUT = [
 ] + [(k, "help", 11, DATE if k in HELPER_DATES else None, False, None)
      for k in ("Lvl", "Idx", "Parent", "NextLvl", "IsSum", "Desc", "IsLeaf", *each("R"), "CT", "CStart", "CLow",
                "CHigh", "LCS", "LCF", "LFS", "LFF",
-               "LProg", "LWork", "LCost", *each("F"), *each("K"), "LastSucc", "SuccLF", "LLF", "LLS",
+               "LProg", "LWork", "LCost", "LTW", "LTC", "PAC", *each("F"), *each("K"), "LastSucc", "SuccLF", "LLF", "LLS",
                "LTS", "LCrit", "Shift", "XCS", "XCF", "XFS", "XFF", "CPS", "CPF", *each("M"), *each("D"), *each("E"),
                "SWD", "FWD", "WPD", "WBefore", "WtDur", "WtDone", "UPredTxt", "MKey",
                "PlanPct", "LBud", "LPV", "LEV", "LAC", "Phase", "PhaseKey", "MsKey", "LateKey", "StartKey", "DueKey", "CritKey",

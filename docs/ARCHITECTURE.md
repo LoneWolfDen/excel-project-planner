@@ -133,6 +133,19 @@ them) and the shown dates (`_Shown...`, rolled up into Planned / Forecast Start 
 free slack. The task then finishes just in time for its successors (or the project finish) and moves nothing else.
 The plan moves by the same number of days as the forecast, so an ALAP task adds no finish variance.
 
+## Assignments (several people on a task)
+
+A task's first person stays on Tasks (Resource, Units), so the common case is still one row; the Assignments sheet
+(AssignmentTable) holds one row per extra person. Each row looks its task up once (`_TaskPos`, a MATCH on UID) and
+works out its own work, cost and time-phasing (`_StartWD`, `_FinishWD`, `_WorkPerWD`, `_WorkBeforeStart`: the same
+columns Tasks has), from Tasks columns that never read the Assignments sheet back, so it can't be circular or move a
+date. Per-resource figures are therefore two SUMIFS, one over Tasks (`tsk_Resource`) and one over this table
+(`asg_Resource`): `resources.by_resource` and `sprints.work_upto` write both. Tasks adds the rows' work and cost to the
+task (`_LeafTotalWork`, `_LeafTotalCost`) while `_LeafWork` / `_LeafCost` stay the first person's share. Resource Names
+lists the extra people by `_Key` = Task UID x 1000 + n (the n-th valid row of the task), one MATCH per name, because
+Excel 2019 has no TEXTJOIN-free way to join a filtered list; past four names it adds "+n more". A task's Actual Cost is
+shared between its people by cost.
+
 ## Reports
 
 Reports are formulas, not Power Query, so they are current after every edit, work in Excel for the web and on a

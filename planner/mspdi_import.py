@@ -9,7 +9,6 @@ What the planner can't hold is reported (warnings) and, for a task, noted in its
   * more than four predecessors (tasks.LINKS; the first four are kept), links on summary tasks, lags in % or
     elapsed time;
   * constraints on summary tasks (summaries roll up);
-  * more than one resource on a task (the one with the most work is kept);
   * part-day calendar exceptions.
 A predecessor listed below its successor is kept: Link Check on Tasks explains it (move the task above).
 """
@@ -174,8 +173,9 @@ def read_project(data):
             _warn(row, warnings, "links on a summary task are ignored (link one of its tasks instead)")
         if row.get("CType") and row["Mode"] == "Auto":
             _warn(row, warnings, f"constraint '{row['CType']}' on a summary task is ignored")
-        for key in ("Dur", "AS", "AF", "Pct", "Res", "Units", "ACin", "SP", "CType", "Cons"):
+        for key in ("Dur", "AS", "AF", "Pct", "Res", "Units", "ACin", "SP", "CType", "Cons", "_more"):
             row.pop(key, None)                            # summaries roll up in the planner
+    more = [a for row in tasks for a in row.pop("_more", [])]
     position = {row["UID"]: i for i, row in enumerate(tasks)}
     below = sum(1 for i, row in enumerate(tasks) for p in each("P") if position.get(row.get(p), -1) > i)
     if below:
@@ -184,7 +184,7 @@ def read_project(data):
 
     months = _leave_months(start, leave)
     return ProjectData(settings=settings, tasks=tasks, resources=resources, holidays=holidays, leave=leave,
-                       leave_months=months), warnings
+                       leave_months=months, assignments=more), warnings
 
 
 def _warn(row, warnings, message):
@@ -226,12 +226,11 @@ def _task(t, uid, hours, assignments, warnings):
         dropped = ", ".join(_text(link, "PredecessorUID") for link in links[LINKS:])
         _warn(row, warnings, f"only {LINKS} predecessors are kept; dropped UID {dropped}")
 
-    if assignments:
-        work, name, units = max(assignments)
+    if assignments:            # the person with the most work goes on Tasks, the others on the Assignments sheet
+        ranked = sorted(assignments, key=lambda a: -a[0])
+        _, name, units = ranked[0]
         row["Res"], row["Units"] = name, None if units == 1 else units
-        if len(assignments) > 1:
-            others = ", ".join(n for _, n, _ in sorted(assignments, reverse=True)[1:])
-            _warn(row, warnings, f"one resource per task: kept {name}, not {others}")
+        row["_more"] = [(uid, n, None if u == 1 else u) for _, n, u in ranked[1:]]
     for a in t.findall(NS + "ExtendedAttribute"):
         if _text(a, "FieldID") == NUMBER1:
             row["SP"] = _float(a, "Value") or None

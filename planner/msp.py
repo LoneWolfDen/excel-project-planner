@@ -1,5 +1,6 @@
 """MS Project export sheets. Column headers are MS Project field names, so the Import Wizard maps them itself."""
 from .core import SHORT_DATE, Col, Tab, add_table
+from .tasks import CONSTRAINTS
 
 
 def build_msp_tasks(wb, n_rows):
@@ -14,6 +15,7 @@ def build_msp_tasks(wb, n_rows):
     not_summary = lambda expr: f'IF({blank},"",IF({t("tsk_IsSummary")},"",{expr}))'
     date = lambda col: f'IF({blank},"",IF(N({t(col)})=0,"",{t(col)}))'
     units = t("tsk_Units")
+    code, names = t("tsk_ConstraintCode"), ",".join(f'"{c}"' for c in CONSTRAINTS)
     cols = [
         Col("ID", width=5, formula=show("tsk_ID")),
         Col("Unique ID", width=8, formula=show("tsk_UID")),
@@ -39,9 +41,9 @@ def build_msp_tasks(wb, n_rows):
         Col("Actual Cost", width=11, formula=not_summary(
             f'IF(N({t("tsk_ActCostInput")})=0,"",{t("tsk_ActCostInput")})')),
         Col("Constraint Type", width=22, formula=not_summary(
-            f'IF(AND({t("tsk_Mode")}<>"Manual",N({t("tsk_Constraint")})>0),"Start No Earlier Than","As Soon As Possible")')),
+            f'IF({t("tsk_Mode")}="Manual","{CONSTRAINTS[0]}",CHOOSE({code}+1,{names}))')),
         Col("Constraint Date", width=12, fmt=SHORT_DATE, formula=(
-            f'IF({blank},"",IF(OR({t("tsk_IsSummary")},{t("tsk_Mode")}="Manual"),"",IF(N({t("tsk_Constraint")})=0,"",'
+            f'IF({blank},"",IF(OR({t("tsk_IsSummary")},{t("tsk_Mode")}="Manual"),"",IF(N({code})<2,"",'
             f'{t("tsk_Constraint")})))')),
         Col("Deadline", width=12, fmt=SHORT_DATE, formula=date("tsk_Deadline")),
         Col("Text1", width=10, formula=not_summary(f'{t("tsk_Sprint")}&""'),

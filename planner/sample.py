@@ -3,9 +3,9 @@ import datetime as dt
 
 D = dt.date
 
-# Level, Task Name, Mode, Duration, Pred1 UID, Type, Lag, Pred2 UID, Type, Lag, Start No Earlier Than, Deadline,
-# Actual Start, Actual Finish, % Complete, Resource, Units, Notes. Actual Cost (ACin) and Story Points (SP) come
-# from ACTUAL_COST and STORY_POINTS.
+# Level, Task Name, Mode, Duration, Pred1 UID, Type, Lag, Pred2 UID, Type, Lag, Constraint Date, Deadline,
+# Actual Start, Actual Finish, % Complete, Resource, Units, Notes. Actual Cost (ACin), Story Points (SP), the
+# Constraint type and links 3-4 come from ACTUAL_COST, STORY_POINTS and EXTRA.
 COLUMNS = ["Level", "Name", "Mode", "Dur", "P1", "T1", "L1", "P2", "T2", "L2", "Cons", "DL", "AS", "AF", "Pct", "Res",
            "Units", "Notes", "ACin", "SP"]
 _ = None
@@ -31,13 +31,13 @@ TASKS = [
     (2, "Build complete", "Auto", 0, 14, "FS", _, 18, "FS", _, _, D(2026, 11, 6), _, _, _, _, _, "Milestone with a deadline of 06-Nov (see Deadline Check)."),
     (1, "Test & Release", "Auto", _, _, _, _, _, _, _, _, _, _, _, _, _, _, ""),
     (2, "System integration testing", "Auto", 8, 19, "FS", _, _, _, _, _, _, _, _, _, "Taylor Morgan", _, ""),
-    (2, "User acceptance testing", "Auto", 6, 21, "FS", _, _, _, _, D(2026, 12, 7), _, _, _, _, "Morgan Patel", _, "Start No Earlier Than 07-Dec (client availability)."),
+    (2, "User acceptance testing", "Auto", 6, 21, "FS", _, _, _, _, D(2026, 12, 7), _, _, _, _, "Morgan Patel", _, "Constraint: Start No Earlier Than 07-Dec (client availability)."),
     (2, "Training & user guides", "Auto", 5, 21, "SS", 2, _, _, _, _, _, _, _, _, "Casey Kim", 0.5, ""),
-    (2, "Go-live readiness review", "Auto", 1, 22, "FS", _, 23, "FS", _, _, _, _, _, _, "Priya Sharma", _, ""),
+    (2, "Go-live readiness review", "Auto", 1, 22, "FS", _, 23, "FS", _, _, _, _, _, _, "Priya Sharma", _, "Three predecessors."),
     (2, "Go-live", "Auto", 0, 24, "FS", _, _, _, _, _, D(2026, 12, 18), _, _, _, _, _, "Milestone with a deadline of 18-Dec."),
     (2, "Hypercare support", "Auto", 10, 25, "FS", _, _, _, _, _, _, _, _, _, "Jordan Lee", 0.5, ""),
     (1, "Project Close", "Auto", _, _, _, _, _, _, _, _, _, _, _, _, _, _, ""),
-    (2, "Steering committee update", "Manual", 1, _, _, _, _, _, _, D(2026, 11, 16), _, _, _, _, "Priya Sharma", _, "Manual mode example: fixed on the date in the Start No Earlier Than column."),
+    (2, "Steering committee update", "Manual", 1, _, _, _, _, _, _, D(2026, 11, 16), _, _, _, _, "Priya Sharma", _, "Manual mode example: fixed on its Constraint Date."),
     (2, "Lessons learned", "Auto", 2, 26, "FS", _, _, _, _, _, _, _, _, _, "Priya Sharma", _, ""),
     (2, "Project closed", "Auto", 0, 29, "FS", _, _, _, _, _, _, _, _, _, _, _, "Milestone"),
 ]
@@ -49,9 +49,12 @@ ACTUAL_COST = {2: 3040, 6: 5040, 13: 4080}
 STORY_POINTS = {2: 3, 3: 2, 6: 8, 7: 5, 8: 5, 12: 5, 13: 8, 14: 5, 16: 5, 17: 8, 18: 3, 21: 8, 22: 5, 23: 3, 24: 1,
                 26: 5, 28: 1, 29: 2}
 
+# Other inputs (by task number): constraint types and a third predecessor.
+EXTRA = {22: {"CType": "Start No Earlier Than"}, 24: {"P3": 21, "T3": "FS"}}
+
 
 def _row(i, t):
-    return dict(zip(COLUMNS, t), ACin=ACTUAL_COST.get(i + 1), SP=STORY_POINTS.get(i + 1))
+    return dict(zip(COLUMNS, t), ACin=ACTUAL_COST.get(i + 1), SP=STORY_POINTS.get(i + 1), **EXTRA.get(i + 1, {}))
 
 
 def tasks(blank=False, stress=0):
@@ -65,8 +68,8 @@ def tasks(blank=False, stress=0):
     for copy in range(stress):
         for i, t in enumerate(TASKS):
             row = _row(i, t)
-            for p in ("P1", "P2"):
-                if row[p]:
+            for p in ("P1", "P2", "P3", "P4"):
+                if row.get(p):
                     row[p] += copy * n
             if copy and row["Level"] == 2 and row["Name"] == "Project charter & scope statement":
                 row["P1"], row["T1"] = copy * n, "FS"      # chain the copies: each starts after the previous ends

@@ -6,10 +6,12 @@ from openpyxl.worksheet.datavalidation import DataValidation
 
 from .core import (BOX, CALC_FILL, CALC_FONT, DATE, INPUT_FONT, NOTE_FONT, Col, add_table, fill, font, header_cell,
                    name, title)
+from .tasks import CONSTRAINTS
 
 LISTS = {  # table name, column name, named range, values
     "L_DepType": ("ListDepType", "Link Type", ["FS", "SS", "FF", "SF"]),
     "L_Mode": ("ListMode", "Task Mode", ["Auto", "Manual"]),
+    "L_Constraint": ("ListConstraint", "Constraint", CONSTRAINTS),
     "L_YesNo": ("ListYesNo", "Yes / No", ["Yes", "No"]),
     "L_ResType": ("ListResType", "Resource Type", ["Work", "Material", "Cost"]),
     "L_Period": ("ListPeriod", "Gantt Days per Column", [1, 7]),
@@ -80,8 +82,8 @@ def settings_rows(blank, max_sprints):
          "Story points on all detail tasks: the release scope for burndown and burn-up."),
         ("CriticalSlackDays", "Critical when total slack is at most (days)", 0, "0", True,
          "0 = only tasks with no slack (or negative slack from a missed deadline) are critical, like MS Project."),
-        ("ProjectFinish", "Forecast project finish (calculated)", "=MAX(tsk_FcFinish)", DATE, False,
-         "The critical path's backward pass starts here."),
+        ("ProjectFinish", "Forecast project finish (calculated)", "=MAX(tsk_LeafFcstFinish)", DATE, False,
+         "The critical path's backward pass starts here (the detail tasks' early finish)."),
         ("PlannedFinish", "Planned project finish (calculated)", "=MAX(tsk_PlanFinish)", DATE, False,
          "Baseline finish once a baseline is set."),
         ("FinishVarianceDays", "Project finish variance (calculated, working days)",

@@ -12,7 +12,7 @@ LibreOffice) after its last edit, which every normal save does.
 
 Field mapping, in one place for both:
   Tasks row            -> <Task>: UID, ID, Name, WBS, OutlineLevel, Start / Finish (forecast), Duration, Work,
-                          Milestone, Summary, Manual, % Complete, actuals, constraint (Start No Earlier Than),
+                          Milestone, Summary, Manual, % Complete, actuals, constraint (all eight types),
                           Deadline, Notes, links (Pred UID + type + lag), Baseline, Text1 = Sprint, Number1 = Points
   Settings             -> project name, manager, start, status date, calendar (WorkMon..WorkSun, HoursPerDay)
   HolidayTable         -> calendar exceptions (non-working days)
@@ -303,10 +303,11 @@ def to_mspdi(plan):
             days = _num(t.get("BL Source Duration"))
         milestone = not summary and days == 0
         manual = t.get("Mode") == "Manual"
-        cons = _date(t.get("Start No Earlier Than"))
+        cons = _date(t.get("Constraint Date", t.get("Start No Earlier Than")))     # (the column's name before v1.5)
+        code = int(_num(t.get("_ConstraintCode"), 4 if cons else 0))
         fs, ff = _date(t.get("Forecast Start")), _date(t.get("Forecast Finish"))
         if manual and cons:
-            fs = cons
+            fs = _date(t.get("_ConstraintStart")) or cons
         work = 0 if summary else _num(t.get("Work"))
         e = _sub(tasks_el, "Task")
         _sub(e, "UID", int(t["UID"]))
@@ -336,17 +337,20 @@ def to_mspdi(plan):
             _sub(e, "ActualFinish", end_of(actual_finish))
         if not summary and _num(t.get("Actual Cost"), None) is not None:
             _sub(e, "ActualCost", t["Actual Cost"])
-        constrained = cons and not summary and not manual
-        _sub(e, "ConstraintType", 4 if constrained else 0)     # 4 = Start No Earlier Than, 0 = As Soon As Possible
-        if constrained:
-            _sub(e, "ConstraintDate", start_of(cons))
+        # ConstraintType is MS Project's code (the planner's _ConstraintCode); codes 2-7 carry a date, which for
+        # Must Finish On / Finish No Earlier / Later Than (3, 6, 7) is the end of that day
+        if summary or manual:
+            code = 0
+        _sub(e, "ConstraintType", code)
+        if code >= 2 and cons:
+            _sub(e, "ConstraintDate", end_of(cons) if code in (3, 6, 7) else start_of(cons))
         deadline = _date(t.get("Deadline"))
         if deadline:
             _sub(e, "Deadline", end_of(deadline))
         if _text(t.get("Notes")):
             _sub(e, "Notes", t["Notes"])
         if not summary:
-            for k in ("1", "2"):
+            for k in _links(t):
                 pred = _num(t.get(f"Pred{k} UID"))
                 if pred and not _text(t.get(f"_Pred{k}Problem")):
                     link = _sub(e, "PredecessorLink")
@@ -418,8 +422,16 @@ def _put_in_order(element):
         _put_in_order(child)
 
 
+def _links(t):
+    """The link numbers the workbook has (Pred1 ... PredN): read from its headers, so any LINKS setting works."""
+    k = 1
+    while f"Pred{k} UID" in t:
+        yield k
+        k += 1
+
+
 def _has_links(t):
-    return any(_num(t.get(f"Pred{k} UID")) and not _text(t.get(f"_Pred{k}Problem")) for k in ("1", "2"))
+    return any(_num(t.get(f"Pred{k} UID")) and not _text(t.get(f"_Pred{k}Problem")) for k in _links(t))
 
 
 def convert(data):

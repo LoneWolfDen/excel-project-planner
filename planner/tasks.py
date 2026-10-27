@@ -26,12 +26,17 @@ TABLE = "Tasks"
 HEADER_ROW = 5
 T = Tab(TABLE)
 WD = "WorkWeek,Holidays"
+LINKS = 4                   # predecessor links per task: Pred1 ... Pred4 (raise it here; every link column follows)
+LINK_NUMBERS = range(1, LINKS + 1)
+# MS Project's constraint types, in the order of its ConstraintType codes (0 = As Soon As Possible ... 7)
+CONSTRAINTS = ["As Soon As Possible", "As Late As Possible", "Must Start On", "Must Finish On", "Start No Earlier Than",
+               "Start No Later Than", "Finish No Earlier Than", "Finish No Later Than"]
 
 # key -> column name (= header text = structured-reference name)
 N = {
     "ID": "ID", "UID": "UID", "WBS": "WBS", "Level": "Level", "Name": "Task Name", "Mode": "Mode", "Dur": "Duration",
-    "P1": "Pred1 UID", "T1": "Pred1 Type", "L1": "Pred1 Lag", "P2": "Pred2 UID", "T2": "Pred2 Type", "L2": "Pred2 Lag",
-    "Cons": "Start No Earlier Than", "DL": "Deadline",
+    **{f"{x}{k}": f"Pred{k} {label}" for k in LINK_NUMBERS for x, label in (("P", "UID"), ("T", "Type"), ("L", "Lag"))},
+    "CType": "Constraint", "Cons": "Constraint Date", "DL": "Deadline",
     "PS": "Planned Start", "PF": "Planned Finish", "AS": "Actual Start", "AF": "Actual Finish",
     "FS": "Forecast Start", "FF": "Forecast Finish", "SVar": "Start Var", "Var": "Finish Var",
     "LS": "Late Start", "LF": "Late Finish", "TS": "Total Slack", "FSl": "Free Slack", "Crit": "Critical",
@@ -45,19 +50,19 @@ N = {
     "Budget": "Budget", "PV": "PV", "EV": "EV", "ACt": "AC",
     # helper columns (hidden)
     "Lvl": "_Level", "Idx": "_Row", "Parent": "_ParentRow", "NextLvl": "_NextLevel", "IsSum": "_IsSummary",
-    "Desc": "_Descendants", "IsLeaf": "_IsLeaf", "R1": "_Pred1Pos", "R2": "_Pred2Pos",
-    "M1": "_Pred1Problem", "M2": "_Pred2Problem",
-    "D1P": "_Pred1PlanDriver", "D2P": "_Pred2PlanDriver", "D1F": "_Pred1FcstDriver", "D2F": "_Pred2FcstDriver",
+    "Desc": "_Descendants", "IsLeaf": "_IsLeaf",
+    **{f"{x}{k}": f"_Pred{k}{label}" for k in LINK_NUMBERS for x, label in (
+        ("R", "Pos"), ("M", "Problem"), ("D", "PlanDriver"), ("E", "FcstDriver"), ("F", "FinishKey"), ("K", "SlackKey"))},
+    "CT": "_ConstraintCode", "CStart": "_ConstraintStart", "CLow": "_ConstraintLow", "CHigh": "_ConstraintHigh",
     "LCS": "_LeafCalcStart", "LCF": "_LeafCalcFinish", "LFS": "_LeafFcstStart", "LFF": "_LeafFcstFinish",
     "LProg": "_LeafProgress", "LWork": "_LeafWork", "LCost": "_LeafCost",
-    "F1": "_Pred1FinishKey", "F2": "_Pred2FinishKey", "K1": "_Pred1SlackKey", "K2": "_Pred2SlackKey",
     "SuccLF": "_SuccessorFinishLimit", "LastSucc": "_LastSuccessorRow",
     "LLF": "_LeafLateFinish", "LLS": "_LeafLateStart", "LTS": "_LeafTotalSlack", "LCrit": "_LeafCritical",
     "CPS": "_CalcStart", "CPF": "_CalcFinish",
     "SWD": "_StartWorkday", "FWD": "_FinishWorkday", "WPD": "_WorkPerWorkday", "WBefore": "_WorkBeforeStart",
     "WtDur": "_WeightDur", "WtDone": "_WeightDone",
-    "T1x": "_Pred1IDText", "T2x": "_Pred2IDText", "U1x": "_Pred1UIDText", "U2x": "_Pred2UIDText",
-    "UPredTxt": "_UIDPredecessors", "MKey": "_MilestoneKey",
+    "Shift": "_AlapShift", "XCS": "_ShownCalcStart", "XCF": "_ShownCalcFinish", "XFS": "_ShownFcstStart",
+    "XFF": "_ShownFcstFinish", "UPredTxt": "_UIDPredecessors", "MKey": "_MilestoneKey",
     # earned value and the report lists
     "PlanPct": "_PlannedPct", "LBud": "_LeafBudget", "LPV": "_LeafPV", "LEV": "_LeafEV", "LAC": "_LeafAC",
     "Phase": "_Phase", "PhaseKey": "_PhaseKey", "MsKey": "_MilestoneOrder", "LateKey": "_LateKey", "StartKey": "_StartSoonKey",
@@ -69,7 +74,7 @@ N = {
 # defined names used by every other sheet (tsk_Duration = Tasks[Duration], ...)
 NAMES = {
     "ID": "tsk_ID", "UID": "tsk_UID", "WBS": "tsk_WBS", "Lvl": "tsk_Level", "Name": "tsk_Name", "Mode": "tsk_Mode",
-    "Dur": "tsk_Duration", "Cons": "tsk_Constraint", "DL": "tsk_Deadline", "PS": "tsk_PlanStart",
+    "Dur": "tsk_Duration", "CType": "tsk_ConstraintType", "CT": "tsk_ConstraintCode", "Cons": "tsk_Constraint", "DL": "tsk_Deadline", "PS": "tsk_PlanStart",
     "PF": "tsk_PlanFinish", "AS": "tsk_ActStart", "AF": "tsk_ActFinish", "FS": "tsk_FcStart", "FF": "tsk_FcFinish",
     "SVar": "tsk_StartVariance", "Var": "tsk_Variance", "LS": "tsk_LateStart", "LF": "tsk_LateFinish",
     "TS": "tsk_TotalSlack", "FSl": "tsk_FreeSlack", "Crit": "tsk_Critical", "DLChk": "tsk_DeadlineCheck", "LinkChk": "tsk_LinkCheck",
@@ -87,7 +92,7 @@ NAMES = {
     "LAC": "tsk_LeafAC", "Phase": "tsk_Phase", "PhaseKey": "tsk_PhaseKey", "MsKey": "tsk_MilestoneOrder", "LateKey": "tsk_LateKey",
     "StartKey": "tsk_StartSoonKey", "DueKey": "tsk_DueSoonKey", "CritKey": "tsk_CriticalKey",
     "OverAlloc": "tsk_OverAllocated", "SP": "tsk_StoryPoints", "SprIn": "tsk_PlannedSprint", "LWDone": "tsk_LeafWorkDone", "DoneDate": "tsk_DoneDate",
-    "LPts": "tsk_LeafPoints", "CurKey": "tsk_CurrentSprintKey",
+    "LPts": "tsk_LeafPoints", "CurKey": "tsk_CurrentSprintKey", "LFF": "tsk_LeafFcstFinish",
 }
 
 
@@ -157,33 +162,38 @@ def link_problem(p, pos):
             f'IF(INDEX({C("IsSum")},{at}),"UID "&{pred}&" is a summary: link to one of its tasks","")))))))')
 
 
-def driver(p, t, lag, problem, start_key, finish_key):
-    """Earliest start imposed by one predecessor link (FS/SS/FF/SF + lag); 0 if there is no usable link."""
-    pos = R("R1" if p == "P1" else "R2")
+def driver(k, start_key, finish_key):
+    """Earliest start imposed by predecessor link k (FS/SS/FF/SF + lag); 0 if there is no usable link."""
+    pos = R(f"R{k}")
     pred_finish = other_row(finish_key, pos)
     pred_start = other_row(start_key, pos)
-    lag, dur = f"N({R(lag)})", R("Dur")
+    t, lag, dur = R(f"T{k}"), f"N({R(f'L{k}')})", R("Dur")
     back = f"-MAX(0,N({dur})-1)"
-    return (f'IF(OR({pos}<=0,{R(problem)}<>"",{R("IsSum")},{R("Name")}=""),0,'
-            f'IFERROR(CHOOSE(MATCH(IF({R(t)}="","FS",{R(t)}),{{"FS","SS","FF","SF"}},0),'
+    return (f'IF(OR({pos}<=0,{R(f"M{k}")}<>"",{R("IsSum")},{R("Name")}=""),0,'
+            f'IFERROR(CHOOSE(MATCH(IF({t}="","FS",{t}),{{"FS","SS","FF","SF"}},0),'
             f'WORKDAY.INTL({pred_finish},IF(N({dur})=0,0,1)+{lag},{WD}),'
             f'WORKDAY.INTL({pred_start},{lag},{WD}),'
             f'WORKDAY.INTL(WORKDAY.INTL({pred_finish},{lag},{WD}),{back},{WD}),'
             f'WORKDAY.INTL(WORKDAY.INTL({pred_start},{lag},{WD}),{back},{WD})),0))')
 
 
-def pred_text(p, t, lag, problem, by_id):
-    """One link in MS Project notation: 12, 6SS+3d, 17FF+1d."""
-    typ, lg = f'IF({R(t)}="","FS",{R(t)})', f"N({R(lag)})"
-    ref = f"INDEX({C('ID')},{R('R1' if p == 'P1' else 'R2')})" if by_id else R(p)
-    return (f'IF(OR(N({R(p)})=0,{R(problem)}<>""),"",{ref}&IF(AND({typ}="FS",{lg}=0),"",'
+def pred_text(k, by_id):
+    """Link k in MS Project notation with a leading comma (",12", ",6SS+3d"); "" when there is no usable link."""
+    typ, lg = f'IF({R(f"T{k}")}="","FS",{R(f"T{k}")})', f"N({R(f'L{k}')})"
+    ref = f"INDEX({C('ID')},{R(f'R{k}')})" if by_id else R(f"P{k}")
+    return (f'IF(OR(N({R(f"P{k}")})=0,{R(f"M{k}")}<>""),"",","&{ref}&IF(AND({typ}="FS",{lg}=0),"",'
             f'{typ}&IF({lg}=0,"",IF({lg}>0,"+","")&{lg}&"d")))')
+
+
+def each_link(template):
+    """template(k) for every link, comma-separated: the arguments of a MAX over all links."""
+    return ",".join(template(k) for k in LINK_NUMBERS)
 
 
 def formulas():
     nm, s, leaf = R("Name"), R("IsSum"), f'{R("IsLeaf")}=1'
     blank = f'{nm}=""'
-    manual = f'IF(N({R("Cons")})>0,{R("Cons")},ProjectStart)'
+    manual = f'IF({R("CStart")}>0,{R("CStart")},ProjectStart)'
     f = {}
     # outline
     f["ID"] = f'IF({blank},"",COUNTA({T.upto(N["Name"])})-1)'
@@ -200,22 +210,34 @@ def formulas():
     f["Desc"] = f'IF({s},COUNTIF({C("WBS")},{R("WBS")}&".*"),0)'
     f["IsLeaf"] = f'IF(AND({nm}<>"",NOT({s})),1,0)'
     # links
-    f["R1"] = pred_pos("P1")
-    f["R2"] = pred_pos("P2")
-    f["M1"] = link_problem("P1", "R1")
-    f["M2"] = link_problem("P2", "R2")
-    f["LinkChk"] = (f'IF({blank},"",TRIM(IF({R("M1")}<>"","Pred 1: "&{R("M1")}&". ","")&'
-                    f'IF({R("M2")}<>"","Pred 2: "&{R("M2")}&".","")))')
-    f["D1P"] = driver("P1", "T1", "L1", "M1", "LCS", "LCF")
-    f["D2P"] = driver("P2", "T2", "L2", "M2", "LCS", "LCF")
-    f["D1F"] = driver("P1", "T1", "L1", "M1", "LFS", "LFF")
-    f["D2F"] = driver("P2", "T2", "L2", "M2", "LFS", "LFF")
+    for k in LINK_NUMBERS:
+        f[f"R{k}"] = pred_pos(f"P{k}")
+        f[f"M{k}"] = link_problem(f"P{k}", f"R{k}")
+        f[f"D{k}"] = driver(k, "LCS", "LCF")
+        f[f"E{k}"] = driver(k, "LFS", "LFF")
+    ctype = R("CType")
+    f["LinkChk"] = (f'IF({blank},"",TRIM(' + "&".join(
+        f'IF({R(f"M{k}")}<>"","Pred {k}: "&{R(f"M{k}")}&". ","")' for k in LINK_NUMBERS) +
+        f'&IF(AND({ctype}<>"",N({R("Cons")})=0,{ctype}<>"{CONSTRAINTS[0]}",{ctype}<>"{CONSTRAINTS[1]}"),'
+        f'"Constraint ignored: enter a Constraint Date.","")))')
+    # constraints, as MS Project schedules them (it honours constraint dates over links). The code is MS Project's
+    # ConstraintType; a date with a blank Constraint means Start No Earlier Than. _ConstraintStart turns the date into
+    # a start date (a finish constraint ends the task on the date); Low / High bound the start: Must Start / Finish On
+    # set both, so the task is pinned.
+    array = "{" + ",".join(f'"{c}"' for c in CONSTRAINTS) + "}"
+    f["CT"] = (f'IF(OR({blank},{s}),"",IF(N({R("Cons")})=0,IF({ctype}="{CONSTRAINTS[1]}",1,0),'
+               f'IF({ctype}="",4,IFERROR(MATCH({ctype},{array},0)-1,4))))')
+    ct, cd, dur = R("CT"), f'N({R("Cons")})', R("Dur")
+    f["CStart"] = (f'IF({cd}=0,0,IF(AND(OR({ct}=3,{ct}=6,{ct}=7),N({dur})>1),'
+                   f'WORKDAY.INTL({cd},-(N({dur})-1),{WD}),{cd}))')
+    f["CLow"] = f'IF(OR({ct}=2,{ct}=3,{ct}=4,{ct}=6),{R("CStart")},0)'
+    f["CHigh"] = f'IF(OR({ct}=2,{ct}=3,{ct}=5,{ct}=7),{R("CStart")},{NO_LIMIT})'
     # detail-task dates (summaries leave these blank)
     f["LCS"] = (f'IF(NOT({leaf}),"",IF({R("Mode")}="Manual",{manual},'
-                f'WORKDAY.INTL(MAX(ProjectStart,N({R("Cons")}),{R("D1P")},{R("D2P")})-1,1,{WD})))')
+                f'WORKDAY.INTL(MIN(MAX(ProjectStart,{R("CLow")},{each_link(lambda k: R(f"D{k}"))}),{R("CHigh")})-1,1,{WD})))')
     f["LCF"] = f'IF(NOT({leaf}),"",IF(N({R("Dur")})<=0,{R("LCS")},WORKDAY.INTL({R("LCS")},{R("Dur")}-1,{WD})))'
     f["LFS"] = (f'IF(NOT({leaf}),"",IF(N({R("AS")})>0,{R("AS")},IF({R("Mode")}="Manual",{manual},'
-                f'WORKDAY.INTL(MAX(ProjectStart,N({R("Cons")}),{R("D1F")},{R("D2F")},'
+                f'WORKDAY.INTL(MAX(MIN(MAX(ProjectStart,{R("CLow")},{each_link(lambda k: R(f"E{k}"))}),{R("CHigh")}),'
                 f'IF(RescheduleAfterStatus="Yes",StatusDate,0))-1,1,{WD}))))')
     natural = f'WORKDAY.INTL({R("LFS")},{R("Dur")}-1,{WD})'
     remaining = f'WORKDAY.INTL(StatusWorkday,MAX(0,ROUNDUP({R("Dur")}*(1-MIN(1,N({R("Pct")}))),0)-1),{WD})'
@@ -228,28 +250,30 @@ def formulas():
     # critical path: backward pass. Each successor row works out, per link, the latest its predecessor may finish
     # (FS / FF directly; SS / SF via the predecessor's duration, an input) and stores it as a key; the predecessor
     # then takes one MAXIFS over the rows below. A task's late finish is the earliest of those limits, its deadline
-    # and the project's forecast finish.
-    for k in ("1", "2"):
-        p, t, lag, m, d = f"P{k}", f"T{k}", f"L{k}", f"M{k}", f"D{k}F"
-        valid = f'AND({leaf},{R("R" + k)}>0,{R(m)}="")'
-        typ, lg = f'IF({R(t)}="","FS",{R(t)})', f"N({R(lag)})"
-        pred_dur = f"N(INDEX({C('Dur')},{R('R' + k)}))"
+    # the project's forecast finish and a Start / Finish No Later Than or Must ... On constraint.
+    for k in LINK_NUMBERS:
+        valid = f'AND({leaf},{R(f"R{k}")}>0,{R(f"M{k}")}="")'
+        typ, lg = f'IF({R(f"T{k}")}="","FS",{R(f"T{k}")})', f"N({R(f'L{k}')})"
+        pred_dur = f"N(INDEX({C('Dur')},{R(f'R{k}')}))"
         start_limit = f'WORKDAY.INTL(IF({typ}="SS",{R("LLS")},{R("LLF")}),-{lg},{WD})'
         finish_limit = (f'IF({typ}="FS",WORKDAY.INTL({R("LLS")},-(IF(N({R("Dur")})=0,0,1)+{lg}),{WD}),'
                         f'IF({typ}="FF",WORKDAY.INTL({R("LLF")},-{lg},{WD}),'
                         f'IF({pred_dur}<=0,{start_limit},WORKDAY.INTL({start_limit},{pred_dur}-1,{WD}))))')
         f[f"F{k}"] = f'IF({valid},{NO_LIMIT}-{finish_limit},"")'
-        f[f"K{k}"] = f'IF({valid},{SLACK_OFFSET}-{wdiff(R(d), R("LFS"))},"")'
+        f[f"K{k}"] = f'IF({valid},{SLACK_OFFSET}-{wdiff(R(f"E{k}"), R("LFS"))},"")'
     # where the last successor sits: reads only input columns, so it isn't recalculated after every edit
-    f["LastSucc"] = (f'IF(NOT({leaf}),0,MAX(_xlfn.MAXIFS({C("Idx")},{C("P1")},{R("UID")}),'
-                     f'_xlfn.MAXIFS({C("Idx")},{C("P2")},{R("UID")})))')
-    succ = f'MAX({successor_max("F1", "P1")},{successor_max("F2", "P2")})'
+    f["LastSucc"] = (f'IF(NOT({leaf}),0,MAX('
+                     f'{each_link(lambda k: "_xlfn.MAXIFS(" + C("Idx") + "," + C(f"P{k}") + "," + R("UID") + ")")}))')
+    succ = f'MAX({each_link(lambda k: successor_max(f"F{k}", f"P{k}"))})'
     f["SuccLF"] = f'IF(NOT({leaf}),"",{NO_LIMIT}-{succ})'
-    f["LLF"] = (f'IF(NOT({leaf}),"",MIN(ProjectFinish,IF(N({R("DL")})>0,{R("DL")},{NO_LIMIT}),{R("SuccLF")}))')
+    high = R("CHigh")
+    cons_limit = f'IF({high}>={NO_LIMIT},{NO_LIMIT},IF(N({dur})<=1,{high},WORKDAY.INTL({high},{dur}-1,{WD})))'
+    f["LLF"] = (f'IF(NOT({leaf}),"",MIN(ProjectFinish,IF(N({R("DL")})>0,{R("DL")},{NO_LIMIT}),{R("SuccLF")},'
+                f'{cons_limit}))')
     f["LLS"] = f'IF(NOT({leaf}),"",IF(N({R("Dur")})<=0,{R("LLF")},WORKDAY.INTL({R("LLF")},-({R("Dur")}-1),{WD})))'
     f["LTS"] = f'IF(NOT({leaf}),"",{wdiff(R("LFF"), R("LLF"))})'
     f["LCrit"] = f'AND({leaf},{R("LProg")}<1,N({R("LTS")})<=CriticalSlackDays)'
-    slack = f'MAX({successor_max("K1", "P1")},{successor_max("K2", "P2")})'
+    slack = f'MAX({each_link(lambda k: successor_max(f"K{k}", f"P{k}"))})'
     f["FSl"] = f'IF(NOT({leaf}),"",IF({slack}=0,{R("LTS")},MIN({R("LTS")},{SLACK_OFFSET}-{slack})))'
     f["LS"] = f'IF({blank},"",IF({s},MIN({block("LLS")}),{R("LLS")}))'
     f["LF"] = f'IF({blank},"",IF({s},MAX({block("LLF")}),{R("LLF")}))'
@@ -257,10 +281,17 @@ def formulas():
     f["Crit"] = (f'IF({blank},"",IF(IF({s},COUNTIF({block("LCrit")},TRUE())>0,{R("LCrit")}),"Yes",""))')
     # every row: detail value, or the roll-up of the detail tasks below a summary
     rollup = lambda fn, leaf_key: f'IF({blank},"",IF({s},{fn}({block(leaf_key)}),{R(leaf_key)}))'
-    f["CPS"] = rollup("MIN", "LCS")
-    f["CPF"] = rollup("MAX", "LCF")
-    f["FS"] = rollup("MIN", "LFS")
-    f["FF"] = rollup("MAX", "LFF")
+    # As Late As Possible: shown later by the task's free slack, so it finishes just in time for its successors
+    # (or the project finish) and moves nothing else. Links, slack and ProjectFinish keep using the early dates
+    # (_Leaf...), so this never feeds back into the schedule. The plan uses the same shift as the forecast.
+    f["Shift"] = (f'IF(AND({leaf},{R("CT")}=1,{R("Mode")}<>"Manual",N({R("AS")})=0),MAX(0,N({R("FSl")})),0)')
+    shown = lambda key: f'IF(NOT({leaf}),"",IF({R("Shift")}=0,{R(key)},WORKDAY.INTL({R(key)},{R("Shift")},{WD})))'
+    for key, early in (("XCS", "LCS"), ("XCF", "LCF"), ("XFS", "LFS"), ("XFF", "LFF")):
+        f[key] = shown(early)
+    f["CPS"] = rollup("MIN", "XCS")
+    f["CPF"] = rollup("MAX", "XCF")
+    f["FS"] = rollup("MIN", "XFS")
+    f["FF"] = rollup("MAX", "XFF")
     f["Work"] = rollup("SUM", "LWork")
     f["Cost"] = rollup("SUM", "LCost")
     f["Prog"] = (f'IF({blank},"",IF({s},IFERROR(SUM({block("WtDone")})/SUM({block("WtDur")}),0),{R("LProg")}))')
@@ -275,13 +306,9 @@ def formulas():
     f["Sprint"] = (f'IF(OR({blank},{s}),"",IF({R("SprIn")}<>"",{R("SprIn")},'
                    f'IF(OR({R("FS")}<Sprint1Start,{R("FS")}>SprintLastEnd),"Backlog",'
                    f'INDEX(spr_Name,MATCH({R("FS")},spr_Start,1)))))')
-    f["T1x"] = pred_text("P1", "T1", "L1", "M1", True)
-    f["T2x"] = pred_text("P2", "T2", "L2", "M2", True)
-    f["U1x"] = pred_text("P1", "T1", "L1", "M1", False)
-    f["U2x"] = pred_text("P2", "T2", "L2", "M2", False)
-    join = lambda a, b: f'IF({blank},"",{R(a)}&IF(AND({R(a)}<>"",{R(b)}<>""),",","")&{R(b)})'
-    f["PredTxt"] = join("T1x", "T2x")
-    f["UPredTxt"] = join("U1x", "U2x")
+    join = lambda by_id: f'IF({blank},"",MID(' + "&".join(pred_text(k, by_id) for k in LINK_NUMBERS) + ',2,999))'
+    f["PredTxt"] = join(True)
+    f["UPredTxt"] = join(False)
     f["SrcS"] = f'IF({blank},"",{R("FS")})'
     f["SrcF"] = f'IF({blank},"",{R("FF")})'
     f["SrcD"] = f'IF({blank},"",IF({s},NETWORKDAYS.INTL({R("FS")},{R("FF")},{WD}),N({R("Dur")})))'
@@ -294,14 +321,14 @@ def formulas():
     # time-phased work, in working days counted from the project start (used by Sprints with SUMIFS):
     # work up to working day D = SUMIFS(work, finish < D) + D x SUMIFS(work/day, running on D) - SUMIFS(work before start)
     has_work = f'AND({leaf},{R("LWork")}>0)'
-    f["SWD"] = f'IF({has_work},NETWORKDAYS.INTL(ProjectStart,{R("LFS")},{WD}),0)'
-    f["FWD"] = f'IF({has_work},MAX({R("SWD")},NETWORKDAYS.INTL(ProjectStart,{R("LFF")},{WD})),0)'
+    f["SWD"] = f'IF({has_work},NETWORKDAYS.INTL(ProjectStart,{R("XFS")},{WD}),0)'
+    f["FWD"] = f'IF({has_work},MAX({R("SWD")},NETWORKDAYS.INTL(ProjectStart,{R("XFF")},{WD})),0)'
     f["WPD"] = f'IF({has_work},{R("LWork")}/({R("FWD")}-{R("SWD")}+1),0)'
     f["WBefore"] = f'{R("WPD")}*({R("SWD")}-1)'
     # progress roll-up and the milestone list
     f["WtDur"] = f'IF({leaf},MAX(N({R("Dur")}),0.1),0)'
     f["WtDone"] = f'{R("WtDur")}*{R("LProg")}'
-    f["MKey"] = f'IF(AND({leaf},N({R("Dur")})=0,{R("LProg")}<1),{R("LFF")}+{R("Idx")}/100000,"")'
+    f["MKey"] = f'IF(AND({leaf},N({R("Dur")})=0,{R("LProg")}<1),{R("XFF")}+{R("Idx")}/100000,"")'
     # earned value at the status date. Budget = Baseline Cost once a baseline is set, otherwise Cost. Planned % =
     # share of the planned working days before the status date (the status date itself is not yet worked).
     # Actual cost = the Actual Cost entered, or Cost x Progress when it is blank (as MS Project calculates it).
@@ -324,20 +351,20 @@ def formulas():
     f["MsKey"] = f'IF(AND({leaf},N({R("Dur")})=0),{pf}+{tie},"")'
     f["LateKey"] = (f'IF(AND({leaf},{R("LProg")}<1,OR(N({R("Var")})>0,{R("Status")}="Late Start")),'
                     f'MAX(0,{R("Var")})+1-{R("Idx")}/1000000,"")')
-    f["StartKey"] = (f'IF(AND({leaf},N({R("AS")})=0,{R("LFS")}>=StatusDate,{R("LFS")}<=LookaheadEnd),'
-                     f'{R("LFS")}+{tie},"")')
-    f["DueKey"] = (f'IF(AND({leaf},{R("LProg")}<1,{R("LFF")}>=StatusDate,{R("LFF")}<=LookaheadEnd),'
-                   f'{R("LFF")}+{tie},"")')
-    f["CritKey"] = f'IF({R("LCrit")},{R("LFS")}+{tie},"")'
+    f["StartKey"] = (f'IF(AND({leaf},N({R("AS")})=0,{R("XFS")}>=StatusDate,{R("XFS")}<=LookaheadEnd),'
+                     f'{R("XFS")}+{tie},"")')
+    f["DueKey"] = (f'IF(AND({leaf},{R("LProg")}<1,{R("XFF")}>=StatusDate,{R("XFF")}<=LookaheadEnd),'
+                   f'{R("XFF")}+{tie},"")')
+    f["CritKey"] = f'IF({R("LCrit")},{R("XFS")}+{tie},"")'
     # resource and agile reports. A task is done on its Actual Finish (or its forecast finish when it is marked
     # 100% without one); story points count on detail tasks only.
     f["LWDone"] = f'{R("LWork")}*{R("LProg")}'
-    f["DoneDate"] = f'IF(AND({leaf},{R("LProg")}>=1),IF(N({R("AF")})>0,{R("AF")},{R("LFF")}),"")'
+    f["DoneDate"] = f'IF(AND({leaf},{R("LProg")}>=1),IF(N({R("AF")})>0,{R("AF")},{R("XFF")}),"")'
     f["LPts"] = f'IF({leaf},N({R("SP")}),0)'
     # over-allocation (Resource Report weekly utilisation, after leave): Yes when the task's resource is over 100% in
     # any week the task runs. Only weeks in the Resource Report window and its first resources are known.
     week_of = lambda d: f"(INT(({d}-ResourceWeekStart)/7)+1)"
-    first, last = f"MAX(1,{week_of(R('LFS'))})", f"MIN(COLUMNS(rw_Util),{week_of(R('LFF'))})"
+    first, last = f"MAX(1,{week_of(R('XFS'))})", f"MIN(COLUMNS(rw_Util),{week_of(R('XFF'))})"
     util_row = f"MATCH({R('Res')},res_Name,0)"
     weeks = f"INDEX(rw_Util,{util_row},{first}):INDEX(rw_Util,{util_row},{last})"
     f["OverAlloc"] = (f'IF(OR(NOT({leaf}),{R("Res")}="",{R("LProg")}>=1),"",IFERROR(IF({first}>{last},"",'
@@ -346,6 +373,13 @@ def formulas():
     return f
 
 
+def each(prefix):
+    """The per-link keys of one kind: each("P") = P1, P2, ..."""
+    return [f"{prefix}{k}" for k in LINK_NUMBERS]
+
+
+HELPER_DATES = {"CPS", "CPF", "LCS", "LCF", "LFS", "LFF", "XCS", "XCF", "XFS", "XFF", "SuccLF", "LLF", "LLS",
+                "DoneDate", "CStart", "CLow", "CHigh", *each("D"), *each("E")}
 # key, kind, width, number format, centre, header note
 LAYOUT = [
     ("ID", "calc", 5, None, True, "Position in the list; renumbers when rows move (like MS Project)."),
@@ -353,15 +387,16 @@ LAYOUT = [
     ("WBS", "calc", 8, None, True, "Outline number, generated from Level."),
     ("Level", "in", 6, None, True, "Outline level: 1 = phase, 2 = task, 3 = sub-task ... (at most 1 more than the row above)."),
     ("Name", "in", 36, None, False, None),
-    ("Mode", "in", 8, None, True, "Auto = scheduled from predecessors. Manual = pinned to Start No Earlier Than."),
+    ("Mode", "in", 8, None, True, "Auto = scheduled from predecessors and the constraint. Manual = starts on the "
+                                  "Constraint Date (finish constraints: finishes on it)."),
     ("Dur", "in", 9, None, True, "Working days. 0 = milestone."),
-    ("P1", "in", 7, None, True, "UID of the predecessor."),
-    ("T1", "in", 6, None, True, "FS, SS, FF or SF (blank = FS)."),
-    ("L1", "in", 6, None, True, "Lag in working days (negative = lead)."),
-    ("P2", "in", 7, None, True, "UID of a second predecessor."),
-    ("T2", "in", 6, None, True, "FS, SS, FF or SF (blank = FS)."),
-    ("L2", "in", 6, None, True, "Lag in working days (negative = lead)."),
-    ("Cons", "in", 15, DATE, False, "Auto tasks start no earlier than this. Manual tasks start exactly on it."),
+] + [row for k in LINK_NUMBERS for row in (
+    (f"P{k}", "in", 7, None, True, "UID of a predecessor: a detail task above this one."),
+    (f"T{k}", "in", 6, None, True, "FS, SS, FF or SF (blank = FS)."),
+    (f"L{k}", "in", 6, None, True, "Lag in working days (negative = lead)."))] + [
+    ("CType", "in", 20, None, False, "MS Project constraint (dropdown). Blank = Start No Earlier Than when a Constraint "
+                                     "Date is entered, otherwise As Soon As Possible. Constraint dates win over links."),
+    ("Cons", "in", 15, DATE, False, "Date for the Constraint. Manual tasks are pinned to it."),
     ("DL", "in", 15, DATE, False, "Optional deadline; Deadline Check flags a forecast finish after it."),
     ("PS", "calc", 15, DATE, False, "Baseline Start if a baseline is set, otherwise calculated from durations and links."),
     ("PF", "calc", 15, DATE, False, "Baseline Finish if a baseline is set, otherwise calculated."),
@@ -377,7 +412,7 @@ LAYOUT = [
     ("FSl", "calc", 8, None, True, "Free slack: working days it can slip before it delays any successor."),
     ("Crit", "calc", 8, None, True, "Yes when Total Slack <= CriticalSlackDays (Settings) and the task isn't complete."),
     ("DLChk", "calc", 12, None, True, None),
-    ("LinkChk", "calc", 24, None, False, "Explains predecessor links that are ignored."),
+    ("LinkChk", "calc", 24, None, False, "Explains predecessor links and constraints that are ignored."),
     ("Pct", "in", 9, "0%", False, "Enter 0-100%. An Actual Finish counts as 100%."),
     ("Prog", "calc", 9, "0%", False, "% Complete, rolled up to summaries (duration-weighted)."),
     ("Status", "calc", 12, None, True, None),
@@ -412,13 +447,12 @@ LAYOUT = [
     ("PV", "calc", 11, "#,##0.00", False, "Planned value: the budget of the work planned before the status date."),
     ("EV", "calc", 11, "#,##0.00", False, "Earned value: Budget x Progress."),
     ("ACt", "calc", 11, "#,##0.00", False, "Actual cost to date: Actual Cost, or Cost x Progress when it is blank."),
-] + [(k, "help", 11, DATE if k in ("CPS", "CPF", "LCS", "LCF", "LFS", "LFF", "D1P", "D2P", "D1F", "D2F", "SuccLF",
-                                       "LLF", "LLS", "DoneDate")
-                          else None, False, None)
-     for k in ("Lvl", "Idx", "Parent", "NextLvl", "IsSum", "Desc", "IsLeaf", "R1", "R2", "LCS", "LCF", "LFS", "LFF",
-               "LProg", "LWork", "LCost", "F1", "F2", "K1", "K2", "LastSucc", "SuccLF", "LLF", "LLS",
-               "LTS", "LCrit", "CPS", "CPF", "M1", "M2", "D1P", "D2P", "D1F",
-               "D2F", "SWD", "FWD", "WPD", "WBefore", "WtDur", "WtDone", "T1x", "T2x", "U1x", "U2x", "UPredTxt", "MKey",
+] + [(k, "help", 11, DATE if k in HELPER_DATES else None, False, None)
+     for k in ("Lvl", "Idx", "Parent", "NextLvl", "IsSum", "Desc", "IsLeaf", *each("R"), "CT", "CStart", "CLow",
+               "CHigh", "LCS", "LCF", "LFS", "LFF",
+               "LProg", "LWork", "LCost", *each("F"), *each("K"), "LastSucc", "SuccLF", "LLF", "LLS",
+               "LTS", "LCrit", "Shift", "XCS", "XCF", "XFS", "XFF", "CPS", "CPF", *each("M"), *each("D"), *each("E"),
+               "SWD", "FWD", "WPD", "WBefore", "WtDur", "WtDone", "UPredTxt", "MKey",
                "PlanPct", "LBud", "LPV", "LEV", "LAC", "Phase", "PhaseKey", "MsKey", "LateKey", "StartKey", "DueKey", "CritKey",
                "LWDone", "DoneDate", "LPts", "CurKey")]
 
@@ -487,9 +521,10 @@ def _validation_and_formatting(ws, L, n_rows):
     dv(DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0", showErrorMessage=True,
                       error="Duration is in working days (0 = milestone)."), "Dur")
     dv(DataValidation(type="whole", operator="greaterThanOrEqual", formula1="1", showErrorMessage=True,
-                      error="Enter the UID of another task. Problems are explained in the Link Check column."), "P1", "P2")
-    dv(DataValidation(type="list", formula1="=L_DepType"), "T1", "T2")
-    dv(DataValidation(type="whole", operator="between", formula1="-365", formula2="365"), "L1", "L2")
+                      error="Enter the UID of another task. Problems are explained in the Link Check column."), *each("P"))
+    dv(DataValidation(type="list", formula1="=L_DepType"), *each("T"))
+    dv(DataValidation(type="whole", operator="between", formula1="-365", formula2="365"), *each("L"))
+    dv(DataValidation(type="list", formula1="=L_Constraint"), "CType")
     dv(DataValidation(type="date", operator="greaterThan", formula1="1"), "Cons", "DL", "AS", "AF")
     dv(DataValidation(type="decimal", operator="between", formula1="0", formula2="1", showErrorMessage=True,
                       error="Enter 0% - 100%."), "Pct")
@@ -500,7 +535,7 @@ def _validation_and_formatting(ws, L, n_rows):
 
     cf = ws.conditional_formatting
     cf.add(f"A{first}:{L['ACt']}{last}", FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(bold=True), fill=fill("DDEBF7")))
-    for k in ("Dur", "P1", "T1", "L1", "P2", "T2", "L2", "Cons", "AS", "AF", "Pct", "Res", "Units", "ACin", "SprIn", "SP"):
+    for k in ("Dur", *each("P"), *each("T"), *each("L"), "CType", "Cons", "AS", "AF", "Pct", "Res", "Units", "ACin", "SprIn", "SP"):
         cf.add(rng(k), FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(color="A6A6A6", italic=True, bold=True)))
     for status, colour in STATUS_COLOURS.items():
         cf.add(rng("Status"), FormulaRule(formula=[f'{at("Status")}="{status}"'], font=Font(color=colour, bold=True)))

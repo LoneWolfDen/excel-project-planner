@@ -42,7 +42,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(ROOT))
 import perf_check  # noqa: E402
-from planner import log, mspdi  # noqa: E402
+from planner import log, mspdi, settings  # noqa: E402
 
 
 def build(path, *flags):
@@ -848,10 +848,10 @@ class EssentialsTest(Tmp):
         col = columns(ws)
         state = lambda header: (ws.column_dimensions[openpyxl.utils.get_column_letter(col[header])].outlineLevel,
                                 bool(ws.column_dimensions[openpyxl.utils.get_column_letter(col[header])].hidden))
-        for header in ("Task Name", "Duration", "Predecessors", "Resources", "% Complete", "Actual Start", "Forecast Finish",
+        for header in ("Task Name", "Duration", "Predecessors", "Resources", "Stage", "Actual Start", "Forecast Finish",
                        "Status", "Critical", "Issues", "Deadline", "Finish Var", "Work", "Sprint", "Duration Var", "EV"):
             self.assertEqual(state(header), (0, False), header)          # essentials and each section's key column
-        for header in ("Mode", "Constraint", "Late Start", "Total Slack", "Cost", "Story Points", "BL Source Start",
+        for header in ("Mode", "Constraint", "Late Start", "Total Slack", "% Complete", "Cost", "Story Points", "BL Source Start",
                        "Baseline Start", "Budget", "PV"):
             self.assertEqual(state(header), (1, True), header)           # collapsed sections
         self.assertEqual(state("_Row"), (2, True))                       # helpers: one level deeper
@@ -905,6 +905,56 @@ class IssuesTest(Tmp):
                 for w in ET.fromstring(mspdi.convert(out.getvalue())).iter(ns + "WeekDay")
                 if w.find(ns + "DayType").text != "0"}
         self.assertEqual(week, {1: "1", 2: "1", 3: "1", 4: "1", 5: "1", 6: "0", 7: "0"})   # Sun-Thu in MS Project too
+
+
+class StageConversionTest(unittest.TestCase):
+    def test_a_percent_becomes_the_nearest_stage(self):
+        from planner.tasks import take_stage
+        self.assertEqual(take_stage({"Pct": 1}), {"Stage": "Complete"})              # exact: no override kept
+        self.assertEqual(take_stage({"Pct": 0.7}), {"Stage": "Test Ready"})
+        self.assertEqual(take_stage({"Pct": 0.5}), {"Stage": "In Development", "Pct": 0.5})   # 40% is nearest
+        self.assertEqual(take_stage({"Pct": 0.25}), {"Stage": "Design", "Pct": 0.25})
+        self.assertEqual(take_stage({"Pct": None, "AS": 1}), {"Pct": None, "AS": 1})    # nothing to convert
+        self.assertEqual(take_stage({"Pct": 0.9, "Stage": "Design"}), {"Pct": 0.9, "Stage": "Design"})
+        self.assertEqual(take_stage({"Pct": 0.5}, [("Open", 0), ("Half", 0.5), ("Done", 1)]), {"Stage": "Half"})
+
+
+@unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+class StageTest(Tmp):
+    """Progress by Stage (Settings > Stages), with % Complete as an optional override."""
+
+    def test_stage_sets_progress_and_issues_ask_for_dates(self):
+        def edit(wb):
+            set_input(wb, 13, "Pct", None)                        # Core API: In Development = 40%
+            set_input(wb, 14, "Stage", "Test Ready")              # not started yet: 70% without an Actual Start
+            set_input(wb, 18, "Stage", "Complete")                # 100% without an Actual Finish
+            set_input(wb, 19, "Stage", "Design")                  # a milestone half way
+            set_input(wb, 12, "Stage", "In Testing")              # finished (Actual Finish) but not Complete
+            set_input(wb, 16, "Stage", "Typo")
+            ws = wb["Settings"]
+            table = ws.tables["StageTable"]
+            c1, r1, _, _ = openpyxl.utils.cell.range_boundaries(table.ref)
+            ws.cell(r1 + 4, c1 + 1).value = 0.75                  # Test Ready is now 75%
+
+        wb = recalc(self.path, self.dir, edit)
+        self.assertEqual(errors_in(wb), [])
+        t = Tasks(wb)
+        self.assertEqual((t.get(13, "Prog"), t.get(14, "Prog"), t.get(18, "Prog")), (0.4, 0.75, 1))
+        self.assertEqual(t.get(12, "Prog"), 1)                       # an Actual Finish counts as 100%
+        self.assertIn("Started: enter the Actual Start.", t.get(14, "Issues"))
+        self.assertIn("Complete: enter the Actual Finish.", t.get(18, "Issues"))
+        self.assertIn("A milestone is Not Started or Complete.", t.get(19, "Issues"))
+        self.assertIn("Actual Finish is set: set the Stage to Complete.", t.get(12, "Issues"))
+        self.assertIn("Stage Typo is not on Settings > Stages.", t.get(16, "Issues"))
+        self.assertEqual(t.get(13, "FF"), dt.date(2026, 11, 2))      # 6 of 10 days left: 26-Oct to 2-Nov
+
+    def test_sample_uses_stages(self):
+        wb = openpyxl.load_workbook(self.path)
+        stages = {r["Stage"]: r["% Complete"] for r in table_rows(wb, "Settings", "StageTable")}
+        self.assertEqual(stages, dict(settings.STAGES))
+        t = {r["UID"]: r for r in table_rows(wb, "Tasks", "Tasks")}
+        self.assertEqual((t[2]["Stage"], t[2]["% Complete"]), ("Complete", None))
+        self.assertEqual((t[13]["Stage"], t[13]["% Complete"]), ("In Development", 0.5))     # the override kept
 
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")
@@ -1219,6 +1269,7 @@ class RippleTest(Tmp):
         def edit(wb):
             set_input(wb, 13, "AS", None)
             set_input(wb, 13, "Pct", None)
+            set_input(wb, 13, "Stage", None)
 
         t = Tasks(recalc(self.path, self.dir, edit))
         self.assertEqual(t.get(13, "FS"), dt.date(2026, 10, 26))   # first working day after 25-Oct

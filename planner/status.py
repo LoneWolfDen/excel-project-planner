@@ -26,7 +26,7 @@ MONEY = "#,##0"
 
 # this week's steps, under the status date: (label, text, sheet to link to)
 WEEKLY = [
-    ("2. Progress", "On Tasks: % Complete, Actual Start and Actual Finish for the tasks that moved.", "Tasks"),
+    ("2. Progress", "On Tasks: the Stage, Actual Start and Actual Finish for the tasks that moved.", "Tasks"),
     ("3. Log", "Update risks, issues, decisions and change requests.", "Log"),
     ("4. RAG", "Review the RAG below; where you disagree, pick a PM RAG and say why in Comment.", None),
     ("5. Commentary", "Write this period's notes in the COMMENTARY table below.", None),

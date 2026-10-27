@@ -235,6 +235,35 @@ def build_lists(wb):
     return ws
 
 
+# Progress by stage: each stage's % Complete (weighted milestones: the same stage is the same progress everywhere)
+STAGES = [("Not Started", 0), ("Design", 0.15), ("In Development", 0.4), ("Test Ready", 0.7), ("In Testing", 0.85),
+          ("Complete", 1)]
+
+
+def build_stages(wb, stages=None):
+    """The Stages table on Settings, below the settings: the Stage dropdown on Tasks and each stage's % Complete.
+    Editable for other kinds of work (rename a stage, change its %, add rows); keep the first at 0% and the last at
+    100%, since milestones use those two. stages: (name, %) rows replacing the default."""
+    ws = wb["Settings"]
+    top = ws.max_row + 3
+    ws.cell(top - 1, 2, "STAGES: pick one per task on Tasks > Stage; its % Complete counts as the task's progress "
+                        "(a typed % Complete overrides it).").font = font(bold=True, color="1F4E78")
+    data = stages or STAGES
+    add_table(ws, "StageTable", top, 2, [
+        Col("Stage", "in", 34, values=[n for n, _ in data]),               # the settings' column widths
+        Col("% Complete", "in", 24, "0%", values=[p for _, p in data]),
+    ], len(data), autofilter=False)
+    name(wb, "stg_Name", "StageTable[Stage]")
+    name(wb, "stg_Pct", "StageTable[% Complete]")
+    name(wb, "L_Stage", "StageTable[Stage]")
+    return ws
+
+
+def nearest_stage(pct, stages=None):
+    """The stage whose % is closest to pct (the lower one on a tie), for a % from an older workbook or MS Project."""
+    return min(stages or STAGES, key=lambda s: (abs(s[1] - pct), s[1]))
+
+
 HOLIDAYS = [(dt.date(2026, 12, 24), "Christmas Eve (example - replace with your calendar)"),
             (dt.date(2026, 12, 25), "Christmas Day (example)"),
             (dt.date(2026, 12, 31), "New Year's Eve (example)"),

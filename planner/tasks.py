@@ -59,7 +59,7 @@ N = {
     "PS": "Planned Start", "PF": "Planned Finish", "AS": "Actual Start", "AF": "Actual Finish",
     "FS": "Forecast Start", "FF": "Forecast Finish", "SVar": "Start Var", "Var": "Finish Var",
     "LS": "Late Start", "LF": "Late Finish", "TS": "Total Slack", "FSl": "Free Slack", "Crit": "Critical",
-    "DLChk": "Deadline Check", "LinkChk": "Link Check", "Issues": "Issues", "Pct": "% Complete", "Prog": "Progress", "Status": "Status",
+    "DLChk": "Deadline Check", "LinkChk": "Link Check", "Issues": "Issues", "Stage": "Stage", "Pct": "% Complete", "Prog": "Progress", "Status": "Status",
     "ResIn": "Resources", "Res": "_Resource1", "Units": "_Units1", "OverAlloc": "Over-allocated", "Work": "Work", "Cost": "Cost", "ACin": "Actual Cost", "SprIn": "Planned Sprint",
     "Sprint": "Sprint", "SP": "Story Points",
     "PredTxt": "Predecessors by ID", "Notes": "Notes",
@@ -74,7 +74,7 @@ N = {
         ("R", "Pos"), ("M", "Problem"), ("D", "PlanDriver"), ("E", "FcstDriver"), ("F", "FinishKey"), ("K", "SlackKey"))},
     "CT": "_ConstraintCode", "CStart": "_ConstraintStart", "CLow": "_ConstraintLow", "CHigh": "_ConstraintHigh",
     "LCS": "_LeafCalcStart", "LCF": "_LeafCalcFinish", "LFS": "_LeafFcstStart", "LFF": "_LeafFcstFinish",
-    "LProg": "_LeafProgress", "LWork": "_LeafWork", "LCost": "_LeafCost", "LTW": "_LeafTotalWork",
+    "StgPct": "_StagePct", "PctUse": "_Pct", "LProg": "_LeafProgress", "LWork": "_LeafWork", "LCost": "_LeafCost", "LTW": "_LeafTotalWork",
     "LTC": "_LeafTotalCost", "PAC": "_ResourceAC", "ResTxt": "Resource Names", "NPeople": "_People",
     **{f"Ri{k}": f"_Res{k}Text" for k in range(1, PEOPLE + 1)},
     **{f"{x}{k}": f"_Res{k}{label}" for k in MORE_PEOPLE for x, label in (
@@ -248,6 +248,33 @@ def take_people(row, more=()):
     return row
 
 
+def take_stage(row, stages=None):
+    """Give a row with a % Complete (older layouts, the sample, MS Project) the nearest Stage. The % stays as the
+    override only when it differs from that stage's %, so the plan's progress, and so its schedule, don't change."""
+    from .settings import nearest_stage
+    pct = row.get("Pct")
+    if isinstance(pct, (int, float)) and not row.get("Stage"):
+        stage, stage_pct = nearest_stage(pct, stages)
+        row["Stage"] = stage
+        if abs(stage_pct - pct) < 1e-9:
+            row.pop("Pct")
+    return row
+
+
+def progress_issues(R, leaf):
+    """Issues text for progress: actual dates the Stage calls for, and dates or stages that disagree."""
+    stage, stage_pct, pct, use = R("Stage"), R("StgPct"), R("Pct"), R("PctUse")
+    started, finished = f'N({R("AS")})>0', f'N({R("AF")})>0'
+    return (f'&IF(AND({stage}<>"",{stage_pct}=""),"Stage "&{stage}&" is not on Settings > Stages. ","")'
+            f'&IF(NOT({leaf}),"",'
+            f'IF(AND(N({R("Dur")})=0,{use}>0,{use}<1),"A milestone is Not Started or Complete. ","")'
+            f'&IF(AND({use}>0,NOT({started})),"Started: enter the Actual Start. ","")'
+            f'&IF(AND({use}>=1,NOT({finished})),"Complete: enter the Actual Finish. ","")'
+            f'&IF(AND({finished},{use}<1,{stage}<>""),"Actual Finish is set: set the Stage to Complete. ","")'
+            f'&IF(AND({started},{stage}<>"",{use}=0,NOT(ISNUMBER({pct}))),'
+            f'"Actual Start is set: move the Stage on from "&{stage}&". ",""))')
+
+
 def each_link(template):
     """template(k) for every link, comma-separated: the arguments of a MAX over all links."""
     return ",".join(template(k) for k in LINK_NUMBERS)
@@ -332,10 +359,13 @@ def formulas():
                 f'WORKDAY.INTL(MAX(MIN(MAX(ProjectStart,{R("CLow")},{each_link(lambda k: R(f"E{k}"))}),{R("CHigh")}),'
                 f'IF(RescheduleAfterStatus="Yes",StatusDate,0))-1,1,{WD}))))')
     natural = f'WORKDAY.INTL({R("LFS")},{R("Dur")}-1,{WD})'
-    remaining = f'WORKDAY.INTL(StatusWorkday,MAX(0,ROUNDUP({R("Dur")}*(1-MIN(1,N({R("Pct")}))),0)-1),{WD})'
+    # progress: the Stage's % (Settings > Stages), or a typed % Complete, which overrides it
+    f["StgPct"] = f'IF({R("Stage")}="","",IFERROR(INDEX(stg_Pct,MATCH({R("Stage")},stg_Name,0)),""))'
+    f["PctUse"] = f'IF(ISNUMBER({R("Pct")}),{R("Pct")},N({R("StgPct")}))'
+    remaining = f'WORKDAY.INTL(StatusWorkday,MAX(0,ROUNDUP({R("Dur")}*(1-MIN(1,{R("PctUse")})),0)-1),{WD})'
     f["LFF"] = (f'IF(NOT({leaf}),"",IF(N({R("AF")})>0,{R("AF")},IF(N({R("Dur")})<=0,{R("LFS")},'
                 f'IF(AND(N({R("AS")})>0,RescheduleAfterStatus="Yes"),MAX({natural},{remaining}),{natural}))))')
-    f["LProg"] = f'IF(NOT({leaf}),0,IF(N({R("AF")})>0,1,MIN(1,N({R("Pct")}))))'
+    f["LProg"] = f'IF(NOT({leaf}),0,IF(N({R("AF")})>0,1,MIN(1,{R("PctUse")})))'
     # people: the Resources cell (`Alex Chen, JL[50%]`: names or initials, optional units) split into one set of
     # helper columns per person. The first person uses _Resource1 / _Units1 and the _Leaf... columns; the others
     # their own. Each person's work = Duration x HoursPerDay x their units (MS Project's fixed-units default).
@@ -503,7 +533,8 @@ def formulas():
                    + f'&IF({R(f"Ri{PEOPLE}")}="","",IF({item(PEOPLE + 1)}<>"",'
                      f'"Only the first {PEOPLE} people in Resources are used. ",""))'
                    f'&IF({R("OverAlloc")}="Yes","Over-allocated: see the Resource Report. ","")'
-                   f'&IF(LEFT({R("DLChk")},4)="Late","Misses its deadline ("&LOWER({R("DLChk")})&"). ","")))')
+                   + progress_issues(R, leaf)
+                   + f'&IF(LEFT({R("DLChk")},4)="Late","Misses its deadline ("&LOWER({R("DLChk")})&"). ","")))')
     return f
 
 
@@ -550,8 +581,12 @@ LAYOUT = [
     ("LinkChk", "calc", 24, None, False, "Explains predecessor links and constraints that are ignored."),
     ("Issues", "calc", 34, None, False, "Everything wrong on this row, in words: links, UID, outline level, resource, "
                                         "over-allocation, missed deadline. Blank = fine."),
-    ("Pct", "in", 9, "0%", False, "Enter 0-100%. An Actual Finish counts as 100%."),
-    ("Prog", "calc", 9, "0%", False, "% Complete, rolled up to summaries (duration-weighted)."),
+    ("Stage", "in", 14, None, False, "Where the task is: Not Started, Design, In Development, Test Ready, In Testing, "
+                                     "Complete. Each stage's % Complete is on Settings > Stages."),
+    ("Pct", "in", 9, "0%", False, "Optional: overrides the Stage's % (0-100%). Blank = the Stage's %. An Actual "
+                                  "Finish counts as 100%."),
+    ("Prog", "calc", 9, "0%", False, "The Stage's % (or the % Complete override), rolled up to summaries "
+                                     "(duration-weighted)."),
     ("Status", "calc", 12, None, True, None),
     ("ResIn", "in", 20, None, False, f"Who does it: names or initials from Resources, comma-separated, with an optional "
                                      f"share of their time, e.g. Alex Chen, JL[50%] (blank = DefaultUnits). Up to "
@@ -592,7 +627,7 @@ LAYOUT = [
                "CHigh", "LCS", "LCF", "LFS", "LFF",
                *[f"{x}{k}" for k in LINK_NUMBERS for x in "IPTL"], *[f"Ri{k}" for k in range(1, PEOPLE + 1)], "Res", "Units", "NPeople",
                *[f"{x}{k}" for k in MORE_PEOPLE for x in ("Rs", "Ru", "Rw", "Rc", "Rp", "Rb", "Rd", "Ra")],
-               "LProg", "LWork", "LCost", "LTW", "LTC", "PAC", *each("F"), *each("K"), "LastSucc", "SuccLF", "LLF", "LLS",
+               "StgPct", "PctUse", "LProg", "LWork", "LCost", "LTW", "LTC", "PAC", *each("F"), *each("K"), "LastSucc", "SuccLF", "LLF", "LLS",
                "LTS", "LCrit", "Shift", "XCS", "XCF", "XFS", "XFF", "CPS", "CPF", *each("M"), *each("D"), *each("E"),
                "SWD", "FWD", "WPD", "WBefore", "WtDur", "WtDone", "UPredTxt", "MKey",
                "PlanPct", "LBud", "LPV", "LEV", "LAC", "Phase", "PhaseKey", "MsKey", "LateKey", "StartKey", "DueKey", "CritKey",
@@ -603,9 +638,9 @@ LAYOUT = [
 # merge groups that touch, so every section keeps one visible column.) Nothing is removed: + shows the rest.
 SECTIONS = [
     ("PLAN: type in the blue columns", None, ["ID", "UID", "WBS", "Level", "Name", "Dur", "PredIn",
-                                              "ResIn", "Pct", "AS", "AF", "Notes", "FS", "FF", "Status", "Crit", "Issues", "Show"]),
+                                              "ResIn", "Stage", "AS", "AF", "Notes", "FS", "FF", "Status", "Crit", "Issues", "Show"]),
     ("SCHEDULING", "DL", ["Mode", "CType", "Cons"]),
-    ("DETAIL", "Var", ["PS", "PF", "SVar", "LS", "LF", "TS", "FSl", "DLChk", "LinkChk", "Prog", "PredTxt"]),
+    ("DETAIL", "Var", ["PS", "PF", "SVar", "LS", "LF", "TS", "FSl", "DLChk", "LinkChk", "Pct", "Prog", "PredTxt"]),
     ("COST", "Work", ["ResTxt", "OverAlloc", "Cost", "ACin"]),
     ("AGILE", "Sprint", ["SprIn", "SP"]),
     ("BASELINE", "DVar",
@@ -705,7 +740,9 @@ PROMPTS = {
                                         "this one."),
     "ResIn": ("Resources", "Who does it: names or initials from Resources, comma-separated. Add a share of "
                            "their time in brackets, e.g. Alex Chen, JL[50%]. Pick one from the list or type several."),
-    "Pct": ("% Complete", "0% - 100%. An Actual Finish counts as 100%."),
+    "Stage": ("Stage", "Pick where the task is. Its % Complete comes from Settings > Stages. Enter Actual Start "
+                       "once it has started and Actual Finish at Complete."),
+    "Pct": ("% Complete (optional)", "Only to override the Stage's %: 0% - 100%. Blank = the Stage's %."),
     "AS": ("Actual Start", "The day work really started. Leave blank until it starts."),
     "AF": ("Actual Finish", "The day it really finished: the task counts as 100% complete."),
     "Notes": ("Notes", "Anything worth knowing: assumptions, links, who to ask."),
@@ -740,6 +777,7 @@ def _validation_and_formatting(ws, L, n_rows):
     dv(DataValidation(type="date", operator="greaterThan", formula1="1"), "Cons", "DL", "AS", "AF")
     dv(DataValidation(type="decimal", operator="between", formula1="0", formula2="1", showErrorMessage=True,
                       error="Enter 0% - 100%."), "Pct")
+    dv(DataValidation(type="list", formula1="=L_Stage"), "Stage")
     dv(DataValidation(type="list", formula1="=res_Name", showErrorMessage=False), "ResIn")   # pick one, or type several
     dv(DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0"), "ACin", "SP")
     dv(DataValidation(type="list", formula1="=spr_Name"), "SprIn")
@@ -747,7 +785,7 @@ def _validation_and_formatting(ws, L, n_rows):
 
     cf = ws.conditional_formatting
     cf.add(f"A{first}:{L['ACt']}{last}", FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(bold=True), fill=fill("DDEBF7")))
-    for k in ("Dur", "PredIn", "CType", "Cons", "AS", "AF", "Pct", "ResIn", "ACin", "SprIn", "SP"):
+    for k in ("Dur", "PredIn", "CType", "Cons", "AS", "AF", "Stage", "Pct", "ResIn", "ACin", "SprIn", "SP"):
         cf.add(rng(k), FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(color="A6A6A6", italic=True, bold=True)))
     for status, colour in STATUS_COLOURS.items():
         cf.add(rng("Status"), FormulaRule(formula=[f'{at("Status")}="{status}"'], font=Font(color=colour, bold=True)))

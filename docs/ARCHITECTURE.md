@@ -145,6 +145,19 @@ The plan moves by the same number of days as the forecast, so an ALAP task adds 
 - Bar labels and colours from a Settings table are not built: conditional formatting can't show per-row text or take
   a colour from a cell, so both would need a formula in every timeline cell (30,000 on the sample Gantt).
 
+## Progress by stage
+
+A free % Complete means something different to everyone, so a task's progress comes from its **Stage**, picked from
+the Stages table on Settings (`stg_Name`, `stg_Pct`): Not Started 0%, Design 15%, In Development 40%, Test Ready
+70%, In Testing 85%, Complete 100% by default. That is weighted-milestone earned value: the same stage is the same
+progress on every task, and a PMO can rename the stages or change their % in one place. `_StagePct` looks the
+stage up once per row and `_Pct` is the % the schedule uses: a typed % Complete (now an optional override in the
+DETAIL section) or the stage's %. Everything that read % Complete (remaining duration, progress roll-up, earned
+value, sprint "done", the Gantt, the XML export's PercentComplete) reads `_Pct` through `_LeafProgress`. Actual
+Start and Actual Finish stay typed dates; Issues asks for them when the stage calls for them and flags a stage that
+disagrees with them. Older workbooks and MS Project files carry a %, so `tasks.take_stage` picks the nearest stage
+and keeps the exact % as the override when it differs: an upgraded plan schedules exactly as before.
+
 ## Text inputs: Predecessors and Resources
 
 A task's links and people are each one cell, as in MS Project: Predecessors `12, 14SS+2d` (by UID: Excel can't

@@ -49,7 +49,10 @@ def text(sizes, wizard=False):
                                 "select the first 'Baseline Start' cell and Paste Special > Values. Planned Start/Finish now stay "
                                 "frozen (like MS Project's Baseline) and the variance columns compare against it. To re-baseline, "
                                 "repeat; to clear it, delete the 5 Baseline columns' contents."),
-        ("5. Track progress", "Enter Actual Start, Actual Finish and % Complete. Forecast Start/Finish then use actuals and push "
+        ("5. Track progress", "Pick each task's Stage (Not Started, Design, In Development, Test Ready, In Testing, "
+                              "Complete; each stage's % is on Settings > Stages, editable) and enter Actual Start once "
+                              "it starts and Actual Finish when it's done; Issues asks for the dates the Stage calls "
+                              "for. % Complete (DETAIL section) overrides the stage's % when typed. Forecast Start/Finish then use actuals and push "
                               "every dependent task. Start / Finish / Duration / Work / Cost Var and Status flag slippage. "
                               "Optionally enter Actual Cost (cost to date) on detail tasks; blank = Cost x Progress."),
         ("Critical path", "Late Start / Late Finish come from a backward pass from the forecast project finish (and any "

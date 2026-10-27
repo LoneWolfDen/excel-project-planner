@@ -150,9 +150,9 @@ The plan moves by the same number of days as the forecast, so an ALAP task adds 
 A free % Complete means something different to everyone, so a task's progress comes from its **Stage**, picked from
 the Stages table on Settings (`stg_Name`, `stg_Pct`): Not Started 0%, Design 15%, In Development 40%, Test Ready
 70%, In Testing 85%, Complete 100% by default. That is weighted-milestone earned value: the same stage is the same
-progress on every task, and a PMO can rename the stages or change their % in one place. `_StagePct` looks the
-stage up once per row and `_Pct` is the % the schedule uses: a typed % Complete (now an optional override in the
-DETAIL section) or the stage's %. Everything that read % Complete (remaining duration, progress roll-up, earned
+progress on every task, and a PMO can rename the stages or change their % in one place. `_Pct` is the % the
+schedule uses: a typed % Complete (now an optional override in the DETAIL section), or else the stage's %, looked up
+once per row. Everything that read % Complete (remaining duration, progress roll-up, earned
 value, sprint "done", the Gantt, the XML export's PercentComplete) reads `_Pct` through `_LeafProgress`. Actual
 Start and Actual Finish stay typed dates; Issues asks for them when the stage calls for them and flags a stage that
 disagrees with them. Older workbooks and MS Project files carry a %, so `tasks.take_stage` picks the nearest stage

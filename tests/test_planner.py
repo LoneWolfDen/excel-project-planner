@@ -1201,7 +1201,8 @@ class InsertRowTest(Tmp):
         self.assertEqual(t.get(18, "Pred"), "17,13SS+2d")             # Feature screens now ID 18
         self.assertEqual(t.get(11, "Work"), 168 + 0)                  # no resource on new task
         gantt = wb["Gantt"]
-        self.assertEqual(gantt.cell(14 + FIRST - 1, 3).value.strip(), "Security review")
+        task = next(c.column for c in gantt[5] if c.value == "Task")
+        self.assertEqual(gantt.cell(14 + FIRST - 1, task).value.strip(), "Security review")
 
 
 import lo_session  # noqa: E402
@@ -1248,8 +1249,9 @@ class RealRowEditTest(Tmp):
         self.assertIsNone(t.get(15, "Link"))
         self.assertEqual(t.get(15, "PS"), dt.date(2026, 10, 27))   # follows the new task
         self.assertEqual(t.get(20, "Pred"), "15,19")                 # IDs renumbered in the MSP text
-        gantt = {r["ID"]: r for r in table_rows(wb, "Gantt", "GanttView")}
-        self.assertEqual(gantt[14]["Task"].strip(), "Security review")
+        gantt = wb["Gantt"]
+        task = next(c.column for c in gantt[5] if c.value == "Task")
+        self.assertEqual(gantt.cell(14 + FIRST - 1, task).value.strip(), "Security review")
 
     def test_delete_a_predecessor(self):
         def delete(calc, cols):

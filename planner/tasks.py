@@ -74,7 +74,7 @@ N = {
         ("R", "Pos"), ("M", "Problem"), ("D", "PlanDriver"), ("E", "FcstDriver"), ("F", "FinishKey"), ("K", "SlackKey"))},
     "CT": "_ConstraintCode", "CStart": "_ConstraintStart", "CLow": "_ConstraintLow", "CHigh": "_ConstraintHigh",
     "LCS": "_LeafCalcStart", "LCF": "_LeafCalcFinish", "LFS": "_LeafFcstStart", "LFF": "_LeafFcstFinish",
-    "StgPct": "_StagePct", "PctUse": "_Pct", "LProg": "_LeafProgress", "LWork": "_LeafWork", "LCost": "_LeafCost", "LTW": "_LeafTotalWork",
+    "PctUse": "_Pct", "LProg": "_LeafProgress", "LWork": "_LeafWork", "LCost": "_LeafCost", "LTW": "_LeafTotalWork",
     "LTC": "_LeafTotalCost", "PAC": "_ResourceAC", "ResTxt": "Resource Names", "NPeople": "_People",
     **{f"Ri{k}": f"_Res{k}Text" for k in range(1, PEOPLE + 1)},
     **{f"{x}{k}": f"_Res{k}{label}" for k in MORE_PEOPLE for x, label in (
@@ -263,9 +263,9 @@ def take_stage(row, stages=None):
 
 def progress_issues(R, leaf):
     """Issues text for progress: actual dates the Stage calls for, and dates or stages that disagree."""
-    stage, stage_pct, pct, use = R("Stage"), R("StgPct"), R("Pct"), R("PctUse")
+    stage, pct, use = R("Stage"), R("Pct"), R("PctUse")
     started, finished = f'N({R("AS")})>0', f'N({R("AF")})>0'
-    return (f'&IF(AND({stage}<>"",{stage_pct}=""),"Stage "&{stage}&" is not on Settings > Stages. ","")'
+    return (f'&IF({stage}="","",IF(ISNA(MATCH({stage},stg_Name,0)),"Stage "&{stage}&" is not on Settings > Stages. ",""))'
             f'&IF(NOT({leaf}),"",'
             f'IF(AND(N({R("Dur")})=0,{use}>0,{use}<1),"A milestone is Not Started or Complete. ","")'
             f'&IF(AND({use}>0,NOT({started})),"Started: enter the Actual Start. ","")'
@@ -360,8 +360,8 @@ def formulas():
                 f'IF(RescheduleAfterStatus="Yes",StatusDate,0))-1,1,{WD}))))')
     natural = f'WORKDAY.INTL({R("LFS")},{R("Dur")}-1,{WD})'
     # progress: the Stage's % (Settings > Stages), or a typed % Complete, which overrides it
-    f["StgPct"] = f'IF({R("Stage")}="","",IFERROR(INDEX(stg_Pct,MATCH({R("Stage")},stg_Name,0)),""))'
-    f["PctUse"] = f'IF(ISNUMBER({R("Pct")}),{R("Pct")},N({R("StgPct")}))'
+    f["PctUse"] = (f'IF(ISNUMBER({R("Pct")}),{R("Pct")},IF({R("Stage")}="",0,'
+                   f'IFERROR(INDEX(stg_Pct,MATCH({R("Stage")},stg_Name,0)),0)))')
     remaining = f'WORKDAY.INTL(StatusWorkday,MAX(0,ROUNDUP({R("Dur")}*(1-MIN(1,{R("PctUse")})),0)-1),{WD})'
     f["LFF"] = (f'IF(NOT({leaf}),"",IF(N({R("AF")})>0,{R("AF")},IF(N({R("Dur")})<=0,{R("LFS")},'
                 f'IF(AND(N({R("AS")})>0,RescheduleAfterStatus="Yes"),MAX({natural},{remaining}),{natural}))))')
@@ -627,7 +627,7 @@ LAYOUT = [
                "CHigh", "LCS", "LCF", "LFS", "LFF",
                *[f"{x}{k}" for k in LINK_NUMBERS for x in "IPTL"], *[f"Ri{k}" for k in range(1, PEOPLE + 1)], "Res", "Units", "NPeople",
                *[f"{x}{k}" for k in MORE_PEOPLE for x in ("Rs", "Ru", "Rw", "Rc", "Rp", "Rb", "Rd", "Ra")],
-               "StgPct", "PctUse", "LProg", "LWork", "LCost", "LTW", "LTC", "PAC", *each("F"), *each("K"), "LastSucc", "SuccLF", "LLF", "LLS",
+               "PctUse", "LProg", "LWork", "LCost", "LTW", "LTC", "PAC", *each("F"), *each("K"), "LastSucc", "SuccLF", "LLF", "LLS",
                "LTS", "LCrit", "Shift", "XCS", "XCF", "XFS", "XFF", "CPS", "CPF", *each("M"), *each("D"), *each("E"),
                "SWD", "FWD", "WPD", "WBefore", "WtDur", "WtDone", "UPredTxt", "MKey",
                "PlanPct", "LBud", "LPV", "LEV", "LAC", "Phase", "PhaseKey", "MsKey", "LateKey", "StartKey", "DueKey", "CritKey",

@@ -180,15 +180,15 @@ def _timeline_rules(ws, L, first, last, n_rows):
 
 def _legend(ws, first):
     planned = Side(style="thin", color=COLOURS["planned"])
-    items = [("Planned (outline; baseline once set)", None, Border(top=planned, bottom=planned, left=planned, right=planned)),
+    items = [("Planned (outline)", None, Border(top=planned, bottom=planned, left=planned, right=planned)),
              ("Done (% complete)", COLOURS["done"], None), ("Remaining - on track", COLOURS["remaining"], None),
              ("Slip: past the planned finish", COLOURS["slip"], None), ("Remaining - critical", COLOURS["critical"], None),
-             ("Planned, no work there now", COLOURS["planned_gap"], None), ("Summary (forecast)", COLOURS["summary"], None),
+             ("Planned, no work now", COLOURS["planned_gap"], None), ("Summary (forecast)", COLOURS["summary"], None),
              ("Milestone (forecast)", COLOURS["milestone"], None), ("Deadline", COLOURS["deadline"], None),
              ("Status date", None, Border(left=Side(style="medium", color=COLOURS["status"]))),
              ("Non-working day", COLOURS["nonworking"], None)]
     for i, (text, colour, border) in enumerate(items):
-        row, col = 1 + i // 5, first + (i % 5) * 12
+        row, col = 1 + i // 6, first + (i % 6) * 11      # rows 1-2 only: rows 3-4 carry the month / year scale
         swatch = ws.cell(row, col)
         if colour:
             swatch.fill = fill(colour)

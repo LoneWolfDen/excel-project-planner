@@ -44,9 +44,13 @@ and assignment.
    `Alex[50%], Jordan`.
 4. **Two kinds of check column.** Link Check, Deadline Check, Over-allocated and the UID highlight each live in a
    different place; a new user doesn't know which to look at.
-5. **Actuals need three inputs.** % Complete, Actual Start and Actual Finish. Most PMs only update % complete; the
-   dates could be assumed (start = planned start once % > 0, finish = forecast finish at 100%) and typed only to
-   correct them.
+5. **% Complete is a guess, not a standard.** Two people mean different things by "60%", so earned value and
+   status rest on opinion. A **Stage** dropdown (Not Started, Design, In Development, Test Ready, In Testing,
+   Complete) is clearer: each stage carries a fixed % from a table on Settings (the "weighted milestone" method of
+   earned value), so the same stage always means the same progress. Stage names and weights are editable for
+   non-software work (e.g. Planning, Build, Review). Actual Start and Actual Finish stay as real dates the PM types;
+   Issues asks for them when a task leaves Not Started or reaches Complete, so dates and stage can't disagree.
+   % Complete stays as an optional override for anyone who prefers it.
 6. **No guidance at the point of entry.** Header comments exist, but nothing tells a user which columns are required.
    Excel's data-validation input message (shown when the cell is selected) works everywhere, including Excel for the
    web and iPhone.
@@ -134,7 +138,7 @@ flowchart LR
 | Sprints + Agile Report | **Agile** (optional module) | Sprint calendar inputs and the agile charts on one sheet. |
 | Resources + Leave | **Resources** | One row per person: details, rate, capacity, leave months. |
 | Tasks + Assignments | **Tasks** | Resource Names text column replaces Resource, Units and the Assignments sheet. |
-| MSP_Tasks, MSP_Resources | dropped (build option keeps them) | The XML converter carries more and needs no column mapping. |
+| MSP_Tasks, MSP_Resources | dropped | Read-only copies for MS Project's Import Wizard; the XML converter replaces them (decision 4). |
 | Roadmap, Schedule Report, Resource Report, History, Gantt | unchanged | |
 
 ## Tasks: what a first-time user sees
@@ -143,15 +147,15 @@ Default view after E9 (optional groups collapsed with Excel's column + / - butto
 
 | Group | Columns | Shown by default |
 |---|---|---|
-| Essential inputs | UID (pre-filled), Level, Task Name, Duration, **Predecessors** (`12, 14SS+2d`), **Resources** (`AC, JL[50%]`), % Complete, Notes | ✅ |
+| Essential inputs | UID (pre-filled), Level, Task Name, Duration, **Predecessors** (`12, 14SS+2d`), **Resources** (`AC, JL[50%]`), **Stage**, Actual Start, Actual Finish, Notes | ✅ |
 | Key results | ID, WBS, Start, Finish, Status, Critical, **Issues** (one plain-language column for every problem on the row) | ✅ |
 | Scheduling | Mode, Constraint, Constraint Date, Deadline | collapsed |
-| Tracking | Actual Start, Actual Finish (optional overrides), Actual Cost | collapsed |
+| Tracking | % Complete override, Actual Cost | collapsed |
 | Agile | Planned Sprint, Story Points, Sprint | collapsed (or not built without the Agile module) |
 | Analysis | Baseline / variance, late dates and slack, work and cost, earned value | collapsed |
 | Baseline | 5 source + 5 baseline columns | collapsed; "Set baseline" steps on Start |
 
-**Inputs to start a plan: 34 columns → 6 to 8. Predecessor columns: 12 → 1. Places a person is entered: 4 → 2
+**Inputs to start a plan: 34 columns → 9 or 10. Predecessor columns: 12 → 1. Places a person is entered: 4 → 2
 (Resources, and the Resources cell of a task).**
 
 ## Weekly update, before and after
@@ -159,7 +163,7 @@ Default view after E9 (optional groups collapsed with Excel's column + / - butto
 | Step | Now | Proposed |
 |---|---|---|
 | Move the status date | Settings | Status |
-| Update progress | Tasks: % complete, actual start, actual finish | Tasks: % complete (dates optional) |
+| Update progress | Tasks: % complete (free entry), actual start, actual finish | Tasks: Stage dropdown, actual start / finish (Issues prompts for missing dates) |
 | Update risks, issues, decisions, changes | RAID, Decisions, Changes | Log |
 | RAG and comments | Status Report | Status |
 | Record the snapshot | History (copy SnapshotNow, paste values) | Status (row to copy) → History |
@@ -176,8 +180,13 @@ These change the shape of the workbook; the backlog items assume the recommended
    one column per slot).
 3. **One Log** for RAID, decisions and changes. *Recommended.* Alternative: merge decisions into RAID and keep
    Changes separate (change control is often owned by a different person).
-4. **Drop MSP_Tasks / MSP_Resources from the default build.** *Recommended*: the XML converter replaces them; a build
-   option keeps them for anyone who must use the Import Wizard.
+4. **Drop MSP_Tasks / MSP_Resources.** Nobody types into these two sheets: they are formula copies of Tasks and
+   Resources with MS Project's column names, made for the Import Wizard (in MS Project: File > Open the .xlsx, then
+   map its columns). Since v1.4 the converter page (`docs/export.html`) writes a Microsoft Project XML file instead,
+   which MS Project opens directly with more in it: calendar, holidays, constraints, every link, every assignment and
+   the baseline. So the two sheets duplicate the export, cost 5,550 formulas (12% of the workbook) and two tabs.
+   *Recommended: remove them.* A build option (`--import-wizard-sheets`) can add them back for anyone whose
+   organisation only allows the Import Wizard; no user of the downloaded workbook needs to do anything.
 5. **Two downloads, Simple and Full**, rather than one workbook with everything. *Recommended* once modules exist
    (B-913); until then, collapsed groups give most of the benefit.
 

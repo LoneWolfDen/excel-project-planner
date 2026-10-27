@@ -19,10 +19,10 @@ How the workbook is put together, and the rules every change follows. These rule
 3. **Inputs and formulas never mix.** Blue text = input, grey fill = formula, light-grey header = hidden helper.
    Summaries roll up rather than reading inputs.
 4. **Readable formulas.** Columns have short, plain names (`Forecast Finish`, `Pred1 UID`); helper columns start
-   with `_` (`_CalcStart`, `_Pred1Row`). Each helper does one job so the visible formulas stay short. Header comments
+   with `_` (`_CalcStart`, `_Pred1Pos`). Each helper does one job so the visible formulas stay short. Header comments
    explain units and meaning.
 5. **Cheap to recalculate.** Volatile functions (`OFFSET`, `INDIRECT`, `TODAY`, `NOW`, `RAND`, `CELL`, `INFO`) make
-   Excel recalculate them and everything downstream after every edit. The only one allowed is `OFFSET`, in the seven
+   Excel recalculate them and everything downstream after every edit. The only one allowed is `OFFSET`, in the eleven
    Tasks columns that must read another row's calculated value (below). Dates you'd expect to be "today" (the
    status date) are typed instead. Report grids use `SUMIFS`, not `SUMPRODUCT` over every task. No whole-column
    (`A:A`) references, and no formulas in cells that only exist to be coloured: the Gantt timeline is conditional
@@ -67,7 +67,7 @@ A task's start depends on its predecessor's finish, and the WBS number on the pa
 The rows-above design was built and measured first (it is fast). `RealRowEditTest`, which inserts a real row with
 LibreOffice, showed the inserted task invisible to the task below it, so it was rejected: robustness first.
 
-`OFFSET` is therefore used in exactly seven columns: the four predecessor drivers, the parent-WBS look-up and the critical path's two successor look-ups (`_SuccessorFinishLimit`, `Free Slack`). Volatile
+`OFFSET` is therefore used in exactly eleven columns: the eight predecessor drivers (plan and forecast for each of the four links), the parent-WBS look-up and the critical path's two successor look-ups (`_SuccessorFinishLimit`, `Free Slack`). Volatile
 cells recalculate, with everything downstream, after every edit. Everything else is non-volatile:
 
 - **Roll-ups.** Detail-task values live in `_Leaf...` columns (`_LeafCalcStart`, `_LeafFcstFinish`, `_LeafWork`, ...);
@@ -92,12 +92,14 @@ Excel on Windows is usually several times faster than LibreOffice and calculates
 
 ## Critical path (backward pass)
 
-Each successor row works out, for each of its two links, the latest its predecessor may finish:
+Each successor row works out, for each of its links (`LINKS` = 4 in `planner/tasks.py`; every link column is
+generated from it), the latest its predecessor may finish:
 FS `WORKDAY(LateStart, -(1 + lag))` (no +1 into a milestone), FF `WORKDAY(LateFinish, -lag)`, and SS / SF the latest
 start converted to a finish with the predecessor's duration (an input, so no circularity). These mirror the forward
 pass exactly.
 
-The predecessor takes the earliest of those limits, its deadline and `ProjectFinish` (the latest forecast finish).
+The predecessor takes the earliest of those limits, its deadline, a No Later Than / Must On constraint and
+`ProjectFinish` (the latest early forecast finish of the detail tasks).
 Successors sit below their predecessors, so it looks only at the rows from the one below down to
 `_LastSuccessorRow`. That helper reads only input columns, so it isn't volatile, and it keeps each look-up short.
 Limits are stored as keys (`31-Dec-9999 - date`, `100000 - slack`) so that one `MAXIFS` per link answers both
@@ -111,6 +113,25 @@ deadline gives negative slack to the task and the chain feeding it, as in MS Pro
 |---|---|---|
 | Sample (200 rows) | 0.04 s | 0.05 s |
 | 1,000 tasks | 0.42 s | ~0.5 s |
+
+## Constraints
+
+The Constraint column holds MS Project's eight types; `_ConstraintCode` is MS Project's own code (0 As Soon As
+Possible ... 7 Finish No Later Than; a date with a blank type is Start No Earlier Than). `_ConstraintStart` turns the
+Constraint Date into a start (a finish constraint ends the task on the date), and two bounds clamp the forward pass:
+
+    start = MIN(MAX(ProjectStart, _ConstraintLow, link drivers), _ConstraintHigh)
+
+No Earlier Than sets the low bound, No Later Than the high bound, Must Start / Finish On both, so the task is pinned.
+Constraint dates win over links, as with MS Project's default "Tasks will always honor their constraint dates"; a
+conflict shows as negative slack because the backward pass caps the late finish with the same high bound. The
+forecast still never starts unstarted work before the status date when RescheduleAfterStatus = Yes.
+
+**As Late As Possible** needs the backward pass, which reads the early dates, so it can't move them without a
+circular reference. Instead the early dates stay as calculated (`_Leaf...`: links, slack and `ProjectFinish` read
+them) and the shown dates (`_Shown...`, rolled up into Planned / Forecast Start and Finish) move later by the task's
+free slack. The task then finishes just in time for its successors (or the project finish) and moves nothing else.
+The plan moves by the same number of days as the forecast, so an ALAP task adds no finish variance.
 
 ## Reports
 
@@ -181,7 +202,7 @@ Run on every PR by `.github/workflows/ci.yml`:
 | No A1 references in formulas | `scripts/perf_check.py`, also a unit test | any formula contains one |
 | Excel limits: balanced parentheses, length <= 8,192, nesting <= 64 | `perf_check.py`, also a unit test | any formula breaks one (LibreOffice silently repairs some; Excel would not) |
 | Real row insertion and deletion keep every formula working | `RealRowEditTest` (LibreOffice via UNO) | a task can't see an inserted row, or a deleted row leaves `#REF!` |
-| Volatile functions only on the allow-list (OFFSET in 7 Tasks columns) | `perf_check.py`, `perf_budget.json`, also a unit test | any other volatile use appears |
+| Volatile functions only on the allow-list (OFFSET in 11 Tasks columns) | `perf_check.py`, `perf_budget.json`, also a unit test | any other volatile use appears |
 | Formula count | `perf_check.py` | above budget |
 | Recalculation time: full, a duration edit near the top, the last task, a note; sample and 1,000-task stress workbook | `perf_check.py --timing` (LibreOffice) | above budget |
 | Committed workbooks match the build | unit test | the `.xlsx` wasn't rebuilt after a code change |

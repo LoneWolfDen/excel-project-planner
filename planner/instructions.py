@@ -15,7 +15,7 @@ def text(sizes):
         ("2. Resources", "List people/roles with Max Units and hourly rate. They appear in the Resource dropdown on Tasks and "
                          "in sprint capacity."),
         ("3. Tasks", "One row per task. Enter Level (1 = phase/summary, 2 = task, 3 = sub-task...), Task Name, Duration in "
-                     "working days (0 = milestone), and up to two predecessors by UID with link type (FS, SS, FF, SF) and lag in "
+                     "working days (0 = milestone), and up to four predecessors by UID with link type (FS, SS, FF, SF) and lag in "
                      "days (negative = lead). A row becomes a SUMMARY automatically when the rows beneath it have a higher "
                      "level; its dates, work, cost and progress roll up. Optional Deadline: Deadline Check shows 'Late by Nd'. "
                      "Hover over a column header for what it means."),
@@ -89,8 +89,13 @@ def text(sizes):
                          "ignored and explained in the Link Check column (red). Summary rows ignore Duration / Predecessors / "
                          "Actuals - they roll up. The rule keeps the schedule and the critical path consistent and rules out "
                          "circular references."),
-        ("Mode", "Auto = scheduled from predecessors, project start and 'Start No Earlier Than'. Manual = pinned to the date in "
-                 "'Start No Earlier Than'."),
+        ("Mode", "Auto = scheduled from predecessors, project start and the constraint. Manual = pinned to the "
+                 "Constraint Date."),
+        ("Constraints", "Pick an MS Project constraint and enter its Constraint Date (a date alone = Start No Earlier Than). "
+                        "Start / Finish No Earlier Than push the task later; Start / Finish No Later Than and Must Start / "
+                        "Finish On win over predecessors (as in MS Project), so a conflict shows as negative slack. As Late "
+                        "As Possible moves the task later by its free slack: it finishes just in time for its successors "
+                        "and moves nothing else (its planned dates move by the same days)."),
         ("Rescheduling", "Settings > RescheduleAfterStatus = Yes moves incomplete work to after the status date (like MS "
                          "Project 'Update Project'), so late tasks push successors."),
         ("Capacity", f"Tables grow when you add rows: Tasks starts with {sizes.tasks} rows, Resources {sizes.resources}, "
@@ -146,8 +151,8 @@ def text(sizes):
                          "only through these names."),
         ("Resources / Sprints", "res_Name, res_MaxUnits, res_Rate, ...  spr_Name, spr_Start, spr_End, spr_WorkDays, spr_Capacity, "
                                 "spr_Work"),
-        ("Key formulas", "Calculated start = WORKDAY.INTL(MAX(ProjectStart, [@Start No Earlier Than], predecessor drivers) - 1, "
-                         "1, WorkWeek, Holidays).  Predecessor driver (FS) = WORKDAY.INTL(OFFSET(Tasks[[#Headers],[_LeafCalcFinish]], "
+        ("Key formulas", "Calculated start = WORKDAY.INTL(MIN(MAX(ProjectStart, [@_ConstraintLow], predecessor drivers), "
+                         "[@_ConstraintHigh]) - 1, 1, WorkWeek, Holidays).  Predecessor driver (FS) = WORKDAY.INTL(OFFSET(Tasks[[#Headers],[_LeafCalcFinish]], "
                          "[@_Pred1Pos], 0), 1 + Lag, WorkWeek, Holidays).  Planned Start = Baseline Start if set, "
                          "else calculated.  Summary start = MIN(INDEX(Tasks[_LeafCalcStart], [@_Row]+1):INDEX(Tasks[_LeafCalcStart], "
                          "[@_Row]+[@_Descendants])), where _Descendants = COUNTIF(Tasks[WBS], [@WBS] & \".*\")."),

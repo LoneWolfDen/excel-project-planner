@@ -6,9 +6,9 @@ report of the template. The same code runs on the command line (scripts/import_m
 docs/export.html (Pyodide, with openpyxl bundled into the page).
 
 What the planner can't hold is reported (warnings) and, for a task, noted in its Notes:
-  * more than two predecessors (the first two are kept), links on summary tasks, lags in % or elapsed time;
-  * constraints other than As Soon As Possible / Start No Earlier Than (Must Start On is read as Start No Earlier
-    Than; the others are dropped);
+  * more than four predecessors (tasks.LINKS; the first four are kept), links on summary tasks, lags in % or
+    elapsed time;
+  * constraints on summary tasks (summaries roll up);
   * more than one resource on a task (the one with the most work is kept);
   * part-day calendar exceptions.
 A predecessor listed below its successor is kept: Link Check on Tasks explains it (move the task above).
@@ -17,6 +17,8 @@ import datetime as dt
 import io
 import re
 import xml.etree.ElementTree as ET
+
+from .tasks import CONSTRAINTS, LINK_NUMBERS, LINKS, each
 
 NS = "{http://schemas.microsoft.com/project}"
 LINK_TYPES = {0: "FF", 1: "FS", 2: "SF", 3: "SS"}
@@ -168,12 +170,14 @@ def read_project(data):
     summaries = {i for i in range(len(outline) - 1) if outline[i + 1] > outline[i]}
     for i in summaries:
         row = tasks[i]
-        if row.get("P1") or row.get("P2"):
+        if any(row.get(f"P{k}") for k in LINK_NUMBERS):
             _warn(row, warnings, "links on a summary task are ignored (link one of its tasks instead)")
-        for key in ("Dur", "AS", "AF", "Pct", "Res", "Units", "ACin", "SP"):
+        if row.get("CType") and row["Mode"] == "Auto":
+            _warn(row, warnings, f"constraint '{row['CType']}' on a summary task is ignored")
+        for key in ("Dur", "AS", "AF", "Pct", "Res", "Units", "ACin", "SP", "CType", "Cons"):
             row.pop(key, None)                            # summaries roll up in the planner
     position = {row["UID"]: i for i, row in enumerate(tasks)}
-    below = sum(1 for i, row in enumerate(tasks) for p in ("P1", "P2") if position.get(row.get(p), -1) > i)
+    below = sum(1 for i, row in enumerate(tasks) for p in each("P") if position.get(row.get(p), -1) > i)
     if below:
         warnings.append(f"{below} links point to a task listed below its successor; Link Check on Tasks shows them "
                         "(move the predecessor above).")
@@ -195,15 +199,10 @@ def _task(t, uid, hours, assignments, warnings):
            "Notes": _text(t, "Notes")}
     constraint, when = _int(t, "ConstraintType"), _date(_text(t, "ConstraintDate"))
     if row["Mode"] == "Manual":
-        row["Cons"] = _date(_text(t, "Start"))
-    elif constraint in (2, 4) and when:                   # Must Start On, Start No Earlier Than
-        row["Cons"] = when
-        if constraint == 2:
-            _warn(row, warnings, "Must Start On imported as Start No Earlier Than")
-    elif constraint not in (0, 2, 4):
-        names = {1: "As Late As Possible", 3: "Must Finish On", 5: "Start No Later Than", 6: "Finish No Earlier Than",
-                 7: "Finish No Later Than"}
-        _warn(row, warnings, f"constraint '{names.get(constraint, constraint)}' not supported, dropped")
+        row["Cons"] = _date(_text(t, "Start"))           # manual tasks are pinned to the Constraint Date
+    elif constraint == 1 or (2 <= constraint <= 7 and when):
+        row["CType"] = CONSTRAINTS[constraint]           # ConstraintType is the index in CONSTRAINTS
+        row["Cons"] = when if constraint >= 2 else None
     row["DL"] = _date(_text(t, "Deadline"))
     row["AS"], row["AF"] = _date(_text(t, "ActualStart")), _date(_text(t, "ActualFinish"))
     pct = _float(t, "PercentComplete")
@@ -212,7 +211,7 @@ def _task(t, uid, hours, assignments, warnings):
         row["ACin"] = _float(t, "ActualCost")
 
     links = t.findall(NS + "PredecessorLink")
-    for k, link in enumerate(links[:2], start=1):
+    for k, link in enumerate(links[:LINKS], start=1):
         row[f"P{k}"] = _int(link, "PredecessorUID")
         row[f"T{k}"] = LINK_TYPES.get(_int(link, "Type", 1), "FS")
         lag, fmt = _float(link, "LinkLag"), _int(link, "LagFormat", 7)
@@ -223,9 +222,9 @@ def _task(t, uid, hours, assignments, warnings):
             row[f"L{k}"] = days or None
             if fmt not in WORKING_LAG:
                 _warn(row, warnings, f"an elapsed lag from UID {row[f'P{k}']} became {days} working days")
-    if len(links) > 2:
-        dropped = ", ".join(_text(link, "PredecessorUID") for link in links[2:])
-        _warn(row, warnings, f"only two predecessors are kept; dropped UID {dropped}")
+    if len(links) > LINKS:
+        dropped = ", ".join(_text(link, "PredecessorUID") for link in links[LINKS:])
+        _warn(row, warnings, f"only {LINKS} predecessors are kept; dropped UID {dropped}")
 
     if assignments:
         work, name, units = max(assignments)

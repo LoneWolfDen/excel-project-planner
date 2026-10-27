@@ -67,9 +67,9 @@ flowchart LR
 
 | ID | Item | Pri | Size | How | Acceptance criteria |
 |---|---|---|---|---|---|
-| [B-101](https://github.com/LoneWolfDen/excel-project-planner/issues/11) | More predecessors per task | P1 | M | F | Four inline predecessor slots, plus optional Links sheet (one row per link) for unlimited links. MSP-format predecessor text includes all. |
+| [B-101](https://github.com/LoneWolfDen/excel-project-planner/issues/11) | ✅ More predecessors per task | P1 | M | F | v1.5: four inline predecessor slots (`LINKS` in `planner/tasks.py`); MSP-format predecessor text, export and import include all. A Links sheet for unlimited links is not built. |
 | [B-102](https://github.com/LoneWolfDen/excel-project-planner/issues/12) | Lag in % of predecessor duration and elapsed days | P3 | S | F | Lag accepts `50%` and `3ed`. |
-| [B-103](https://github.com/LoneWolfDen/excel-project-planner/issues/13) | All MS Project constraint types | P1 | M | F | Constraint Type dropdown (ASAP, ALAP, SNET, SNLT, FNET, FNLT, MSO, MFO) + date; conflict flag when a link can't be honoured; exported to MSP. ALAP depends on B-105. |
+| [B-103](https://github.com/LoneWolfDen/excel-project-planner/issues/13) | ✅ All MS Project constraint types | P1 | M | F | v1.5: Constraint dropdown (ASAP, ALAP, SNET, SNLT, FNET, FNLT, MSO, MFO) + Constraint Date; a conflict with a link shows as negative slack; exported to and imported from MSP. ALAP uses free slack. |
 | [B-104](https://github.com/LoneWolfDen/excel-project-planner/issues/14) | Deadlines | P1 | S | F | Deadline column; flag and Gantt marker when forecast finish > deadline; exported to MSP Deadline field. |
 | [B-105](https://github.com/LoneWolfDen/excel-project-planner/issues/15) | ✅ Critical path and slack (backward pass) | P1 | L | F | Late Start, Late Finish, Total Slack, Free Slack, Critical flag; critical bars red on Gantt. Successors must be below predecessors (flagged otherwise) to avoid circular formulas. Tests against a hand-calculated network. |
 | [B-106](https://github.com/LoneWolfDen/excel-project-planner/issues/16) | Task types and effort-driven scheduling | P2 | M | F | Task Type (Fixed Duration / Fixed Work / Fixed Units); entering Work derives Duration from units. |

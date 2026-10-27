@@ -80,8 +80,8 @@ PAGE = """<!doctype html>
     <tr><td>Workbook to MS Project</td><td>Save the workbook in Excel first (so it holds up-to-date values), choose it
       here, download the .xml. In MS Project: File &gt; Open, choose the .xml, "Open as a new project".</td></tr>
     <tr><td>MS Project to workbook</td><td>In MS Project: File &gt; Save As &gt; XML. Choose that file here and download
-      the workbook. Excel calculates it when you open it. Anything the planner can't hold (a third predecessor, a
-      Finish No Later Than constraint ...) is listed here and noted on the task.</td></tr>
+      the workbook. Excel calculates it when you open it. Anything the planner can't hold (a fifth predecessor, a
+      second resource ...) is listed here and noted on the task.</td></tr>
   </table>
   <p class="small">The conversion runs on this device: no file is uploaded anywhere. The first conversion downloads
     the converter (Pyodide, about 10 MB), which the browser then keeps.</p>

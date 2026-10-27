@@ -26,7 +26,7 @@ The biggest gaps against MS Project are:
 2. ~~**No critical path or slack.**~~ *Done in v1.2.*
 3. ~~**Links break when rows are inserted.**~~ *Done in v1.1 (UID).* Predecessors refer to the row-sequence ID; MS Project re-points
    links automatically.
-4. **One resource per task, at most two predecessors per task.**
+4. **One resource per task.** *(v1.5: four predecessors per task, all constraint types.)*
 5. ~~**Import is via the Excel Import Wizard only.**~~ *Done in v1.4:* Microsoft Project XML export (browser page and CLI).
 6. **Never opened in real Excel or MS Project.** Everything was verified in LibreOffice only.
 
@@ -59,11 +59,11 @@ Legend: ✅ equivalent · 🟡 partial / simplified · ❌ missing · ⛔ not pr
 | Project summary task (ID 0) | ❌ | Dashboard shows the equivalent numbers. |
 | Milestones | 🟡 | Duration 0 only; no "Mark as milestone" for non-zero tasks. |
 | Link types FS / SS / FF / SF with lag and lead | ✅ | Lag in working days. |
-| Unlimited predecessors | 🟡 | Two per task. |
+| Unlimited predecessors | 🟡 | v1.5: four per task (`LINKS` in `planner/tasks.py`). |
 | Lag as % or elapsed days (`ed`) | ❌ | |
 | Links survive row insert / delete (Unique ID) | ✅ | v1.1: predecessors reference a permanent UID. |
 | Constraints: ASAP, SNET | ✅ | |
-| Constraints: ALAP, SNLT, FNET, FNLT, MSO, MFO | ❌ | MSO ≈ Manual mode. ALAP needs a backward pass. |
+| Constraints: ALAP, SNLT, FNET, FNLT, MSO, MFO | ✅ | v1.5. Constraint dates win over links (MS Project's "honor constraint dates"); ALAP uses the task's free slack. |
 | Deadlines | ✅ | v1.1: Deadline column, Deadline Check, ▼ on Gantt, exported to MSP. |
 | Critical path, total / free slack | ✅ | Backward pass with deadlines; critical bars on the Gantt. |
 | Task types (Fixed Units / Work / Duration), effort-driven | ❌ | Work = Duration × Hours/day × Units only. |

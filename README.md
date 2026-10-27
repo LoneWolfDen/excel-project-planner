@@ -52,15 +52,14 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 
 Both run the same code (`planner/mspdi.py`). In MS Project: File → Open → the .xml → "Open as a new project". The
 file carries the calendar (working week, hours per day, holidays), tasks and outline, links by UID with type and lag,
-Start No Earlier Than constraints, manual tasks, deadlines, actuals and actual cost, the baseline, resources with
+constraints (all eight types), manual tasks, deadlines, actuals and actual cost, the baseline, resources with
 rates, assignments with units, and Sprint / Story Points in the custom fields Text1 / Number1.
 
 **From Microsoft Project to the planner.** In MS Project: File → Save As → XML. Then choose that file on the same
 page ([`docs/export.html`](docs/export.html)), or run `python scripts/import_mspdi.py project.xml Planner.xlsx`. You
 get a new planner workbook with every sheet and report: tasks, outline, links, constraints, deadlines, actuals,
 baseline, resources and assignments, calendar, holidays, and resource-calendar days off on the Leave sheet. Anything
-the planner can't hold (a third predecessor, a second resource, constraints other than Start No Earlier Than ...) is
-listed and noted on the task.
+the planner can't hold (a fifth predecessor, a second resource, a lag in % ...) is listed and noted on the task.
 
 **Alternative: the Import Wizard** (carries less: no calendar or holidays):
 1. File → Options → Trust Center → Legacy Formats → allow loading legacy/non-default formats.
@@ -85,8 +84,8 @@ listed and noted on the task.
 python -m unittest discover -s tests -v
 ```
 Builds the workbook, recalculates it with headless LibreOffice (`soffice`) at a fixed status date of 25-Oct-2026,
-and checks: no formula errors, WBS numbering, FS / SS / FF links with lags, two predecessors, weekends and holidays skipped,
-Start No Earlier Than, manual tasks, summary roll-ups, forecast from actuals, slips rippling to successors,
+and checks: no formula errors, WBS numbering, FS / SS / FF links with lags, several predecessors, weekends and holidays skipped,
+every constraint type (As Late As Possible, Start / Finish No Earlier / Later Than, Must Start / Finish On), manual tasks, summary roll-ups, forecast from actuals, slips rippling to successors,
 rescheduling after the status date, deadlines, frozen baseline and variances, earned value and the RAG rules (worked out independently in Python), PM RAG overrides, the report lists, velocity and burndown, the planned-sprint override, weekly resource hours (recomputed in Python) and over-allocation, RAID scoring and links, change control totals, status snapshots, invalid-link handling, inserting a task
 mid-list (links follow UIDs), the blank template, sprint tagging, cost, the MS Project export columns, and that the
 committed workbooks match the build script, tables keep their calculated columns, and no formula contains an A1

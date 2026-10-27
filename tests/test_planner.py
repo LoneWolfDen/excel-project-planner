@@ -174,12 +174,12 @@ class StructureTest(Tmp):
     def test_volatile_functions_only_where_allowed(self):
         # OFFSET only in Tasks, for the few columns that read another row's calculated value; no TODAY, INDIRECT ...
         volatile = perf_check.static_report(self.path)["volatile"]
-        self.assertEqual(volatile, {"Tasks": {"OFFSET": 1400}})
+        self.assertEqual(volatile, {"Tasks": {"OFFSET": 2200}})
         ws = self.wb["Tasks"]
         offset_cols = {ws.cell(5, c).value for c in range(1, ws.max_column + 1)
                        if "OFFSET(" in str(ws.cell(FIRST, c).value)}
-        self.assertEqual(offset_cols, {"WBS", "_Pred1PlanDriver", "_Pred2PlanDriver", "_Pred1FcstDriver", "_Pred2FcstDriver",
-                                       "_SuccessorFinishLimit", "Free Slack"})
+        drivers = {f"_Pred{k}{x}Driver" for k in (1, 2, 3, 4) for x in ("Plan", "Fcst")}
+        self.assertEqual(offset_cols, {"WBS", *drivers, "_SuccessorFinishLimit", "Free Slack"})
 
     def test_titles_not_in_hidden_columns(self):
         # report lists hide their _Task helper column; it must never be the column a sheet's title is in
@@ -807,6 +807,60 @@ class LogsTest(Tmp):
         history = [r for r in table_rows(self.wb, "History", "StatusHistory") if r["Status Date"]]
         self.assertEqual(len(history), 4)
         self.assertEqual(list(history[0]), list(snap))          # same columns, so a pasted row lines up
+
+
+@unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+class ConstraintTest(Tmp):
+    """The eight MS Project constraint types, hand-checked on the sample (holidays 24/25/31-Dec and 1-Jan)."""
+
+    def msp_row(self, wb, uid):
+        rows = table_rows(wb, "MSP_Tasks", "MSPTasks")
+        return next(r for r in rows if r["Unique ID"] == uid)
+
+    def test_late_and_lower_bounds(self):
+        def edit(wb):
+            set_input(wb, 23, "Constraint", "As Late As Possible")
+            set_input(wb, 24, "Constraint", "Must Finish On")              # no date: ignored, and explained
+            set_input(wb, 29, "Constraint", "Finish No Earlier Than")
+            set_input(wb, 29, "Constraint Date", dt.date(2027, 1, 15))
+            set_input(wb, 30, "Constraint", "Must Start On")
+            set_input(wb, 30, "Constraint Date", dt.date(2027, 1, 20))
+
+        wb = recalc(self.path, self.dir, edit)
+        self.assertEqual(errors_in(wb), [])
+        t = Tasks(wb)
+        # training's free slack is 18 days (early finish 18-Nov, readiness review starts 15-Dec): shown 08-14 Dec and
+        # nothing after it moves. The plan (04-10 Nov) moves by the same 18 days, so the finish variance stays 6.
+        self.assertEqual([t.get(23, k) for k in ("FS", "FF", "PS", "PF", "Var", "Free Slack")],
+                         [dt.date(2026, 12, 8), dt.date(2026, 12, 14), dt.date(2026, 11, 30), dt.date(2026, 12, 4), 6, 18])
+        self.assertEqual(t.get(24, "FS"), dt.date(2026, 12, 15))
+        self.assertEqual((t.get(24, "FS"), t.get(24, "Link")),
+                         (dt.date(2026, 12, 15), "Constraint ignored: enter a Constraint Date."))
+        self.assertEqual((t.get(29, "FS"), t.get(29, "FF"), t.get(29, "Total Slack")),
+                         (dt.date(2027, 1, 14), dt.date(2027, 1, 15), 3))               # can slip to 20-Jan
+        self.assertEqual(t.get(30, "FS"), dt.date(2027, 1, 20))
+        self.assertEqual(d(named_cell(wb, "ProjectFinish").value), dt.date(2027, 1, 20))
+        self.assertEqual(self.msp_row(wb, 23)["Constraint Type"], "As Late As Possible")
+        self.assertEqual((self.msp_row(wb, 30)["Constraint Type"], d(self.msp_row(wb, 30)["Constraint Date"])),
+                         ("Must Start On", dt.date(2027, 1, 20)))
+
+    def test_upper_bounds_win_over_links(self):
+        def edit(wb):
+            set_input(wb, 21, "Constraint", "Finish No Later Than")
+            set_input(wb, 21, "Constraint Date", dt.date(2026, 11, 18))
+            set_input(wb, 26, "Constraint", "Start No Later Than")
+            set_input(wb, 26, "Constraint Date", dt.date(2026, 12, 14))
+
+        wb = recalc(self.path, self.dir, edit)
+        self.assertEqual(errors_in(wb), [])
+        t = Tasks(wb)
+        # testing (8 days) must finish by 18-Nov, so it starts 09-Nov although the build finishes that day
+        self.assertEqual((t.get(21, "FS"), t.get(21, "FF"), t.get(21, "Late Finish")),
+                         (dt.date(2026, 11, 9), dt.date(2026, 11, 18), dt.date(2026, 11, 18)))
+        # hypercare starts by 14-Dec, before go-live (15-Dec): go-live and the tasks driving it show negative slack
+        self.assertEqual(t.get(26, "FS"), dt.date(2026, 12, 14))
+        self.assertEqual((t.get(25, "Late Finish"), t.get(25, "Total Slack"), t.get(22, "Total Slack")),
+                         (dt.date(2026, 12, 11), -2, -2))
 
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")

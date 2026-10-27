@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from planner import mspdi, mspdi_import  # noqa: E402
+from planner import mspdi, mspdi_import, tasks  # noqa: E402
 import build_export_page  # noqa: E402
 from test_planner import (BASELINE, FIRST, SOFFICE, SOURCE, build, columns, errors_in, recalc, set_input,  # noqa: E402
                           table_rows)
@@ -99,6 +99,7 @@ class ExportTest(unittest.TestCase):
         self.assertEqual(link(7), [(6, 3, 3 * 8 * 600)])                        # SS + 3 days, in tenths of a minute
         self.assertEqual(link(18), [(17, 0, 1 * 8 * 600)])                      # FF + 1 day
         self.assertEqual(link(9), [(7, 1, 0), (8, 1, 0)])                       # two FS links
+        self.assertEqual(link(24), [(22, 1, 0), (23, 1, 0), (21, 1, 0)])        # three
         self.assertEqual(link(1), [])                                           # summaries carry no links
         self.assertEqual((text(t[22], "ConstraintType"), text(t[22], "ConstraintDate")), ("4", "2026-12-07T08:00:00"))
         self.assertEqual((text(t[28], "Manual"), text(t[28], "ConstraintType")), ("1", "0"))
@@ -267,7 +268,11 @@ MS_PROJECT_XML = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
     <Task><UID>14</UID><ID>5</ID><Name></Name><IsNull>1</IsNull></Task>
     <Task><UID>20</UID><ID>6</ID><Name>Move day</Name><OutlineLevel>1</OutlineLevel><Duration>PT0H0M0S</Duration>
       <Milestone>1</Milestone><ConstraintType>7</ConstraintType><ConstraintDate>2027-04-02T17:00:00</ConstraintDate>
-      <PredecessorLink><PredecessorUID>13</PredecessorUID><Type>1</Type></PredecessorLink></Task>
+      <PredecessorLink><PredecessorUID>13</PredecessorUID><Type>1</Type></PredecessorLink>
+      <PredecessorLink><PredecessorUID>11</PredecessorUID><Type>1</Type></PredecessorLink>
+      <PredecessorLink><PredecessorUID>12</PredecessorUID><Type>1</Type></PredecessorLink>
+      <PredecessorLink><PredecessorUID>30</PredecessorUID><Type>1</Type></PredecessorLink>
+      <PredecessorLink><PredecessorUID>40</PredecessorUID><Type>1</Type></PredecessorLink></Task>
     <Task><UID>30</UID><ID>7</ID><Name>Supplier call</Name><Manual>1</Manual><OutlineLevel>1</OutlineLevel>
       <Start>2027-03-08T09:00:00</Start><Duration>PT7H30M0S</Duration><Notes>Agreed by phone.</Notes></Task>
     <Task><UID>40</UID><ID>8</ID><Name>Budget sign-off</Name><OutlineLevel>1</OutlineLevel><Duration>PT7H30M0S</Duration></Task>
@@ -314,16 +319,22 @@ class ImportTest(unittest.TestCase):
         self.assertEqual((rows[12]["Res"], rows[12]["Units"]), ("Ana Silva", None))     # the one with the most work
         self.assertEqual((rows[12]["P1"], rows[12]["T1"], rows[12]["L1"]), (11, "FS", 1))   # 1 elapsed day
         self.assertIsNone(rows[12].get("L2"))                                              # % lag dropped
-        self.assertEqual([(rows[13][f"P{k}"], rows[13][f"T{k}"]) for k in (1, 2)], [(11, "FS"), (12, "FF")])
-        self.assertEqual((rows[13]["L1"], rows[13]["Cons"], rows[13]["DL"]), (2, dt.date(2027, 3, 10), dt.date(2027, 3, 19)))
+        self.assertEqual([(rows[13][f"P{k}"], rows[13][f"T{k}"]) for k in (1, 2, 3)], [(11, "FS"), (12, "FF"), (40, "FS")])
+        self.assertEqual((rows[13]["L1"], rows[13]["DL"]), (2, dt.date(2027, 3, 19)))
+        # every constraint type is kept, with its date (none for As Late As Possible)
+        self.assertEqual((rows[12]["CType"], rows[12]["Cons"]), ("As Late As Possible", None))
+        self.assertEqual((rows[13]["CType"], rows[13]["Cons"]), ("Must Start On", dt.date(2027, 3, 10)))
+        self.assertEqual((rows[20]["CType"], rows[20]["Cons"]), ("Finish No Later Than", dt.date(2027, 4, 2)))
+        self.assertEqual([rows[20][f"P{k}"] for k in (1, 2, 3, 4)], [13, 11, 12, 30])      # 4 links; the 5th dropped
         self.assertEqual((rows[20]["Dur"], rows[30]["Mode"], rows[30]["Cons"]), (0, "Manual", dt.date(2027, 3, 8)))
         self.assertNotIn("Dur", rows[10])                                                  # summaries roll up
         joined = "\n".join(warnings)
-        for expected in ("part-day", "Task 10 (Plan): links on a summary task", "Task 12 (Floor plan): constraint 'As Late As Possible'",
-                         "lag in %", "elapsed lag", "Must Start On", "only two predecessors are kept; dropped UID 40",
-                         "Finish No Later Than", "kept Ana Silva, not Ben Okafor", "listed below its successor"):
+        for expected in ("part-day", "Task 10 (Plan): links on a summary task", "lag in %", "elapsed lag",
+                         "Task 20 (Move day): only 4 predecessors are kept; dropped UID 40",
+                         "kept Ana Silva, not Ben Okafor", "3 links point to a task listed below its successor"):
             self.assertIn(expected, joined)
-        self.assertIn("[From MS Project: only two predecessors are kept", rows[13]["Notes"])
+        self.assertNotIn("constraint", joined)
+        self.assertIn("[From MS Project: only 4 predecessors are kept", rows[20]["Notes"])
 
     def test_bad_files(self):
         for data, message in ((b"not xml", "isn't an XML file"), (b"<a/>", "isn't a Microsoft Project file"),
@@ -337,7 +348,7 @@ class ImportTest(unittest.TestCase):
             xml.write_text(MS_PROJECT_XML, encoding="utf-8")
             result = subprocess.run([sys.executable, str(ROOT / "scripts" / "import_mspdi.py"), str(xml), str(out)],
                                     capture_output=True, text=True, check=True)
-            self.assertIn("note: Task 13 (Book movers): only two predecessors are kept", result.stdout)
+            self.assertIn("note: Task 20 (Move day): only 4 predecessors are kept", result.stdout)
             wb = openpyxl.load_workbook(out)
             self.assertEqual(wb["Tasks"].cell(FIRST, columns(wb["Tasks"])["Task Name"]).value, "Plan")
 
@@ -357,8 +368,9 @@ class ImportRecalcTest(unittest.TestCase):
             original = openpyxl.load_workbook(SAMPLE, data_only=True)
             want = [r for r in table_rows(original, "Tasks", "Tasks") if r["Task Name"]]
             got = [r for r in table_rows(wb, "Tasks", "Tasks") if r["Task Name"]]
-            keys = ["UID", "Level", "Task Name", "Mode", "Duration", "Pred1 UID", "Pred1 Type", "Pred1 Lag", "Pred2 UID",
-                    "Pred2 Type", "Pred2 Lag", "Start No Earlier Than", "Deadline", "Actual Start", "Actual Finish",
+            keys = ["UID", "Level", "Task Name", "Mode", "Duration", *[f"Pred{k} {x}" for k in tasks.LINK_NUMBERS
+                                                                        for x in ("UID", "Type", "Lag")],
+                    "Constraint", "Constraint Date", "Deadline", "Actual Start", "Actual Finish",
                     "% Complete", "Resource", "Units", "Actual Cost", "Story Points", "Notes", "Forecast Start",
                     "Forecast Finish", "Late Finish", "Total Slack", "Work", "Cost", "Status", "Critical"]
             blank = (None, "", 0)
@@ -384,10 +396,11 @@ class ImportRecalcTest(unittest.TestCase):
             self.assertEqual(errors_in(wb), [])
             rows = {r["UID"]: r for r in table_rows(wb, "Tasks", "Tasks") if r["Task Name"]}
             self.assertEqual(rows[11]["Forecast Finish"], dt.date(2027, 3, 3))       # actual finish
-            self.assertEqual(rows[13]["Start No Earlier Than"], dt.date(2027, 3, 10))  # Must Start On kept as SNET
-            # unstarted work moves after the status date (12-Mar): floor plan 12-15 Mar, then book movers FF on it
-            self.assertEqual(rows[13]["Forecast Start"], dt.date(2027, 3, 15))
-            self.assertIn(rows[13]["Link Check"], (None, ""))                              # UID 40 was dropped
+            self.assertEqual((rows[13]["Constraint"], rows[13]["Constraint Date"]), ("Must Start On", dt.date(2027, 3, 10)))
+            # Must Start On pins book movers to 10-Mar (over its FF link); unstarted work then moves to the status date
+            self.assertEqual((rows[13]["Forecast Start"], rows[13]["Total Slack"]), (dt.date(2027, 3, 12), -2))
+            self.assertEqual(rows[13]["Link Check"], "Pred 3: UID 40 is below this task: move it above.")
+            self.assertEqual((rows[20]["Constraint"], rows[20]["Late Finish"]), ("Finish No Later Than", dt.date(2027, 3, 15)))
             leave = {r["Resource"]: r["Mar-27"] for r in table_rows(wb, "Leave", "LeaveTable") if r["Resource"]}
             self.assertEqual(leave, {"Ben Okafor": "15, 16, 17"})
 

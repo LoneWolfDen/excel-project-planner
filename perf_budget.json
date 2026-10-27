@@ -1,20 +1,20 @@
 {
-  "_comment": "Budgets checked by scripts/perf_check.py on every PR. Timings are LibreOffice on a CI runner, with roughly 3x headroom over local runs. edit_recalc_s is a duration edit near the top of the plan. OFFSET is allowed only in Tasks, for reading another row's calculated value (predecessor drivers, parent WBS, and the critical path's successor look-ups) (see docs/ARCHITECTURE.md). Raise a budget only with a reason in the PR; never to hide a regression. v1.3 raised formulas_max (sample 30,000 -> 35,000, stress 125,000 -> 150,000) for earned value and the report lists: 18 Tasks columns (one formula per task each) and about 960 report cells; the edit time rose by 0.06 s at 1,000 tasks. Reports 2 raised the sample formulas_max to 38,000 for the Resource Report's weekly grids (3 grids x 25 resources x 26-27 weeks; blank resource rows cost almost nothing to calculate) and the agile columns; one edit rose by about 0.02 s on the sample and 0.1 s at 1,000 tasks. Reports 3 raised the stress formulas_max to 155,000 for the RAID, Decisions, Changes and History sheets (about 1,200 formulas, fixed: they don't grow with the task count); edit time unchanged. Leave (v1.4) raised the sample formulas_max to 41,000: two leave grids (25 resources x 26 weeks / sprints), their row and month-column helpers, and the Over-allocated column on Tasks. The leave grids read inputs only, so editing a task doesn't recalculate them.",
+  "_comment": "Budgets checked by scripts/perf_check.py on every PR. Timings are LibreOffice on a CI runner, with roughly 3x headroom over local runs. edit_recalc_s is a duration edit near the top of the plan. OFFSET is allowed only in Tasks, for reading another row's calculated value (predecessor drivers, parent WBS, and the critical path's successor look-ups) (see docs/ARCHITECTURE.md). Raise a budget only with a reason in the PR; never to hide a regression. v1.3 raised formulas_max (sample 30,000 -> 35,000, stress 125,000 -> 150,000) for earned value and the report lists: 18 Tasks columns (one formula per task each) and about 960 report cells; the edit time rose by 0.06 s at 1,000 tasks. Reports 2 raised the sample formulas_max to 38,000 for the Resource Report's weekly grids (3 grids x 25 resources x 26-27 weeks; blank resource rows cost almost nothing to calculate) and the agile columns; one edit rose by about 0.02 s on the sample and 0.1 s at 1,000 tasks. Reports 3 raised the stress formulas_max to 155,000 for the RAID, Decisions, Changes and History sheets (about 1,200 formulas, fixed: they don't grow with the task count); edit time unchanged. Leave (v1.4) raised the sample formulas_max to 41,000: two leave grids (25 resources x 26 weeks / sprints), their row and month-column helpers, and the Over-allocated column on Tasks. The leave grids read inputs only, so editing a task doesn't recalculate them. v1.5 (four predecessors, all constraint types) raised formulas_max (sample 41,000 -> 44,000, stress 155,000 -> 172,000) and the OFFSET allow-list (sample 1,400 -> 2,200, stress 7,000 -> 11,000): links 3-4 add 12 helper columns (position, problem, plan / forecast driver, finish / slack key each; 4 of them the OFFSET drivers), constraints add 4 and As Late As Possible 5, while the predecessor text helpers went (-4): 17 Tasks columns, one formula per task each. One edit rose by about 0.002 s on the sample and 0.06 s at 1,000 tasks; full recalculation is unchanged.",
   "sample": {
-    "formulas_max": 41000,
+    "formulas_max": 44000,
     "volatile_allowed": {
       "Tasks": {
-        "OFFSET": 1400
+        "OFFSET": 2200
       }
     },
     "full_recalc_s_max": 0.5,
     "edit_recalc_s_max": 0.5
   },
   "stress": {
-    "formulas_max": 155000,
+    "formulas_max": 172000,
     "volatile_allowed": {
       "Tasks": {
-        "OFFSET": 7000
+        "OFFSET": 11000
       }
     },
     "full_recalc_s_max": 2.5,

@@ -11,7 +11,7 @@ import datetime as dt
 from openpyxl.chart import LineChart, Reference
 from openpyxl.utils import get_column_letter
 
-from .core import DATE, Col, add_table, font, title
+from .core import DATE, MODULES, Col, add_table, font, title
 
 D = dt.date
 # header, formula (names only), number format
@@ -37,6 +37,15 @@ FIELDS = [
     ("RAG", "ProjectRAG", "@"),
 ]
 HISTORY_ROWS = 60
+# fields that read a module (MODULES): left out with it
+MODULE_FIELDS = {"evm": {"% Earned", "% Planned", "BAC", "PV", "EV", "AC", "SPI", "CPI", "EAC"},
+                 "agile": {"Points Done", "Total Points"}, "log": {"Open Risks", "Open Issues", "Pending Changes"}}
+
+
+def fields(modules=MODULES):
+    """The snapshot / history fields of a workbook built with these modules."""
+    drop = set().union(*(f for m, f in MODULE_FIELDS.items() if m not in modules))
+    return [f for f in FIELDS if f[0] not in drop]
 
 
 def sample_history():
@@ -56,31 +65,35 @@ def sample_history():
     return rows
 
 
-def build_history(wb, blank):
+def build_history(wb, blank, modules=MODULES):
     ws = wb.create_sheet("History")
     title(ws, "Status History",
           "On each reporting date: on the Status sheet, select the SnapshotNow row at the bottom, Copy, then click "
           "the first empty row of the table below and Paste Special > Values. The trend charts update from it.")
     ws.column_dimensions["A"].width = 3
-    data = [] if blank else sample_history()
+    kept = fields(modules)
+    keep = [i for i, f in enumerate(FIELDS) if f in kept]
+    data = [] if blank else [[row[i] for i in keep] for row in sample_history()]
     top = 5
     ws.cell(top - 1, 2, "StatusHistory: one row per reporting date (values pasted from Status > SnapshotNow)").font = \
         font(bold=True, color="1F4E78")
     add_table(ws, "StatusHistory", top, 2, [Col(h, "in", 11 if fmt != DATE else 13, fmt, center=True,
                                                 values=[row[i] for row in data])
-                                            for i, (h, _, fmt) in enumerate(FIELDS)], HISTORY_ROWS)
-    _charts(ws, top)
+                                            for i, (h, _, fmt) in enumerate(kept)], HISTORY_ROWS)
+    _charts(ws, top, kept)
     ws.freeze_panes = f"C{top + 1}"
     return ws
 
 
-def _charts(ws, top):
+def _charts(ws, top, kept):
     """Trend charts over the StatusHistory rows (charts need A1 ranges; empty rows leave no points)."""
-    col = {h: 2 + i for i, (h, _, _) in enumerate(FIELDS)}
+    col = {h: 2 + i for i, (h, _, _) in enumerate(kept)}
     first, last = top, top + HISTORY_ROWS
     dates = Reference(ws, min_col=col["Status Date"], min_row=first + 1, max_row=last)
 
     def chart(title_text, headers, anchor, y_format=None):
+        if not all(h in col for h in headers):      # a field its module left out
+            return
         c = LineChart()
         c.title = title_text
         for h in headers:
@@ -94,7 +107,7 @@ def _charts(ws, top):
         c.height, c.width = 7, 14
         ws.add_chart(c, anchor)
 
-    right = 2 + len(FIELDS) + 1
+    right = 2 + len(kept) + 1
     at = lambda row: f"{get_column_letter(right)}{row}"
     chart("Forecast vs planned finish", ["Forecast Finish", "Planned Finish"], at(4), "dd-mmm-yy")
     chart("Earned value S-curve", ["PV", "EV", "AC"], at(19))

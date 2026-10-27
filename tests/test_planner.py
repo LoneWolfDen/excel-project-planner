@@ -8,6 +8,7 @@ Needs openpyxl and LibreOffice (`soffice` on PATH); recalculation tests are skip
 """
 import datetime as dt
 import io
+import os
 import re
 import shutil
 import subprocess
@@ -269,6 +270,47 @@ class CommittedWorkbooksTest(unittest.TestCase):
 
     def test_blank_workbook_up_to_date(self):
         self.compare(ROOT / "Project_Planner_Blank.xlsx", "--blank")
+
+    def test_simple_workbook_up_to_date(self):
+        self.compare(ROOT / "Project_Planner_Simple.xlsx", "--simple")
+
+
+class ModulesTest(unittest.TestCase):
+    """--modules: every combination builds, and nothing refers to a sheet, table or name it left out."""
+    SIMPLE = ["Start", "Status", "Roadmap", "Settings", "Tasks", "Gantt", "Resources"]
+
+    def test_every_combination_refers_only_to_what_it_has(self):
+        from itertools import combinations
+        from planner.build import Sizes, make_workbook
+        from planner.core import MODULES
+        sizes = Sizes(tasks=40, resources=8, grid_resources=4, sprints=6, gantt_columns=14, weeks=4)
+        sheets = {"agile": ["Agile"], "log": ["Log"], "history": ["History"],
+                  "reports": ["Schedule Report", "Resource Report"], "evm": []}
+        for n in range(len(MODULES) + 1):
+            for combo in combinations(MODULES, n):
+                with self.subTest(modules=combo):
+                    wb = make_workbook(sizes=sizes, modules=combo)
+                    self.assertEqual(perf_check.missing_references(wb), [])
+                    self.assertEqual(set(wb.sheetnames) - set(self.SIMPLE),
+                                     {s for m in combo for s in sheets[m]})
+
+    def test_simple_workbook(self):
+        wb = openpyxl.load_workbook(ROOT / "Project_Planner_Simple.xlsx", data_only=True)
+        self.assertEqual(wb.sheetnames, self.SIMPLE)
+        head = columns(wb["Tasks"])
+        self.assertFalse({"Sprint", "Story Points", "Planned Sprint", "Over-allocated"} & set(head))
+        self.assertEqual(errors_in(wb), [])
+        figures = {r["Measure"] for r in table_rows(wb, "Status", "KPIs")}
+        self.assertNotIn("Current sprint", figures)
+        self.assertEqual([r["Area"] for r in table_rows(wb, "Status", "StatusRAG")],
+                         ["Schedule", "Deadlines", "Critical path", "Plan quality"])
+        self.assertNotIn("Sprint1Start", wb.defined_names)
+
+    def test_unknown_module(self):
+        result = subprocess.run([sys.executable, str(BUILD), os.devnull, "--modules", "agile,gantt"],
+                                capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unknown module(s) gantt", result.stderr)
 
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")

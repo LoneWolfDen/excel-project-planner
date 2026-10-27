@@ -22,7 +22,7 @@ from .agile import build_agile
 from .gantt import build_gantt
 from .instructions import build_instructions
 from .msp import build_msp_resources, build_msp_tasks
-from .core import name
+from .core import MODULES, name
 from .history import build_history
 from .log import build_log
 from .report_resources import build_resource_report
@@ -78,10 +78,14 @@ class ProjectData:
 VERSION = "1.7"          # PlannerVersion in every workbook: planner/upgrade.py reads it to know what to convert
 
 
-def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, import_wizard=False):
+def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, import_wizard=False, modules=MODULES):
     """import_wizard: also build MSP_Tasks / MSP_Resources, formula copies of Tasks and Resources under MS Project's
     field names for its Import Wizard. Off by default: the XML converter (docs/export.html) carries more."""
-    """The planner workbook: the sample project, a blank template (blank=True), or a given project (data)."""
+    """The planner workbook: the sample project, a blank template (blank=True), or a given project (data).
+    modules: the optional parts to include (core.MODULES); the Simple workbook has none of them."""
+    unknown = set(modules) - set(MODULES)
+    if unknown:
+        raise SystemExit(f"unknown module(s) {', '.join(sorted(unknown))}; choose from {', '.join(MODULES)}")
     sizes = sizes or Sizes(tasks=n_tasks)
     sizes.check()
     n_tasks = sizes.tasks
@@ -92,7 +96,7 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
     rows = data.tasks if data is not None else sample.tasks(blank, stress)
     if len(rows) > n_tasks:
         raise SystemExit(f"{len(rows)} tasks do not fit in {n_tasks} rows; raise --tasks")
-    build_settings(wb, blank, sizes.sprints, data.settings if data else None)
+    build_settings(wb, blank, sizes.sprints, data.settings if data else None, modules)
     build_lists(wb)
     build_stages(wb, data.stages if data else None)
     build_holidays(wb, blank, holidays=data.holidays if data else None)
@@ -103,20 +107,25 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
         more.setdefault(uid, []).append((resource, units))
     rows = [take_stage(take_people(dict(r), more.get(r.get("UID"), [])), data.stages if data else None)
             for r in rows]
-    build_tasks(wb, rows, n_tasks)
+    build_tasks(wb, rows, n_tasks, modules)
     charted = min(12, sizes.sprints)                 # sprints shown on the Status and Agile charts
-    agile_ws, sprint_letters = build_agile(wb, blank, sizes.sprints, charted)
+    agile_ws, sprint_letters = None, None
+    if "agile" in modules:
+        agile_ws, sprint_letters = build_agile(wb, blank, sizes.sprints, sizes.grid_resources, charted)
     build_gantt(wb, n_tasks, sizes.gantt_columns, [r.get("Level") for r in rows])
     if import_wizard:
-        build_msp_tasks(wb, n_tasks)
+        build_msp_tasks(wb, n_tasks, "agile" in modules)
         build_msp_resources(wb, sizes.resources)
-    build_log(wb, blank)
-    build_history(wb, blank)
-    build_status(wb, agile_ws, sprint_letters, charted)
-    build_schedule_report(wb)
+    if "log" in modules:
+        build_log(wb, blank)
+    if "history" in modules:
+        build_history(wb, blank, modules)
+    build_status(wb, agile_ws, sprint_letters, charted, modules)
+    if "reports" in modules:
+        build_schedule_report(wb)
+        build_resource_report(wb, sizes.grid_resources, sizes.weeks, sizes.sprints, "agile" in modules)
     build_roadmap(wb)
-    build_resource_report(wb, sizes.grid_resources, sizes.weeks, sizes.sprints)
-    build_instructions(wb, sizes, import_wizard)
+    build_instructions(wb, sizes, import_wizard, modules)
     name(wb, "PlannerVersion", f'"{VERSION}"')
     wb._sheets = [wb[n] for n in ORDER if n in wb.sheetnames]
     for ws in wb.worksheets:
@@ -186,12 +195,18 @@ def main(argv=None):
     p.add_argument("--gantt-columns", type=int, default=d.gantt_columns, help="columns in the Gantt timeline")
     p.add_argument("--weeks", type=int, default=d.weeks, help="weeks in the Resource Report grids")
     p.add_argument("--stress", type=int, default=0, help="repeat the sample project N times (performance tests)")
+    p.add_argument("--modules", default=",".join(MODULES),
+                   help=f"optional parts to include, comma-separated: {', '.join(MODULES)} (default: all). "
+                        "'none' builds the Simple workbook")
+    p.add_argument("--simple", action="store_true", help="the Simple workbook: same as --modules none")
     p.add_argument("--import-wizard-sheets", action="store_true",
                    help="also build MSP_Tasks / MSP_Resources for MS Project's Import Wizard (the XML converter "
                         "is the better route)")
     a = p.parse_args(argv)
     sizes = Sizes(a.tasks, a.resources, a.grid_resources, a.sprints, a.gantt_columns, a.weeks)
-    save(make_workbook(a.blank, stress=a.stress, sizes=sizes, import_wizard=a.import_wizard_sheets), a.out, a.recalc)
+    modules = () if a.simple or a.modules.strip() in ("", "none") else tuple(m.strip() for m in a.modules.split(","))
+    save(make_workbook(a.blank, stress=a.stress, sizes=sizes, import_wizard=a.import_wizard_sheets, modules=modules),
+         a.out, a.recalc)
     print("saved", a.out)
 
 

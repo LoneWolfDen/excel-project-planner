@@ -92,6 +92,45 @@ def a1_references(formula, names):
     return found
 
 
+def missing_references(wb):
+    """Operands that name a sheet, table or defined name the workbook doesn't have, in cell formulas, data
+    validation, conditional formatting and defined names: what a build that leaves a module out must never keep
+    (it would show #NAME? or #REF! in Excel). A1 addresses (formats, validation) are not names, so they pass."""
+    names, sheets = set(wb.defined_names), set(wb.sheetnames)
+    tables = {t for ws in wb.worksheets for t in ws.tables}
+    found = []
+
+    def check(where, formula):
+        for tok in Tokenizer(formula).items:
+            if tok.type != "OPERAND" or tok.subtype != "RANGE":
+                continue
+            v = tok.value.lstrip(":")                  # INDEX(...):Table[...] arrives as ":Table[...]"
+            if "!" in v:
+                ok = v.split("!")[0].strip("'") in sheets
+            elif "[" in v:
+                ok = v.split("[")[0] in tables
+            else:
+                ok = v in names or bool(A1.match(v)) or v.upper() in ("TRUE", "FALSE")
+            if not ok:
+                found.append(f"{where}: {v}")
+
+    for sheet, cell, f in formulas(wb):
+        check(f"{sheet}!{cell.coordinate}", f)
+    for ws in wb.worksheets:
+        for dv in ws.data_validations.dataValidation:
+            for f in (dv.formula1, dv.formula2):
+                if f:
+                    check(f"{ws.title} validation {dv.sqref}", "=" + f.lstrip("="))
+        for rng in ws.conditional_formatting:
+            for rule in rng.rules:
+                for f in rule.formula or []:
+                    check(f"{ws.title} format {rng.sqref}", "=" + f)
+    for n, d in wb.defined_names.items():
+        if d.attr_text and not d.attr_text.startswith('"'):
+            check(f"name {n}", "=" + d.attr_text)
+    return found
+
+
 def static_report(path):
     wb = openpyxl.load_workbook(path)
     names = set(wb.defined_names)
@@ -116,7 +155,7 @@ def static_report(path):
     return {"formulas": dict(per_sheet), "formulas_total": sum(per_sheet.values()),
             "volatile": {s: dict(c) for s, c in volatile.items()},
             "volatile_cells": sum(sum(c.values()) for c in volatile.values()), "a1_references": a1,
-            "excel_limit_problems": limits, "longest_formula": longest}
+            "excel_limit_problems": limits, "longest_formula": longest, "missing_references": missing_references(wb)}
 
 
 def time_recalc(path, runs=3):
@@ -213,6 +252,9 @@ def check(report, budget):
     if report["a1_references"]:
         problems.append(f"{len(report['a1_references'])} formulas contain A1 references, e.g. "
                         + "; ".join(report["a1_references"][:5]))
+    if report["missing_references"]:
+        problems.append(f"{len(report['missing_references'])} references to a missing sheet, table or name, e.g. "
+                        + "; ".join(report["missing_references"][:5]))
     for k in ("full_recalc_s", "edit_recalc_s"):
         if k in report and report[k] > budget[k + "_max"]:
             problems.append(f"{k} {report[k]:.3f}s > budget {budget[k + '_max']}s")
@@ -225,6 +267,7 @@ def markdown(path, profile, report, budget, problems):
              f"| Formulas | {report['formulas_total']:,} | {budget['formulas_max']:,} |",
              f"| Volatile formula cells | {report['volatile_cells']:,} | allow-listed per sheet |",
              f"| Formulas with A1 references | {len(report['a1_references'])} | 0 |",
+             f"| References to a missing sheet, table or name | {len(report['missing_references'])} | 0 |",
              f"| Formulas breaking Excel limits (parentheses, length, nesting) | {len(report['excel_limit_problems'])} | 0 |",
              f"| Longest formula | {report['longest_formula']:,} chars | {MAX_LENGTH:,} |"]
     for k, label in (("full_recalc_s", "Full recalculation (LibreOffice)"),

@@ -3,7 +3,7 @@ the full reference below them."""
 from openpyxl.styles import Alignment
 from openpyxl.worksheet.hyperlink import Hyperlink
 
-from .core import CALC_FILL, HEADER_FILLS, HEADER_FONT, INPUT_FONT, NOTE_FONT, font
+from .core import CALC_FILL, HEADER_FILLS, HEADER_FONT, INPUT_FONT, MODULES, NOTE_FONT, font
 from .settings import ESSENTIAL, START, START_ROW
 
 # (label, text, sheet to link to)
@@ -200,7 +200,12 @@ WIZARD = [
 ]
 
 
-def build_instructions(wb, sizes, wizard=False):
+# reference entries about a module's sheet: left out with it
+NEEDS = {"7. Agile": "agile", "9. Schedule Report": "reports", "10. Resource Report": "reports", "11. Log": "log",
+         "12. History": "history", "Earned value": "evm"}
+
+
+def build_instructions(wb, sizes, wizard=False, modules=MODULES):
     ws = wb[START]                                  # created by build_settings, which wrote the essential settings
     ws.column_dimensions["B"].width = 28
     ws.column_dimensions["C"].width = 110
@@ -226,6 +231,8 @@ def build_instructions(wb, sizes, wizard=False):
     _header(ws, r, "REFERENCE")
     r += 1
     for label, body in text(sizes, wizard):
+        if label in NEEDS and NEEDS[label] not in modules:
+            continue
         if body is None:
             r += 1
             ws.cell(r, 2, label).font = HEADER_FONT

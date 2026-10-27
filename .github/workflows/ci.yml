@@ -25,6 +25,7 @@ jobs:
           mkdir -p dist
           python3 scripts/build_planner.py dist/Project_Planner.xlsx --recalc
           python3 scripts/build_planner.py dist/Project_Planner_Blank.xlsx --blank --recalc
+          python3 scripts/build_planner.py dist/Project_Planner_Simple.xlsx --simple --recalc
           python3 scripts/build_planner.py dist/Stress_1000_tasks.xlsx --tasks 1000 --stress 33
 
       - name: Performance check (sample)
@@ -51,4 +52,5 @@ jobs:
           path: |
             dist/Project_Planner.xlsx
             dist/Project_Planner_Blank.xlsx
+            dist/Project_Planner_Simple.xlsx
             dist/Project_Planner.xml

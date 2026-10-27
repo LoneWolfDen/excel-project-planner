@@ -12,9 +12,10 @@ hidden helper column, so the title starts in column B.
 from openpyxl.chart import BarChart, LineChart, Reference, Series
 from openpyxl.formatting.rule import FormulaRule
 from openpyxl.styles import Alignment, Font
+from openpyxl.utils import get_column_letter
 
-from .core import DATE, NOTE_FONT, TITLE_FONT, Col, Show, Tab, add_table, fill, font, name, ranked_table
-from .leave import month_column, month_start, team_leave_hours
+from .core import CALC_FONT, DATE, NOTE_FONT, TITLE_FONT, Col, Show, Tab, add_table, fill, font, name, ranked_table
+from .leave import leave_days, leave_row, month_column, month_start, team_leave_hours
 from .workload import work_between
 
 SHEET = "Agile"
@@ -55,7 +56,7 @@ BACKLOG_ROWS = 20
 BURNDOWN_DAYS = 31
 
 
-def build_agile(wb, blank, n_sprints, n_chart_sprints=12):
+def build_agile(wb, blank, n_sprints, n_resources, n_chart_sprints=12):
     """Returns (sheet, {SprintTable column: letter}) for the Status sheet's sprint chart."""
     ws = wb.create_sheet(SHEET)
     ws["B1"] = '=ProjectName&"  -  Agile: sprints, story points and burndown"'
@@ -70,6 +71,7 @@ def build_agile(wb, blank, n_sprints, n_chart_sprints=12):
     top = _release(wb, ws, top)
     top = _backlog(ws, top)
     burndown_top = _burndown(ws, top)
+    _leave_grid(wb, ws, burndown_top + BURNDOWN_DAYS + 4, n_sprints, n_resources)
     for col, width in WIDTHS.items():
         ws.column_dimensions[col].width = width
     _charts(ws, L, min(n_chart_sprints, n_sprints), kpi_top, burndown_top)
@@ -249,3 +251,28 @@ def _charts(ws, L, n, kpi_top, burndown_top):
         for s in chart.series:
             s.smooth = False
     ws.add_chart(sprint, f"J{burndown_top}")
+
+
+def _leave_grid(wb, ws, top, n_sprints, n_resources):
+    """Hidden grid: working days of leave per person per sprint (Resources sheet, leave months), read by the sprint
+    table's Capacity and the Resource Report's sprint utilisation. Each person's Resources row is looked up once, in
+    column C; each sprint's month columns come from SprintTable."""
+    origin = "spr_LeaveOrigin"
+    name(wb, origin, f"'{SHEET}'!$B${top}")
+    ws.cell(top, 2, "Leave days by sprint (helper for Capacity and the sprint utilisation grid)").font = font(italic=True)
+    i = f"(ROW()-ROW({origin}))"
+    j = f"(COLUMN()-COLUMN({origin})-1)"
+    resource = f"INDEX(res_Name,{i})"
+    start, end = f"INDEX(spr_Start,{j})", f"INDEX(spr_End,{j})"
+    months = [(month_start(start, k), f"INDEX(spr_LeaveCol{k},{j})") for k in range(LEAVE_MONTHS)]
+    days = leave_days(start, end, f"INDEX(spr_LeaveRow,{i})", months)
+    L = get_column_letter
+    last_col = L(3 + n_sprints)
+    for r in range(top + 1, top + 1 + n_resources):
+        ws.cell(r, 3, f'=IFERROR(IF({resource}="",0,{leave_row(resource)}),0)').font = CALC_FONT
+        for c in range(4, 4 + n_sprints):
+            ws.cell(r, c, f'=IFERROR(IF(OR({resource}="",INDEX(spr_Name,{j})=""),0,{days}),0)').font = CALC_FONT
+    name(wb, "spr_LeaveRow", f"'{SHEET}'!$C${top + 1}:$C${top + n_resources}")
+    name(wb, "spr_LeaveGrid", f"'{SHEET}'!$D${top + 1}:${last_col}${top + n_resources}")
+    for r in range(top, top + 1 + n_resources):
+        ws.row_dimensions[r].hidden = True

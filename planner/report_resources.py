@@ -16,7 +16,6 @@ from openpyxl.utils import get_column_letter
 from .core import BOX, CALC_FILL, CALC_FONT, Col, Tab, add_table, fill, font, header_cell, name, title
 from .leave import leave_days, leave_row, month_column, month_start, team_leave_hours
 from .resources import by_resource, count_by_resource
-from .agile import LEAVE_MONTHS
 from .workload import work_between, work_upto
 
 SHEET = "Resource Report"
@@ -24,7 +23,8 @@ DEFAULT_WEEKS = 26
 WD = "WorkWeek,Holidays"
 
 
-def build_resource_report(wb, n_resources, n_weeks=DEFAULT_WEEKS, n_sprints=26):
+def build_resource_report(wb, n_resources, n_weeks=DEFAULT_WEEKS, n_sprints=26, agile=True):
+    """agile: also each person's hours and utilisation by sprint (the Agile sheet's sprint calendar)."""
     ws = wb.create_sheet(SHEET)
     title(ws, None)
     ws["A1"] = '=ProjectName&"  -  Resource Report"'
@@ -41,16 +41,17 @@ def build_resource_report(wb, n_resources, n_weeks=DEFAULT_WEEKS, n_sprints=26):
     _grid(wb, ws, "load", load_top, n_resources, n_weeks, "Weekly hours by resource", util_top - load_top)
     _grid(wb, ws, "util", util_top, n_resources, n_weeks, "Weekly utilisation by resource (hours / capacity after leave)")
     _leave_grid(wb, ws, leave_top, n_resources, n_weeks)
-    sprint_top = leave_top + n_resources + 7
-    sprint_util_top = sprint_top + n_resources + 5
-    _sprint_grid(wb, ws, "load", sprint_top, n_sprints, n_resources,
-                 "Hours by resource and sprint (Agile sheet)  -  red = over capacity after leave",
-                 sprint_util_top - sprint_top)
-    _sprint_grid(wb, ws, "util", sprint_util_top, n_sprints, n_resources,
-                 "Utilisation by resource and sprint (% of capacity after leave)")
-    sprint_leave_top = sprint_util_top + n_resources + 4
-    _sprint_leave_grid(wb, ws, sprint_leave_top, n_sprints, n_resources)
-    _cumulative(wb, ws, sprint_leave_top + n_resources + 3, n_resources, n_weeks)
+    cumulative_top = leave_top + n_resources + 4
+    if agile:
+        sprint_top = leave_top + n_resources + 7
+        sprint_util_top = sprint_top + n_resources + 5
+        _sprint_grid(wb, ws, "load", sprint_top, n_sprints, n_resources,
+                     "Hours by resource and sprint (Agile sheet)  -  red = over capacity after leave",
+                     sprint_util_top - sprint_top)
+        _sprint_grid(wb, ws, "util", sprint_util_top, n_sprints, n_resources,
+                     "Utilisation by resource and sprint (% of capacity after leave)")
+        cumulative_top = sprint_util_top + n_resources + 4
+    _cumulative(wb, ws, cumulative_top, n_resources, n_weeks)
     _team_chart(ws, load_top, n_resources, n_weeks)
     ws.freeze_panes = "D4"
     ws.page_setup.orientation = "landscape"
@@ -310,28 +311,3 @@ def _sprint_grid(wb, ws, kind, top, n_sprints, n_resources, heading, util_offset
         ws.conditional_formatting.add(grid, ColorScaleRule(
             start_type="num", start_value=0, start_color="FFFFFF", mid_type="num", mid_value=0.8, mid_color="C6EFCE",
             end_type="num", end_value=1.2, end_color="F8696B"))
-
-
-def _sprint_leave_grid(wb, ws, top, n_sprints, n_resources):
-    """Hidden grid: working days of leave per person per sprint (Resources sheet, leave months), read by the sprint
-    utilisation grid and the Agile sheet's capacity. Each person's Resources row is looked up once, in column C;
-    each sprint's month columns come from SprintTable."""
-    origin = "spr_LeaveOrigin"
-    name(wb, origin, f"'{SHEET}'!$B${top}")
-    ws.cell(top, 2, "Leave days by sprint (helper for the sprint utilisation grid)").font = font(italic=True)
-    i = f"(ROW()-ROW({origin}))"
-    j = f"(COLUMN()-COLUMN({origin})-1)"
-    resource = f"INDEX(res_Name,{i})"
-    start, end = f"INDEX(spr_Start,{j})", f"INDEX(spr_End,{j})"
-    months = [(month_start(start, k), f"INDEX(spr_LeaveCol{k},{j})") for k in range(LEAVE_MONTHS)]
-    days = leave_days(start, end, f"INDEX(spr_LeaveRow,{i})", months)
-    L = get_column_letter
-    last_col = L(3 + n_sprints)
-    for r in range(top + 1, top + 1 + n_resources):
-        ws.cell(r, 3, f'=IFERROR(IF({resource}="",0,{leave_row(resource)}),0)').font = CALC_FONT
-        for c in range(4, 4 + n_sprints):
-            ws.cell(r, c, f'=IFERROR(IF(OR({resource}="",INDEX(spr_Name,{j})=""),0,{days}),0)').font = CALC_FONT
-    name(wb, "spr_LeaveRow", f"'{SHEET}'!$C${top + 1}:$C${top + n_resources}")
-    name(wb, "spr_LeaveGrid", f"'{SHEET}'!$D${top + 1}:${last_col}${top + n_resources}")
-    for r in range(top, top + 1 + n_resources):
-        ws.row_dimensions[r].hidden = True

@@ -24,7 +24,7 @@ from openpyxl.utils import column_index_from_string, get_column_letter
 from openpyxl.worksheet.cell_range import MultiCellRange
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from .core import (DATE, LABEL_FONT, NOTE_FONT, Col, Tab, add_table, col_range, fill, name, title)
+from .core import (DATE, LABEL_FONT, MODULES, NOTE_FONT, Col, Tab, add_table, col_range, fill, name, title)
 
 TABLE = "Tasks"
 HEADER_ROW = 5
@@ -290,7 +290,7 @@ def over_allocated(resource, start, finish):
             f"COUNTIF(INDEX(rw_Util,{row},{first}):INDEX(rw_Util,{row},{last}),\">1\")>0),FALSE())")
 
 
-def formulas():
+def formulas(modules=MODULES):
     nm, s, leaf = R("Name"), R("IsSum"), f'{R("IsLeaf")}=1'
     blank = f'{nm}=""'
     manual = f'IF({R("CStart")}>0,{R("CStart")},ProjectStart)'
@@ -532,7 +532,8 @@ def formulas():
                              f'{R(person[k][0])}&" is not on Resources. ",""))' for k in person)
                    + f'&IF({R(f"Ri{PEOPLE}")}="","",IF({item(PEOPLE + 1)}<>"",'
                      f'"Only the first {PEOPLE} people in Resources are used. ",""))'
-                   f'&IF({R("OverAlloc")}="Yes","Over-allocated: see the Resource Report. ","")'
+                   + (f'&IF({R("OverAlloc")}="Yes","Over-allocated: see the Resource Report. ","")'
+                      if "reports" in modules else "")
                    + progress_issues(R, leaf)
                    + f'&IF(LEFT({R("DLChk")},4)="Late","Misses its deadline ("&LOWER({R("DLChk")})&"). ","")))')
     return f
@@ -656,7 +657,18 @@ STATUS_COLOURS = {"Complete": "548235", "In Progress": "2F75B5", "Behind": "C000
                   "Not Started": "7F7F7F"}
 
 
-def build_tasks(wb, rows, n_rows):
+# columns that read a module's sheet or settings: left out with it
+MODULE_COLUMNS = {"agile": {"SprIn", "SP", "Sprint", "LPts", "CurKey"}, "reports": {"OverAlloc"}}
+
+
+def layout(modules=MODULES):
+    """(LAYOUT, SECTIONS) for a workbook built with these modules."""
+    drop = set().union(*(cols for m, cols in MODULE_COLUMNS.items() if m not in modules))
+    sections = [(label, key, [k for k in rest if k not in drop]) for label, key, rest in SECTIONS if key not in drop]
+    return [row for row in LAYOUT if row[0] not in drop], sections
+
+
+def build_tasks(wb, rows, n_rows, modules=MODULES):
     ws = wb.create_sheet("Tasks")
     title(ws, None)
     ws["A1"] = '=ProjectName&"  -  Task Entry"'
@@ -667,9 +679,10 @@ def build_tasks(wb, rows, n_rows):
     ws["A2"].font = NOTE_FONT
     ws["A3"] = '="Next free UID for a new row: "&NextFreeUID'
     ws["A3"].font = LABEL_FONT
-    f = formulas()
+    f = formulas(modules)
+    shown, sections = layout(modules)
     cols = []
-    for key, kind, width, fmt, center, note in LAYOUT:
+    for key, kind, width, fmt, center, note in shown:
         values = []
         if key == "UID":
             # stable IDs: links keep working when rows move. Imported rows keep their own; the rest follow on.
@@ -682,7 +695,7 @@ def build_tasks(wb, rows, n_rows):
     L = add_table(ws, TABLE, HEADER_ROW, 1, cols, n_rows)
     ws.row_dimensions[HEADER_ROW].height = 42
     ws.sheet_properties.outlinePr.summaryRight = False       # a group's +/- sits on the column left of it
-    for label, key, rest in SECTIONS:
+    for label, key, rest in sections:
         first = L[key] if key else L[rest[0]]
         ws[f"{first}4"] = label
         ws[f"{first}4"].font = LABEL_FONT
@@ -691,14 +704,15 @@ def build_tasks(wb, rows, n_rows):
     ws[f"{L['Lvl']}4"] = "HELPER COLUMNS (hidden)"
     ws[f"{L['Lvl']}4"].font = LABEL_FONT
     for key, defined in NAMES.items():
-        name(wb, defined, C(key))
+        if key in L:
+            name(wb, defined, C(key))
     ws.freeze_panes = f"{L['Dur']}{HEADER_ROW + 1}"
     group_outline(ws, [r.get("Level") for r in rows], HEADER_ROW + 1)
     for i, r in enumerate(rows):                              # names indented by level, for the rows built in
         level = r.get("Level")
         if level and level > 1:
             ws[f"{L['Name']}{HEADER_ROW + 1 + i}"].alignment = Alignment(indent=min(int(level) - 1, 15))
-    group_columns(ws, L["Lvl"], L["CurKey"], 2)
+    group_columns(ws, L["Lvl"], L[shown[-1][0]], 2)
     _validation_and_formatting(ws, L, n_rows)
     ws.sheet_view.zoomScale = 90
     return ws
@@ -779,13 +793,15 @@ def _validation_and_formatting(ws, L, n_rows):
                       error="Enter 0% - 100%."), "Pct")
     dv(DataValidation(type="list", formula1="=L_Stage"), "Stage")
     dv(DataValidation(type="list", formula1="=res_Name", showErrorMessage=False), "ResIn")   # pick one, or type several
-    dv(DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0"), "ACin", "SP")
-    dv(DataValidation(type="list", formula1="=spr_Name"), "SprIn")
+    dv(DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0"), *[k for k in ("ACin", "SP") if k in L])
+    if "SprIn" in L:
+        dv(DataValidation(type="list", formula1="=spr_Name"), "SprIn")
     dv(DataValidation(allow_blank=True), "Name", "Notes", "PredIn")          # prompts only: any text
 
     cf = ws.conditional_formatting
     cf.add(f"A{first}:{L['ACt']}{last}", FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(bold=True), fill=fill("DDEBF7")))
-    for k in ("Dur", "PredIn", "CType", "Cons", "AS", "AF", "Stage", "Pct", "ResIn", "ACin", "SprIn", "SP"):
+    for k in [k for k in ("Dur", "PredIn", "CType", "Cons", "AS", "AF", "Stage", "Pct", "ResIn", "ACin", "SprIn", "SP")
+              if k in L]:
         cf.add(rng(k), FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(color="A6A6A6", italic=True, bold=True)))
     for status, colour in STATUS_COLOURS.items():
         cf.add(rng("Status"), FormulaRule(formula=[f'{at("Status")}="{status}"'], font=Font(color=colour, bold=True)))
@@ -799,8 +815,9 @@ def _validation_and_formatting(ws, L, n_rows):
         fill=fill("FFC7CE"), font=Font(color="9C0006", bold=True)))
     cf.add(rng("LinkChk"), FormulaRule(formula=[f'{at("LinkChk")}<>""'], fill=fill("FFC7CE"), font=Font(color="9C0006")))
     cf.add(rng("DLChk"), FormulaRule(formula=[f'LEFT({at("DLChk")},4)="Late"'], font=Font(color="C00000", bold=True)))
-    cf.add(rng("OverAlloc"), FormulaRule(formula=[f'{at("OverAlloc")}="Yes"'], font=Font(color="9C0006", bold=True),
-                                         fill=fill("FFC7CE")))
+    if "OverAlloc" in L:
+        cf.add(rng("OverAlloc"), FormulaRule(formula=[f'{at("OverAlloc")}="Yes"'], font=Font(color="9C0006", bold=True),
+                                             fill=fill("FFC7CE")))
     cf.add(rng("Crit"), FormulaRule(formula=[f'{at("Crit")}="Yes"'], font=Font(color="FFFFFF", bold=True), fill=fill("C00000")))
     for k in ("TS", "FSl"):
         cf.add(rng(k), FormulaRule(formula=[f"AND(ISNUMBER({at(k)}),{at(k)}<0)"], font=Font(color="C00000", bold=True)))

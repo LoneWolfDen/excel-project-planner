@@ -5,8 +5,8 @@ from openpyxl.formatting.rule import FormulaRule
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from .core import (BOX, CALC_FILL, CALC_FONT, DATE, INPUT_FONT, NOTE_FONT, Col, add_table, fill, font, header_cell,
-                   name, title)
+from .core import (BOX, CALC_FILL, CALC_FONT, DATE, INPUT_FONT, MODULES, NOTE_FONT, Col, add_table, fill, font,
+                   header_cell, name, title)
 from .tasks import CONSTRAINTS
 
 # Working-week presets -> Mon..Sun mask for WORKDAY.INTL (1 = not working); "Custom" uses the seven day rows
@@ -145,8 +145,16 @@ def settings_rows(blank, max_sprints):
     ]
 
 
-def build_settings(wb, blank, max_sprints, values=None):
+# settings that only a module reads: left out with it (MODULES)
+MODULE_SETTINGS = {"agile": {"Sprint1Start", "SprintLength", "SprintCount", "SprintPrefix", "SprintLastEnd",
+                             "CurrentSprint", "CurrentSprintStart", "CurrentSprintEnd", "TotalPoints"},
+                   "log": {"RAIDHighScore", "RAIDMediumScore"},
+                   "reports": {"ResourceWeekStart"}}
+
+
+def build_settings(wb, blank, max_sprints, values=None, modules=MODULES):
     """values: {setting name: value} replacing the defaults (an import sets the project's own)."""
+    drop = set().union(*(names for m, names in MODULE_SETTINGS.items() if m not in modules))
     st = wb.create_sheet("Settings")
     title(st, "Project Settings",
           "Blue = edit me. Grey = calculated. Column D shows the defined name every formula uses for that setting. "
@@ -159,9 +167,9 @@ def build_settings(wb, blank, max_sprints, values=None):
         st.column_dimensions[chr(64 + col)].width = width
     st.column_dimensions["A"].width = 3
     rows, cells = {}, {}
-    settings = [row for row in settings_rows(blank, max_sprints) if row[0] in ESSENTIAL]
-    settings.sort(key=lambda row: ESSENTIAL.index(row[0]))
-    settings += [row for row in settings_rows(blank, max_sprints) if row[0] not in ESSENTIAL]
+    kept = [row for row in settings_rows(blank, max_sprints) if row[0] not in drop]
+    settings = sorted((row for row in kept if row[0] in ESSENTIAL), key=lambda row: ESSENTIAL.index(row[0]))
+    settings += [row for row in kept if row[0] not in ESSENTIAL]
     on_settings = 0
     for n, label, value, fmt, is_input, note in settings:
         if values and n in values:
@@ -202,9 +210,10 @@ def build_settings(wb, blank, max_sprints, values=None):
     levels = DataValidation(type="whole", operator="between", formula1="1", formula2="9")
     st.add_data_validation(levels)
     levels.add(f"C{rows['OutlineShowLevel']}")
-    sprints = DataValidation(type="whole", operator="between", formula1="1", formula2=str(max_sprints))
-    st.add_data_validation(sprints)
-    sprints.add(f"C{rows['SprintCount']}")
+    if "SprintCount" in rows:
+        sprints = DataValidation(type="whole", operator="between", formula1="1", formula2=str(max_sprints))
+        st.add_data_validation(sprints)
+        sprints.add(f"C{rows['SprintCount']}")
     for n in ("ProjectStartDate", "StatusDateInput"):
         ws, cell = cells[n]
         ws.conditional_formatting.add(cell, FormulaRule(formula=[f"N({cell})=0"], fill=fill("FFFF00")))

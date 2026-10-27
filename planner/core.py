@@ -209,3 +209,8 @@ def linked_task(uid, column="tsk_Name"):
     """A task's value looked up by UID, for logs that link to a task: blank when no UID, a message when it's
     missing. UID is an input column, so the MATCH is not volatile; only the value read may change."""
     return f'IF(N({uid})=0,"",IFERROR(INDEX({column},MATCH({uid},tsk_UID,0)),"UID "&{uid}&" not found"))'
+
+
+# Optional parts of the workbook (build option --modules). Leaving one out removes its sheets and every formula,
+# column and setting that reads it, so nothing refers to a missing sheet.
+MODULES = ("agile", "log", "evm", "history", "reports")

@@ -15,24 +15,28 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.hyperlink import Hyperlink
 
 from . import rag
-from .core import (DATE, HEADER_FILLS, HEADER_FONT, NOTE_FONT, TITLE_FONT, Col, Show, Tab, add_table, fill, font, name,
-                   ranked_table)
-from .history import FIELDS
+from .core import (DATE, HEADER_FILLS, HEADER_FONT, MODULES, NOTE_FONT, TITLE_FONT, Col, Show, Tab, add_table, fill,
+                   font, name, ranked_table)
+from .history import fields
 from .settings import STATUS as SHEET, STATUS_ROW
 from .tasks import STATUS_COLOURS
 
 WIDTHS = {"A": 3, "B": 36, "C": 56, "D": 16, "E": 12, "F": 10, "G": 10, "H": 50}
 MONEY = "#,##0"
 
-# this week's steps, under the status date: (label, text, sheet to link to)
+# this week's steps, under the status date: (label, text, sheet to link to, module it needs)
 WEEKLY = [
-    ("2. Progress", "On Tasks: the Stage, Actual Start and Actual Finish for the tasks that moved.", "Tasks"),
-    ("3. Log", "Update risks, issues, decisions and change requests.", "Log"),
-    ("4. RAG", "Review the RAG below; where you disagree, pick a PM RAG and say why in Comment.", None),
-    ("5. Commentary", "Write this period's notes in the COMMENTARY table below.", None),
-    ("6. Snapshot", "Copy the SnapshotNow row at the bottom of this sheet and Paste Special > Values under the last "
-                    "row of History's table.", "History"),
+    ("Progress", "On Tasks: the Stage, Actual Start and Actual Finish for the tasks that moved.", "Tasks", None),
+    ("Log", "Update risks, issues, decisions and change requests.", "Log", "log"),
+    ("RAG", "Review the RAG below; where you disagree, pick a PM RAG and say why in Comment.", None, None),
+    ("Commentary", "Write this period's notes in the COMMENTARY table below.", None, None),
+    ("Snapshot", "Copy the SnapshotNow row at the bottom of this sheet and Paste Special > Values under the last "
+                 "row of History's table.", "History", "history"),
 ]
+# RAG areas and key figures that read a module (MODULES): left out with it
+NEEDS = {"Schedule performance": "evm", "Cost performance": "evm", "RAID": "log",
+         "Tasks with an over-allocated resource": "reports", "Current sprint": "agile",
+         "Story points done / total": "agile", "Open risks / issues": "log"}
 
 # area, measure, value, severity of the value (0 green, 1 amber, 2 red), number format
 AREAS = [
@@ -139,8 +143,10 @@ def _rag_columns(table, measures, values, severities):
     ]
 
 
-def build_status(wb, agile_ws=None, sprint_letters=None, n_chart_sprints=12):
-    """agile_ws / sprint_letters: the Agile sheet's SprintTable, for the sprint load chart (left out without it)."""
+def build_status(wb, agile_ws=None, sprint_letters=None, n_chart_sprints=12, modules=MODULES):
+    """agile_ws / sprint_letters: the Agile sheet's SprintTable, for the sprint load chart (left out without it).
+    modules: the sections a module feeds (earned value, the log's lists, the snapshot) are left out without it."""
+    has = lambda label: NEEDS.get(label) in modules or label not in NEEDS
     ws = wb[SHEET]                                  # created by build_settings, which wrote the status date
     # the title sits in column B: column A holds the top-RAID list's hidden helper column
     ws["B1"] = '=ProjectName&"  -  Status"'
@@ -150,17 +156,21 @@ def build_status(wb, agile_ws=None, sprint_letters=None, n_chart_sprints=12):
     ws["B2"].font = NOTE_FONT
     for col, width in WIDTHS.items():
         ws.column_dimensions[col].width = width
-    top = _this_week(ws)
-    top = _rag(wb, ws, top)
-    top = _key_figures(ws, top)
-    top = _earned_value(wb, ws, top)
-    top = _top_raid(ws, top)
+    top = _this_week(ws, [w for w in WEEKLY if w[3] is None or w[3] in modules])
+    top = _rag(wb, ws, top, [a for a in AREAS if has(a[0])])
+    top = _key_figures(ws, top, [k for k in KPIS if has(k[0])])
+    if "evm" in modules:
+        top = _earned_value(wb, ws, top)
+    if "log" in modules:
+        top = _top_raid(ws, top)
     chart_at = top
-    top = _change_control(ws, top)
+    if "log" in modules:
+        top = _change_control(ws, top)
     end = _commentary(ws, top)
     if agile_ws is not None:
         _sprint_chart(ws, agile_ws, sprint_letters, n_chart_sprints, chart_at)
-    _snapshot(ws, end + 3)
+    if "history" in modules:
+        _snapshot(ws, end + 3, fields(modules))
     ws.print_area = f"B1:H{end}"                    # one page: everything above the snapshot row
     ws.page_setup.orientation = "portrait"
     ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 1
@@ -169,7 +179,7 @@ def build_status(wb, agile_ws=None, sprint_letters=None, n_chart_sprints=12):
     return ws
 
 
-def _this_week(ws):
+def _this_week(ws, weekly):
     """The status date (row STATUS_ROW, written by settings) as step 1, then the rest of the weekly update."""
     r = STATUS_ROW - 1
     for c in (2, 3):
@@ -178,19 +188,19 @@ def _this_week(ws):
     ws.cell(r, 3, "Every reporting date, top to bottom").font = HEADER_FONT
     ws.cell(STATUS_ROW, 2).value = "1. Status date"
     ws.cell(STATUS_ROW, 4, "Type the reporting date (Ctrl+; = today)").font = NOTE_FONT
-    for i, (label, body, sheet) in enumerate(WEEKLY):
+    for i, (label, body, sheet, _) in enumerate(weekly):
         r = STATUS_ROW + 1 + i
-        ws.cell(r, 2, label).font = font(bold=True)
+        ws.cell(r, 2, f"{i + 2}. {label}").font = font(bold=True)
         c = ws.cell(r, 3, body + (f"  Go to {sheet}." if sheet else ""))
         c.alignment = Alignment(wrap_text=True, vertical="top")
         if sheet:                                   # a link inside the workbook (a hyperlink, not a formula)
             c.hyperlink = Hyperlink(ref=c.coordinate, location=f"'{sheet}'!A1")
             c.font = font(color="1F4E78", underline="single")
         ws.row_dimensions[r].height = 30
-    return STATUS_ROW + len(WEEKLY) + 3
+    return STATUS_ROW + len(weekly) + 3
 
 
-def _rag(wb, ws, top):
+def _rag(wb, ws, top, areas_shown):
     areas = Tab("StatusRAG")
     worst = f'MAX(IF(COUNTIF({areas.col("RAG")},"Red")>0,2,0),IF(COUNTIF({areas.col("RAG")},"Amber")>0,1,0))'
     overall_value = f'=COUNTIF({areas.col("RAG")},"Red")&" red, "&COUNTIF({areas.col("RAG")},"Amber")&" amber"'
@@ -201,31 +211,32 @@ def _rag(wb, ws, top):
     name(wb, "ProjectRAG", "OverallStatus[RAG]")
     top = overall + 3
     add_table(ws, "StatusRAG", top, 2, _rag_columns(
-        "StatusRAG", ([a[0] for a in AREAS], [a[1] for a in AREAS]), [f"={a[2]}" for a in AREAS],
-        [f"={rag.rag_text(a[3].format(v=areas.row('Value')))}" for a in AREAS]), len(AREAS), autofilter=False)
-    for i, a in enumerate(AREAS):
+        "StatusRAG", ([a[0] for a in areas_shown], [a[1] for a in areas_shown]), [f"={a[2]}" for a in areas_shown],
+        [f"={rag.rag_text(a[3].format(v=areas.row('Value')))}" for a in areas_shown]), len(areas_shown),
+        autofilter=False)
+    for i, a in enumerate(areas_shown):
         ws.cell(top + 1 + i, 4).number_format = a[4]
         ws.cell(top + 1 + i, 4).alignment = Alignment(horizontal="right")
-    for r in range(overall + 1, top + 1 + len(AREAS)):
+    for r in range(overall + 1, top + 1 + len(areas_shown)):
         ws.cell(r, 2).font = font(bold=True)
-    rag.colour(ws, f"E{overall + 1}:G{top + len(AREAS)}", f"E{overall + 1}")
+    rag.colour(ws, f"E{overall + 1}:G{top + len(areas_shown)}", f"E{overall + 1}")
     pick = DataValidation(type="list", formula1="=L_RAG")
     ws.add_data_validation(pick)
     pick.add(f"F{overall + 1}")
-    pick.add(f"F{top + 1}:F{top + len(AREAS)}")
-    return top + len(AREAS) + 3
+    pick.add(f"F{top + 1}:F{top + len(areas_shown)}")
+    return top + len(areas_shown) + 3
 
 
-def _key_figures(ws, top):
+def _key_figures(ws, top, kpis):
     """Key figures (B:D) with detail tasks by status beside them (E:F) and its chart below that, then the next
     milestones."""
     _heading(ws, top - 1, "KEY FIGURES")
     add_table(ws, "KPIs", top, 2, [
-        Col("Measure", width=WIDTHS["B"], values=[k[0] for k in KPIS]),
-        Col("Source", width=WIDTHS["C"], values=[k[3] for k in KPIS]),
-        Col("Value", width=WIDTHS["D"], values=[f"={k[1]}" for k in KPIS]),
-    ], len(KPIS), autofilter=False)
-    for i, (label, _, fmt, _) in enumerate(KPIS):
+        Col("Measure", width=WIDTHS["B"], values=[k[0] for k in kpis]),
+        Col("Source", width=WIDTHS["C"], values=[k[3] for k in kpis]),
+        Col("Value", width=WIDTHS["D"], values=[f"={k[1]}" for k in kpis]),
+    ], len(kpis), autofilter=False)
+    for i, (label, _, fmt, _) in enumerate(kpis):
         r = top + 1 + i
         ws.cell(r, 2).font = font(bold=True)
         value = ws.cell(r, 4)
@@ -252,7 +263,7 @@ def _key_figures(ws, top):
     chart.height, chart.width = 6, 12
     ws.add_chart(chart, f"E{top + len(STATUS_COLOURS) + 2}")
 
-    top += len(KPIS) + 3
+    top += len(kpis) + 3
     nxt = Tab("NextMilestones")
     k = f"(ROW()-ROW({nxt.head('Next milestones (forecast)')}))"
     nth = f"SMALL(tsk_MilestoneKey,{k})"
@@ -341,10 +352,10 @@ def _sprint_chart(ws, agile_ws, L, n, at):
     ws.add_chart(chart, f"E{at}")
 
 
-def _snapshot(ws, top):
+def _snapshot(ws, top, kept):
     """This status date's numbers in one row (formulas), to paste as values onto History's StatusHistory."""
     _heading(ws, top - 1, "SNAPSHOT: copy this row and Paste Special > Values under the last row of History's table")
-    add_table(ws, "SnapshotNow", top, 2, [Col(h, width=11, fmt=fmt, formula=f, center=True) for h, f, fmt in FIELDS],
+    add_table(ws, "SnapshotNow", top, 2, [Col(h, width=11, fmt=fmt, formula=f, center=True) for h, f, fmt in kept],
               1, autofilter=False)
     for col, width in WIDTHS.items():                # the snapshot shares the page's columns
         ws.column_dimensions[col].width = width

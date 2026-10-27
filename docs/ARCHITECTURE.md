@@ -245,6 +245,20 @@ over `StatusRAG`, `StatusNotes`, `SprintTable` and the rest unchanged). The thre
 `Log`: RAID items keep their Ref, decisions and change requests take the next free ones, and a warning lists the new
 numbers.
 
+## Modules: Simple and Full
+
+The optional parts are modules (`core.MODULES`: agile, log, evm, history, reports), chosen with `--modules` or
+`make_workbook(modules=...)`. Leaving one out removes its sheets **and everything that reads them**, so no formula,
+validation rule, conditional format or defined name ever points at a missing sheet, table or name (Excel would show
+`#NAME?`). Each builder takes `modules` and drops what depends on an absent one: Tasks' columns (`MODULE_COLUMNS`:
+the sprint and story-point columns go with agile, Over-allocated with reports, since it reads the Resource Report's
+weekly utilisation), Settings rows (`MODULE_SETTINGS`), History fields (`MODULE_FIELDS`), the Status sheet's RAG
+areas, key figures and sections (`NEEDS`) and the Start sheet's reference entries. The hidden leave-by-sprint grid
+lives on the Agile sheet, because the sprint table's Capacity reads it with or without the Resource Report.
+`perf_check.missing_references` finds any dangling reference; `ModulesTest` builds all 32 combinations with it and CI
+reports it for the sample and the stress workbook. The Simple workbook (`--simple`) is no modules; upgrading it
+(`planner/upgrade.py`) gives the Full template with everything typed carried across.
+
 ## One log, typed rows
 
 The Log holds six kinds of item in one table rather than three sheets. Every row has the same core (Ref, Type, Title,

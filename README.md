@@ -10,8 +10,12 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 **Requires Excel 2019 or Microsoft 365** (Windows or Mac; Excel for the web works too).
 
 ## Files
-- `Project_Planner.xlsx` – the template, loaded with a 30-task sample project.
+- `Project_Planner.xlsx` – the **Full** template, loaded with a 30-task sample project.
 - `Project_Planner_Blank.xlsx` – the same template with no sample data, for a new project.
+- `Project_Planner_Simple.xlsx` – the **Simple** template, with the same sample: Start, Status, Roadmap, Settings,
+  Tasks, Gantt and Resources only (no Agile, Log, History, earned value or the two reports). Start here if you
+  only need a schedule; to move up to the Full template later, use "Move it to the latest template" on
+  [`docs/export.html`](docs/export.html) (or `scripts/upgrade_planner.py`): everything you typed comes across.
 - `docs/` – [architecture and rules](docs/ARCHITECTURE.md), [MS Project gap analysis](docs/MSP_GAP_ANALYSIS.md), [backlog](docs/BACKLOG.md), [testing on iPhone](docs/TESTING_ON_IPHONE.md).
 - `planner/` – the generator: one module per sheet (`tasks.py`, `gantt.py`, `agile.py`, `log.py`, `status.py`, ...) plus `core.py` helpers.
 - `scripts/perf_check.py` and `perf_budget.json` – performance and structure checks run on every PR.
@@ -19,9 +23,15 @@ table rows get their formulas automatically. Recalculation cost is measured on e
   ```
   python scripts/build_planner.py Project_Planner.xlsx --recalc
   python scripts/build_planner.py Project_Planner_Blank.xlsx --blank --recalc
+  python scripts/build_planner.py Project_Planner_Simple.xlsx --simple --recalc
+  python scripts/build_planner.py My_Plan.xlsx --blank --modules agile,log      # pick the optional parts
   ```
+  `--modules` takes any of `agile` (Agile sheet, sprint columns and settings), `log` (Log sheet and the Status
+  sheet's RAID and change-control parts), `evm` (earned value on the Status sheet), `history` (History sheet and
+  the snapshot row) and `reports` (Schedule Report, Resource Report and the Over-allocated flag); the default is all
+  of them, and `--simple` is none.
   `--recalc` saves the file with calculated values so previews (GitHub, phone file viewers) show numbers; Excel recalculates on open either way.
-  CI fails if the committed workbooks don't match the build script, so rebuild and commit both after changing the script.
+  CI fails if the committed workbooks don't match the build script, so rebuild and commit all three after changing the script.
 
 ## Sheets
 | Sheet | Purpose |

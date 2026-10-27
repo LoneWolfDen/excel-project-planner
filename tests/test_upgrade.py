@@ -23,7 +23,7 @@ from test_mspdi import table_rows  # noqa: E402
 
 FIXTURES = ROOT / "tests" / "fixtures"
 SCHEDULE = ["Task Name", "Level", "Duration", "Start", "Finish", "Planned Start", "Late Finish",
-            "Total Slack", "Work", "Cost", "Status", "Critical", "Progress"]
+            "Total Slack", "Work", "Status", "Critical", "Progress"]
 OLD_LOGS = {"RAIDLog": "RAID", "DecisionLog": "Decisions", "ChangeLog": "Changes"}      # sheets before v1.7
 
 
@@ -58,8 +58,29 @@ class ReadTest(unittest.TestCase):
         self.assertIn("Casey Kim", project.leave)
         self.assertEqual(project.assignments, [])                       # v1.4 had no Assignments sheet
         self.assertIn("Log", copies)                                     # RAID, decision and change logs, merged
-        self.assertEqual([w.split(" refs")[0] for w in warnings], ["Decision", "Change"])   # renumbered, and said so
-        self.assertIn("Decision 2 is now Decision 8", warnings[0])
+        self.assertIn("3 tasks had a typed Actual Cost", warnings[0])     # cost is now work done x day rate
+        renumbered = warnings[1:]
+        self.assertEqual([w.split(" refs")[0] for w in renumbered], ["Decision", "Change"])   # renumbered, and said so
+        self.assertIn("Decision 2 is now Decision 8", renumbered[0])
+
+    def test_pm_rag_stays_with_its_area(self):
+        wb = openpyxl.load_workbook(FIXTURES / "planner_v1.6.xlsx")
+        ws = wb["Status Report"]
+        ref = ws.tables["StatusRAG"].ref
+        rows = list(ws[ref])
+        head = [c.value for c in rows[0]]
+        for row in rows[1:]:
+            area = row[head.index("Area")].value
+            if area in ("Cost performance", "Deadlines"):
+                row[head.index("PM RAG")].value = "Amber" if area == "Deadlines" else "Green"
+        data = io.BytesIO()
+        wb.save(data)
+        _, copies, _, warnings, _ = upgrade.read_planner(data.getvalue())
+        head, rows = copies["StatusRAG"]
+        pm = {r[head.index("Area")]: r[head.index("PM RAG")] for r in rows}
+        self.assertNotIn("Cost performance", pm)                        # the row is gone, so nothing shifts
+        self.assertEqual(pm["Deadlines"], "Amber")
+        self.assertIn("Cost performance RAG is now on the Cost sheet", " ".join(warnings))
 
     def test_current_workbooks_report_their_version(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -121,8 +142,15 @@ class UpgradeRecalcTest(unittest.TestCase):
         diffs = [(u, k, before[u][was.get(k, k)], after[u][k]) for u in before for k in SCHEDULE
                  if before[u][was.get(k, k)] != after[u][k]]
         self.assertEqual(diffs, [])
-        self.assertEqual(log(new, "History", "StatusHistory", "Status Date"),
-                         log(old, "History", "StatusHistory", "Status Date"))
+        # each old history column lands under its new name, or on the Cost sheet's CostHistory for the money
+        history, costs = (log(new, s, t, "Status Date") for s, t in (("History", "StatusHistory"), ("Cost", "CostHistory")))
+        old_history = log(old, "History", "StatusHistory", "Status Date")
+        self.assertEqual((len(history), len(costs)), (len(old_history), len(old_history)))
+        for o, h, c in zip(old_history, history, costs):
+            for k, v in o.items():
+                k = "% Done" if k == "% Earned" else k
+                if k in h or k in c:
+                    self.assertEqual(h[k] if k in h else c[k], v, k)
         items = old_log_items(old)
         logged = log(new, "Log", "Log", "Title")
         self.assertEqual(len(logged), len(items))
@@ -136,7 +164,8 @@ class UpgradeRecalcTest(unittest.TestCase):
                  if r["Resource Name"] in before}                       # the Leave sheet's rows, now on Resources
         self.assertEqual(after, before)
         rag = lambda wb, sheet: [(r["Area"], r["PM RAG"], r["Comment"]) for r in table_rows(wb, sheet, "StatusRAG")]
-        self.assertEqual(rag(new, "Status"), rag(old, "Status Report"))
+        # Cost performance moved to the Cost sheet's own RAG; the fixtures have no PM override on it
+        self.assertEqual(rag(new, "Status"), [r for r in rag(old, "Status Report") if r[0] != "Cost performance"])
         goals = lambda wb, sheet: [r["Goal"] for r in table_rows(wb, sheet, "SprintTable")]
         self.assertEqual(goals(new, "Agile"), goals(old, "Sprints"))
         return new

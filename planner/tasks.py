@@ -36,7 +36,7 @@ PEOPLE = 4                  # people per task in the Resources cell; the first u
 MORE_PEOPLE = range(2, PEOPLE + 1)
 # per-person values other sheets total by resource: (first person's defined name, name for person k)
 PERSON_FIELDS = {"Name": ("tsk_Resource", "tsk_Res{k}"), "Work": ("tsk_LeafWork", "tsk_Res{k}Work"),
-                 "Cost": ("tsk_LeafCost", "tsk_Res{k}Cost"), "AC": ("tsk_ResourceAC", "tsk_Res{k}AC"),
+                 "Units": ("tsk_Units", "tsk_Res{k}Units"),
                  "Done": ("tsk_LeafWorkDone", "tsk_Res{k}Done"), "WPD": ("tsk_WorkPerWD", "tsk_Res{k}WPD"),
                  "WBefore": ("tsk_WorkBeforeStart", "tsk_Res{k}WBefore")}
 
@@ -60,13 +60,12 @@ N = {
     "FS": "Start", "FF": "Finish", "SVar": "Start Var", "Var": "Finish Var",
     "LS": "Late Start", "LF": "Late Finish", "TS": "Total Slack", "FSl": "Free Slack", "Crit": "Critical",
     "DLChk": "Deadline Check", "LinkChk": "Link Check", "Issues": "Issues", "Stage": "Stage", "Pct": "% Complete", "Prog": "Progress", "Status": "Status",
-    "ResIn": "Resources", "Res": "_Resource1", "Units": "_Units1", "OverAlloc": "Over-allocated", "Work": "Work", "Cost": "Cost", "ACin": "Actual Cost", "SprIn": "Planned Sprint",
+    "ResIn": "Resources", "Res": "_Resource1", "Units": "_Units1", "OverAlloc": "Over-allocated", "Work": "Work", "SprIn": "Planned Sprint",
     "Sprint": "Sprint", "SP": "Story Points",
     "PredTxt": "Predecessors by ID", "Notes": "Notes",
     "SrcS": "BL Source Start", "SrcF": "BL Source Finish", "SrcD": "BL Source Duration", "SrcW": "BL Source Work",
-    "SrcC": "BL Source Cost", "BS": "Baseline Start", "BF": "Baseline Finish", "BD": "Baseline Duration",
-    "BW": "Baseline Work", "BC": "Baseline Cost", "DVar": "Duration Var", "WVar": "Work Var", "CVar": "Cost Var",
-    "Budget": "Budget", "PV": "PV", "EV": "EV", "ACt": "AC",
+    "BS": "Baseline Start", "BF": "Baseline Finish", "BD": "Baseline Duration",
+    "BW": "Baseline Work", "DVar": "Duration Var", "WVar": "Work Var",
     # helper columns (hidden)
     "Lvl": "_Level", "Idx": "_Row", "Parent": "_ParentRow", "NextLvl": "_NextLevel", "IsSum": "_IsSummary",
     "Desc": "_Descendants", "IsLeaf": "_IsLeaf",
@@ -74,21 +73,20 @@ N = {
         ("R", "Pos"), ("M", "Problem"), ("D", "PlanDriver"), ("E", "FcstDriver"), ("F", "FinishKey"), ("K", "SlackKey"))},
     "CT": "_ConstraintCode", "CStart": "_ConstraintStart", "CLow": "_ConstraintLow", "CHigh": "_ConstraintHigh",
     "LCS": "_LeafCalcStart", "LCF": "_LeafCalcFinish", "LFS": "_LeafFcstStart", "LFF": "_LeafFcstFinish",
-    "PctUse": "_Pct", "LProg": "_LeafProgress", "LWork": "_LeafWork", "LCost": "_LeafCost", "LTW": "_LeafTotalWork",
-    "LTC": "_LeafTotalCost", "PAC": "_ResourceAC", "ResTxt": "Resource Names", "NPeople": "_People",
+    "PctUse": "_Pct", "LProg": "_LeafProgress", "LWork": "_LeafWork", "LTW": "_LeafTotalWork",
+    "ResTxt": "Resource Names", "NPeople": "_People",
     **{f"Ri{k}": f"_Res{k}Text" for k in range(1, PEOPLE + 1)},
     **{f"{x}{k}": f"_Res{k}{label}" for k in MORE_PEOPLE for x, label in (
-        ("Rs", ""), ("Ru", "Units"), ("Rw", "Work"), ("Rc", "Cost"), ("Rp", "WorkPerWD"), ("Rb", "WorkBefore"),
-        ("Rd", "WorkDone"), ("Ra", "AC"))},
+        ("Rs", ""), ("Ru", "Units"), ("Rw", "Work"), ("Rp", "WorkPerWD"), ("Rb", "WorkBefore"), ("Rd", "WorkDone"))},
     "SuccLF": "_SuccessorFinishLimit", "LastSucc": "_LastSuccessorRow",
     "LLF": "_LeafLateFinish", "LLS": "_LeafLateStart", "LTS": "_LeafTotalSlack", "LCrit": "_LeafCritical",
     "CPS": "_CalcStart", "CPF": "_CalcFinish",
     "SWD": "_StartWorkday", "FWD": "_FinishWorkday", "WPD": "_WorkPerWorkday", "WBefore": "_WorkBeforeStart",
-    "WtDur": "_WeightDur", "WtDone": "_WeightDone",
+    "WtDur": "_WeightDur", "WtDone": "_WeightDone", "WtPlan": "_WeightPlanned",
     "Shift": "_AlapShift", "XCS": "_ShownCalcStart", "XCF": "_ShownCalcFinish", "XFS": "_ShownFcstStart",
     "XFF": "_ShownFcstFinish", "UPredTxt": "_UIDPredecessors", "MKey": "_MilestoneKey",
-    # earned value and the report lists
-    "PlanPct": "_PlannedPct", "LBud": "_LeafBudget", "LPV": "_LeafPV", "LEV": "_LeafEV", "LAC": "_LeafAC",
+    # planned progress and the report lists
+    "PlanPct": "_PlannedPct",
     "Phase": "_Phase", "PhaseKey": "_PhaseKey", "MsKey": "_MilestoneOrder", "LateKey": "_LateKey", "StartKey": "_StartSoonKey",
     "DueKey": "_DueSoonKey", "CritKey": "_CriticalKey",
     # resource and agile reports
@@ -102,25 +100,23 @@ NAMES = {
     "PF": "tsk_PlanFinish", "AS": "tsk_ActStart", "AF": "tsk_ActFinish", "FS": "tsk_FcStart", "FF": "tsk_FcFinish",
     "SVar": "tsk_StartVariance", "Var": "tsk_Variance", "LS": "tsk_LateStart", "LF": "tsk_LateFinish",
     "TS": "tsk_TotalSlack", "FSl": "tsk_FreeSlack", "Crit": "tsk_Critical", "DLChk": "tsk_DeadlineCheck", "LinkChk": "tsk_LinkCheck", "Issues": "tsk_Issues",
-    "Pct": "tsk_PctInput", "Prog": "tsk_Progress", "Status": "tsk_Status", "Res": "tsk_Resource",
-    "Units": "tsk_Units", "Work": "tsk_Work", "Cost": "tsk_Cost", "Sprint": "tsk_Sprint",
+    "Pct": "tsk_PctInput", "Stage": "tsk_Stage", "Prog": "tsk_Progress", "Status": "tsk_Status", "Res": "tsk_Resource",
+    "Units": "tsk_Units", "Work": "tsk_Work", "Sprint": "tsk_Sprint", "Desc": "tsk_Descendants",
     "PredTxt": "tsk_Predecessors", "PredIn": "tsk_PredecessorsInput", "Notes": "tsk_Notes", "BS": "tsk_BaseStart", "BF": "tsk_BaseFinish",
-    "BD": "tsk_BaseDuration", "BW": "tsk_BaseWork", "BC": "tsk_BaseCost", "SrcD": "tsk_SourceDuration",
-    "DVar": "tsk_DurationVariance", "WVar": "tsk_WorkVariance", "CVar": "tsk_CostVariance",
+    "BD": "tsk_BaseDuration", "BW": "tsk_BaseWork", "SrcD": "tsk_SourceDuration",
+    "DVar": "tsk_DurationVariance", "WVar": "tsk_WorkVariance",
     "IsSum": "tsk_IsSummary", "IsLeaf": "tsk_IsLeaf", "CPS": "tsk_CalcStart", "CPF": "tsk_CalcFinish",
     "LWork": "tsk_LeafWork", "SWD": "tsk_StartWD", "FWD": "tsk_FinishWD", "WPD": "tsk_WorkPerWD",
-    "WBefore": "tsk_WorkBeforeStart", "WtDur": "tsk_WtDur", "WtDone": "tsk_WtDone",
+    "WBefore": "tsk_WorkBeforeStart", "WtDur": "tsk_WtDur", "WtDone": "tsk_WtDone", "WtPlan": "tsk_WtPlanned",
     "UPredTxt": "tsk_UIDPredecessors", "MKey": "tsk_MilestoneKey",
-    "ACin": "tsk_ActCostInput", "Budget": "tsk_Budget", "PV": "tsk_PV", "EV": "tsk_EV", "ACt": "tsk_AC",
-    "PlanPct": "tsk_PlannedPct", "LBud": "tsk_LeafBudget", "LPV": "tsk_LeafPV", "LEV": "tsk_LeafEV",
-    "LAC": "tsk_LeafAC", "Phase": "tsk_Phase", "PhaseKey": "tsk_PhaseKey", "MsKey": "tsk_MilestoneOrder", "LateKey": "tsk_LateKey",
+    "PlanPct": "tsk_PlannedPct", "Phase": "tsk_Phase", "PhaseKey": "tsk_PhaseKey", "MsKey": "tsk_MilestoneOrder", "LateKey": "tsk_LateKey",
     "StartKey": "tsk_StartSoonKey", "DueKey": "tsk_DueSoonKey", "CritKey": "tsk_CriticalKey",
     "OverAlloc": "tsk_OverAllocated", "SP": "tsk_StoryPoints", "SprIn": "tsk_PlannedSprint", "LWDone": "tsk_LeafWorkDone", "DoneDate": "tsk_DoneDate",
     "LPts": "tsk_LeafPoints", "CurKey": "tsk_CurrentSprintKey", "LFF": "tsk_LeafFcstFinish",
-    "LProg": "tsk_LeafProgress", "LCost": "tsk_LeafCost", "LTC": "tsk_LeafTotalCost", "PAC": "tsk_ResourceAC",
+    "LProg": "tsk_LeafProgress", "LTW": "tsk_LeafTotalWork",
     "ResTxt": "tsk_ResourceNames", "ResIn": "tsk_ResourcesInput", "NPeople": "tsk_People",
     **{f"{x}{k}": f"tsk_Res{k}{label}" for k in MORE_PEOPLE for x, label in (
-        ("Rs", ""), ("Rw", "Work"), ("Rc", "Cost"), ("Rp", "WPD"), ("Rb", "WBefore"), ("Rd", "Done"), ("Ra", "AC"))},
+        ("Rs", ""), ("Ru", "Units"), ("Rw", "Work"), ("Rp", "WPD"), ("Rb", "WBefore"), ("Rd", "Done"))},
 }
 
 
@@ -370,8 +366,8 @@ def formulas():
     # helper columns per person. The first person uses _Resource1 / _Units1 and the _Leaf... columns; the others
     # their own. Each person's work = Duration x HoursPerDay x their units (MS Project's fixed-units default).
     item = lambda k: f'TRIM(MID(SUBSTITUTE({R("ResIn")},",",REPT(" ",99)),{(k - 1) * 99 + 1},99))'
-    person = {1: ("Res", "Units", "LWork", "LCost")} | {k: (f"Rs{k}", f"Ru{k}", f"Rw{k}", f"Rc{k}") for k in MORE_PEOPLE}
-    for k, (nm_k, u_k, w_k, c_k) in person.items():
+    person = {1: ("Res", "Units", "LWork")} | {k: (f"Rs{k}", f"Ru{k}", f"Rw{k}") for k in MORE_PEOPLE}
+    for k, (nm_k, u_k, w_k) in person.items():
         text = R(f"Ri{k}")                        # this person's part of the cell, split out once
         before = f'OR({blank},{R("ResIn")}="")' if k == 1 else f'{R(f"Ri{k - 1}")}=""'
         f[f"Ri{k}"] = f'IF({before},"",{item(k)})'
@@ -383,11 +379,9 @@ def formulas():
         f[u_k] = f'IF(ISERROR(FIND("[",{text})),"",IF(N({share})>10,{share}/100,{share}))'
         f[w_k] = (f'IF(OR(NOT({leaf}),{R(nm_k)}=""),0,IF(ISNA(MATCH({R(nm_k)},res_Name,0)),0,'   # unknown: Issues
                   f'N({R("Dur")})*HoursPerDay*IF({R(u_k)}="",DefaultUnits,{R(u_k)})))')
-        f[c_k] = f'IF({R(w_k)}=0,0,{R(w_k)}*IFERROR(INDEX(res_Rate,MATCH({R(nm_k)},res_Name,0)),0))'
     # the task's totals add everyone; the per-resource totals (Resources, reports, Agile) sum each person's columns
     f["NPeople"] = f'IF(NOT({leaf}),0,' + "+".join(f'({R(person[k][0])}<>"")' for k in person) + ")"
     f["LTW"] = "+".join(R(person[k][2]) for k in person)
-    f["LTC"] = "+".join(R(person[k][3]) for k in person)
     named = lambda k: (f'IF({R(person[k][0])}="","",", "&{R(person[k][0])}&IF(OR({R(person[k][1])}="",'
                        f'{R(person[k][1])}=1),"","["&ROUND({R(person[k][1])}*100,0)&"%]"))')
     f["ResTxt"] = (f'IF(OR({blank},{s}),"",MID(' + "&".join(named(k) for k in person) +
@@ -438,7 +432,6 @@ def formulas():
     f["FS"] = rollup("MIN", "XFS")
     f["FF"] = rollup("MAX", "XFF")
     f["Work"] = rollup("SUM", "LTW")
-    f["Cost"] = rollup("SUM", "LTC")
     f["Prog"] = (f'IF({blank},"",IF({s},IFERROR(SUM({block("WtDone")})/SUM({block("WtDur")}),0),{R("LProg")}))')
     f["PS"] = f'IF({blank},"",IF(N({R("BS")})>0,{R("BS")},{R("CPS")}))'
     f["PF"] = f'IF({blank},"",IF(N({R("BF")})>0,{R("BF")},{R("CPF")}))'
@@ -458,11 +451,9 @@ def formulas():
     f["SrcF"] = f'IF({blank},"",{R("FF")})'
     f["SrcD"] = f'IF({blank},"",IF({s},NETWORKDAYS.INTL({R("FS")},{R("FF")},{WD}),N({R("Dur")})))'
     f["SrcW"] = f'IF({blank},"",{R("Work")})'
-    f["SrcC"] = f'IF({blank},"",{R("Cost")})'
     variance = lambda cur, base: f'IF(OR({blank},{R(base)}=""),"",{R(cur)}-N({R(base)}))'
     f["DVar"] = variance("SrcD", "BD")
     f["WVar"] = variance("Work", "BW")
-    f["CVar"] = variance("Cost", "BC")
     # time-phased work, in working days counted from the project start (used by the sprint and weekly totals with SUMIFS):
     # work up to working day D = SUMIFS(work, finish < D) + D x SUMIFS(work/day, running on D) - SUMIFS(work before start)
     has_work = f'AND({leaf},{R("LTW")}>0)'
@@ -476,25 +467,13 @@ def formulas():
     # progress roll-up and the milestone list
     f["WtDur"] = f'IF({leaf},MAX(N({R("Dur")}),0.1),0)'
     f["WtDone"] = f'{R("WtDur")}*{R("LProg")}'
+    f["WtPlan"] = f'{R("WtDur")}*{R("PlanPct")}'
     f["MKey"] = f'IF(AND({leaf},N({R("Dur")})=0,{R("LProg")}<1),{R("XFF")}+{R("Idx")}/100000,"")'
-    # earned value at the status date. Budget = Baseline Cost once a baseline is set, otherwise Cost. Planned % =
-    # share of the planned working days before the status date (the status date itself is not yet worked).
-    # Actual cost = the Actual Cost entered, or Cost x Progress when it is blank (as MS Project calculates it).
+    # planned % at the status date: the share of the planned working days before it (the status date itself is not
+    # yet worked). The schedule SPI (Status) and the Cost sheet's planned value use it.
     ps, pf = R("PS"), R("PF")
     f["PlanPct"] = (f'IF(NOT({leaf}),0,IF({pf}<StatusDate,1,IF({ps}>=StatusDate,0,'
                     f'IFERROR(MIN(1,NETWORKDAYS.INTL({ps},StatusDate-1,{WD})/NETWORKDAYS.INTL({ps},{pf},{WD})),0))))')
-    f["LBud"] = f'IF(NOT({leaf}),0,IF({R("BC")}="",{R("LTC")},N({R("BC")})))'
-    f["LPV"] = f'{R("LBud")}*{R("PlanPct")}'
-    f["LEV"] = f'{R("LBud")}*{R("LProg")}'
-    f["LAC"] = f'IF(NOT({leaf}),0,IF({R("ACin")}="",{R("LTC")}*{R("LProg")},N({R("ACin")})))'
-    # the Resource column's person's share of it (by cost; all of it when the task has no cost)
-    f["PAC"] = f'IF({R("LTC")}=0,{R("LAC")},{R("LAC")}*{R("LCost")}/{R("LTC")})'
-    for k in MORE_PEOPLE:
-        f[f"Ra{k}"] = f'IF({R("LTC")}=0,0,{R("LAC")}*{R(f"Rc{k}")}/{R("LTC")})'
-    f["Budget"] = rollup("SUM", "LBud")
-    f["PV"] = rollup("SUM", "LPV")
-    f["EV"] = rollup("SUM", "LEV")
-    f["ACt"] = rollup("SUM", "LAC")
     # report lists (Schedule Report): each key is unique (the row position breaks ties) and blank when the task
     # doesn't belong on the list, so the report finds the n-th task with SMALL / LARGE and MATCH
     tie = f'{R("Idx")}/100000'
@@ -521,7 +500,7 @@ def formulas():
     over = "+".join(f'IF({R(person[k][0])}="",0,IF({over_allocated(R(person[k][0]), R("XFS"), R("XFF"))},1,0))'
                     for k in person)
     f["OverAlloc"] = f'IF(OR(NOT({leaf}),{R("LProg")}>=1),"",IF({over}>0,"Yes",""))'
-    f["CurKey"] = f'IF(AND({leaf},CurrentSprint<>"",{R("Sprint")}=CurrentSprint),{R("Idx")},"")'
+    f["CurKey"] = f'IF(AND({leaf},ShownSprint<>"",{R("Sprint")}=ShownSprint),{R("Idx")},"")'
     # everything wrong on the row, in words, so a user looks in one place (the check columns keep the detail)
     uid, res = R("UID"), R("Res")
     f["Issues"] = (f'IF({blank},"",TRIM(IF({R("LinkChk")}<>"",{R("LinkChk")}&" ","")'
@@ -596,41 +575,31 @@ LAYOUT = [
     ("OverAlloc", "calc", 9, None, True, "Yes when this task's resource is over 100% of capacity (after leave) in a "
                                          "week the task runs: see Resource Report. Only weeks shown there count."),
     ("Work", "calc", 9, "#,##0.0", False, "Hours = Duration x HoursPerDay x Units, for each person on the task."),
-    ("Cost", "calc", 11, "#,##0.00", False, None),
-    ("ACin", "in", 11, "#,##0.00", False, "Cost to date of a detail task. Blank = Cost x Progress (as MS Project "
-                                          "calculates it). Summaries roll up in the AC column."),
     ("SprIn", "in", 11, None, True, "Optional: the sprint this task is planned in (dropdown). Blank = the sprint "
                                       "containing its forecast start."),
     ("Sprint", "calc", 10, None, True, "Planned Sprint if entered, otherwise the sprint containing the forecast start."),
     ("SP", "in", 8, "0.#", True, "Story points (optional estimate for agile reporting). Detail tasks only."),
     ("PredTxt", "calc", 14, None, False, "Predecessors in MS Project notation, by ID."),
     ("Notes", "in", 40, None, False, None),
-    ("SrcS", "calc", 15, DATE, False, "Copy the 5 BL Source columns, then Paste Special > Values onto the 5 Baseline columns."),
+    ("SrcS", "calc", 15, DATE, False, "Copy the 4 BL Source columns, then Paste Special > Values onto the 4 Baseline columns."),
     ("SrcF", "calc", 15, DATE, False, None),
     ("SrcD", "calc", 9, None, True, None),
     ("SrcW", "calc", 9, "#,##0.0", False, None),
-    ("SrcC", "calc", 11, "#,##0.00", False, None),
     ("BS", "in", 15, DATE, False, "Frozen plan. Filled by pasting values from the BL Source columns."),
     ("BF", "in", 15, DATE, False, None),
     ("BD", "in", 9, None, True, None),
     ("BW", "in", 9, "#,##0.0", False, None),
-    ("BC", "in", 11, "#,##0.00", False, None),
     ("DVar", "calc", 9, None, True, "Duration minus Baseline Duration (working days)."),
     ("WVar", "calc", 9, "#,##0.0", False, "Work minus Baseline Work (hours)."),
-    ("CVar", "calc", 11, "#,##0.00", False, "Cost minus Baseline Cost."),
-    ("Budget", "calc", 11, "#,##0.00", False, "Budget at completion: Baseline Cost once a baseline is set, otherwise Cost."),
-    ("PV", "calc", 11, "#,##0.00", False, "Planned value: the budget of the work planned before the status date."),
-    ("EV", "calc", 11, "#,##0.00", False, "Earned value: Budget x Progress."),
-    ("ACt", "calc", 11, "#,##0.00", False, "Actual cost to date: Actual Cost, or Cost x Progress when it is blank."),
 ] + [(k, "help", 11, DATE if k in HELPER_DATES else None, False, None)
      for k in ("Lvl", "Idx", "Parent", "NextLvl", "IsSum", "Desc", "IsLeaf", *each("R"), "CT", "CStart", "CLow",
                "CHigh", "LCS", "LCF", "LFS", "LFF",
                *[f"{x}{k}" for k in LINK_NUMBERS for x in "IPTL"], *[f"Ri{k}" for k in range(1, PEOPLE + 1)], "Res", "Units", "NPeople",
-               *[f"{x}{k}" for k in MORE_PEOPLE for x in ("Rs", "Ru", "Rw", "Rc", "Rp", "Rb", "Rd", "Ra")],
-               "PctUse", "LProg", "LWork", "LCost", "LTW", "LTC", "PAC", *each("F"), *each("K"), "LastSucc", "SuccLF", "LLF", "LLS",
+               *[f"{x}{k}" for k in MORE_PEOPLE for x in ("Rs", "Ru", "Rw", "Rp", "Rb", "Rd")],
+               "PctUse", "LProg", "LWork", "LTW", *each("F"), *each("K"), "LastSucc", "SuccLF", "LLF", "LLS",
                "LTS", "LCrit", "Shift", "XCS", "XCF", "XFS", "XFF", "CPS", "CPF", *each("M"), *each("D"), *each("E"),
-               "SWD", "FWD", "WPD", "WBefore", "WtDur", "WtDone", "UPredTxt", "MKey",
-               "PlanPct", "LBud", "LPV", "LEV", "LAC", "Phase", "PhaseKey", "MsKey", "LateKey", "StartKey", "DueKey", "CritKey",
+               "SWD", "FWD", "WPD", "WBefore", "WtDur", "WtDone", "WtPlan", "UPredTxt", "MKey",
+               "PlanPct", "Phase", "PhaseKey", "MsKey", "LateKey", "StartKey", "DueKey", "CritKey",
                "LWDone", "DoneDate", "LPts", "CurKey")]
 
 # The sheet's sections, left to right. The first holds what a plan needs and is always shown; each optional section is
@@ -641,11 +610,10 @@ SECTIONS = [
                                               "ResIn", "Stage", "AS", "AF", "Notes", "FS", "FF", "Status", "Crit", "Issues", "Show"]),
     ("SCHEDULING", "DL", ["Mode", "CType", "Cons"]),
     ("DETAIL", "Var", ["PS", "PF", "SVar", "LS", "LF", "TS", "FSl", "DLChk", "LinkChk", "Pct", "Prog", "PredTxt"]),
-    ("COST", "Work", ["ResTxt", "OverAlloc", "Cost", "ACin"]),
+    ("WORK", "Work", ["ResTxt", "OverAlloc"]),             # cost: the Cost sheet
     ("AGILE", "Sprint", ["SprIn", "SP"]),
     ("BASELINE", "DVar",
-     ["WVar", "CVar", "SrcS", "SrcF", "SrcD", "SrcW", "SrcC", "BS", "BF", "BD", "BW", "BC"]),
-    ("EARNED VALUE", "EV", ["Budget", "PV", "ACt"]),
+     ["WVar", "SrcS", "SrcF", "SrcD", "SrcW", "BS", "BF", "BD", "BW"]),
 ]
 _by_key = {row[0]: row for row in LAYOUT}
 _shown = [k for _, key, rest in SECTIONS for k in ([key] if key else []) + rest]
@@ -779,17 +747,17 @@ def _validation_and_formatting(ws, L, n_rows):
                       error="Enter 0% - 100%."), "Pct")
     dv(DataValidation(type="list", formula1="=L_Stage"), "Stage")
     dv(DataValidation(type="list", formula1="=res_Name", showErrorMessage=False), "ResIn")   # pick one, or type several
-    dv(DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0"), "ACin", "SP")
+    dv(DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0"), "SP")
     dv(DataValidation(type="list", formula1="=spr_Name"), "SprIn")
     dv(DataValidation(allow_blank=True), "Name", "Notes", "PredIn")          # prompts only: any text
 
     cf = ws.conditional_formatting
-    cf.add(f"A{first}:{L['ACt']}{last}", FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(bold=True), fill=fill("DDEBF7")))
-    for k in ("Dur", "PredIn", "CType", "Cons", "AS", "AF", "Stage", "Pct", "ResIn", "ACin", "SprIn", "SP"):
+    cf.add(f"A{first}:{L['BW']}{last}", FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(bold=True), fill=fill("DDEBF7")))
+    for k in ("Dur", "PredIn", "CType", "Cons", "AS", "AF", "Stage", "Pct", "ResIn", "SprIn", "SP"):
         cf.add(rng(k), FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(color="A6A6A6", italic=True, bold=True)))
     for status, colour in STATUS_COLOURS.items():
         cf.add(rng("Status"), FormulaRule(formula=[f'{at("Status")}="{status}"'], font=Font(color=colour, bold=True)))
-    for k in ("SVar", "Var", "DVar", "WVar", "CVar"):
+    for k in ("SVar", "Var", "DVar", "WVar"):
         cf.add(rng(k), FormulaRule(formula=[f"AND(ISNUMBER({at(k)}),{at(k)}>0)"], font=Font(color="C00000", bold=True)))
         cf.add(rng(k), FormulaRule(formula=[f"AND(ISNUMBER({at(k)}),{at(k)}<0)"], font=Font(color="548235", bold=True)))
     cf.add(rng("Name"), FormulaRule(formula=[f"AND({at('IsLeaf')}=1,N({at('Dur')})=0)"], font=Font(italic=True, color="7030A0")))

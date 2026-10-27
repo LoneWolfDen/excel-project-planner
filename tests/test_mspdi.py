@@ -107,7 +107,7 @@ class ExportTest(unittest.TestCase):
         self.assertEqual((text(t[4], "Milestone"), text(t[4], "Duration")), ("1", "PT0H0M0S"))
         self.assertEqual(text(t[19], "Deadline"), "2026-11-06T17:00:00")
         self.assertEqual((text(t[2], "ActualStart"), text(t[2], "ActualFinish"), text(t[2], "ActualCost")),
-                         ("2026-09-07T08:00:00", "2026-09-10T17:00:00", "3040"))
+                         ("2026-09-07T08:00:00", "2026-09-10T17:00:00", "2280"))   # 24 h done x 95 an hour
         base = t[2].find(NS + "Baseline")                                       # the committed sample is baselined
         self.assertEqual((day(text(base, "Start")), day(text(base, "Finish")), text(base, "Duration")),
                          (dt.date(2026, 9, 7), dt.date(2026, 9, 9), "PT24H0M0S"))   # planned 3 days, took 4
@@ -258,7 +258,7 @@ MS_PROJECT_XML = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
       <PredecessorLink><PredecessorUID>40</PredecessorUID><Type>1</Type></PredecessorLink></Task>
     <Task><UID>11</UID><ID>2</ID><Name>Survey</Name><OutlineLevel>2</OutlineLevel><Duration>PT22H30M0S</Duration>
       <PercentComplete>100</PercentComplete><ActualStart>2027-03-01T09:00:00</ActualStart>
-      <ActualFinish>2027-03-03T17:00:00</ActualFinish><ActualCost>900</ActualCost>
+      <ActualFinish>2027-03-03T17:00:00</ActualFinish><ActualCost>900</ActualCost><FixedCost>250</FixedCost>
       <Baseline><Number>0</Number><Cost>800</Cost><Duration>PT15H0M0S</Duration><Finish>2027-03-02T17:00:00</Finish>
         <Start>2027-03-01T09:00:00</Start><Work>PT15H0M0S</Work><DurationFormat>7</DurationFormat></Baseline>
       <ExtendedAttribute><FieldID>188743767</FieldID><Value>5</Value></ExtendedAttribute></Task>
@@ -317,12 +317,12 @@ class ImportTest(unittest.TestCase):
         self.assertEqual([d for d, _ in project.holidays], [dt.date(2027, 3, d) for d in (26, 27, 28, 29)])
         self.assertEqual(project.leave, {"Ben Okafor": {"Mar-27": "15, 16, 17"}})        # resource calendar
         self.assertEqual([r[0] for r in project.resources], ["Ana Silva", "Ben Okafor", "Van hire"])
-        self.assertEqual((project.resources[1][3], project.resources[1][4], project.resources[2][6]), (0.5, 40, "Cost"))
+        self.assertEqual((project.resources[1][3], project.resources[1][4], project.resources[2][6]), (0.5, 300, "Cost"))   # 40 an hour x 7.5 h
         survey = rows[11]
-        self.assertEqual((survey["Dur"], survey["AS"], survey["AF"], survey["Pct"], survey["ACin"], survey["SP"]),
-                         (3, dt.date(2027, 3, 1), dt.date(2027, 3, 3), 1, 900, 5))
-        self.assertEqual((survey["BS"], survey["BF"], survey["BD"], survey["BW"], survey["BC"]),
-                         (dt.date(2027, 3, 1), dt.date(2027, 3, 2), 2, 15, 800))
+        self.assertEqual((survey["Dur"], survey["AS"], survey["AF"], survey["Pct"], survey["SP"]),
+                         (3, dt.date(2027, 3, 1), dt.date(2027, 3, 3), 1, 5))
+        self.assertEqual((survey["BS"], survey["BF"], survey["BD"], survey["BW"]),
+                         (dt.date(2027, 3, 1), dt.date(2027, 3, 2), 2, 15))
         self.assertEqual((survey["Res"], survey["Units"]), ("Ben Okafor", 0.5))
         self.assertEqual((rows[12]["Res"], rows[12]["Units"]), ("Ana Silva", None))     # the one with the most work
         self.assertEqual(project.assignments, [(12, "Ben Okafor", 0.5)])     # the other: into its Resources cell
@@ -338,7 +338,7 @@ class ImportTest(unittest.TestCase):
         joined = "\n".join(warnings)
         for expected in ("part-day", "Task 10 (Plan): links on a summary task", "lag in %", "elapsed lag",
                          "Task 20 (Move day): only 4 predecessors are kept; dropped UID 40",
-                         "3 links point to a task listed below its successor"):
+                         "3 links point to a task listed below its successor", "1 tasks had fixed costs"):
             self.assertIn(expected, joined)
         self.assertNotIn("constraint", joined)
         self.assertIn("[From MS Project: only 4 predecessors are kept", rows[20]["Notes"])
@@ -378,8 +378,8 @@ class ImportRecalcTest(unittest.TestCase):
             keys = ["UID", "Level", "Task Name", "Mode", "Duration", "Predecessors",
                     *[f"_Pred{k}{x}" for k in tasks.LINK_NUMBERS for x in ("UID", "Type", "Lag")],
                     "Constraint", "Constraint Date", "Deadline", "Actual Start", "Actual Finish",
-                    "% Complete", "Resources", "Resource Names", "Actual Cost", "Story Points", "Notes", "Start",
-                    "Finish", "Late Finish", "Total Slack", "Work", "Cost", "Status", "Critical"]
+                    "% Complete", "Resources", "Resource Names", "Story Points", "Notes", "Start",
+                    "Finish", "Late Finish", "Total Slack", "Work", "Status", "Critical"]
             blank = (None, "", 0)
             diffs = [(w["UID"], k, w[k], g[k]) for w, g in zip(want, got) for k in keys
                      if w[k] != g[k] and not (w[k] in blank and g[k] in blank)]
@@ -390,9 +390,11 @@ class ImportRecalcTest(unittest.TestCase):
                 self.assertEqual(wb[sheet.strip("'")][ref.replace("$", "")].value, a, n)
             holidays = lambda w: [r["Date"] for r in table_rows(w, "Settings", "HolidayTable") if r["Date"]]
             self.assertEqual(holidays(wb), holidays(original))
-            people = lambda w: [(r["Resource Name"], r["Max Units"], r["Std Rate"], r["Type"])
+            people = lambda w: [(r["Resource Name"], r["Allocation %"], r["Type"])
                                 for r in table_rows(w, "Resources", "ResourceTable") if r["Resource Name"]]
             self.assertEqual(people(wb), people(original))
+            rates = lambda w: [(r["Resource"], r["Day Rate"]) for r in table_rows(w, "Cost", "RateCard") if r["Resource"]]
+            self.assertEqual(rates(wb), rates(original))
 
     def test_ms_project_file_builds_a_working_workbook(self):
         with tempfile.TemporaryDirectory() as tmp:

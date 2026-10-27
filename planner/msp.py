@@ -1,4 +1,5 @@
-"""MS Project export sheets. Column headers are MS Project field names, so the Import Wizard maps them itself."""
+"""MS Project export sheets. Column headers are MS Project field names, so the Import Wizard maps them itself.
+Rates and costs aren't here: they live on the Cost sheet, which nothing else reads (the XML converter carries them)."""
 from .core import SHORT_DATE, Col, Tab, add_table
 from .tasks import CONSTRAINTS
 
@@ -34,9 +35,6 @@ def build_msp_tasks(wb, n_rows):
         Col("Baseline Finish", width=12, fmt=SHORT_DATE, formula=show("tsk_PlanFinish")),
         Col("Baseline Duration", width=9, formula=f'IF({blank},"",IF({t("tsk_BaseDuration")}="","",N({t("tsk_BaseDuration")})&"d"))'),
         Col("Baseline Work", width=9, formula=f'IF({blank},"",IF({t("tsk_BaseWork")}="","",N({t("tsk_BaseWork")})&"h"))'),
-        Col("Baseline Cost", width=11, formula=f'IF({blank},"",IF({t("tsk_BaseCost")}="","",N({t("tsk_BaseCost")})))'),
-        Col("Actual Cost", width=11, formula=not_summary(
-            f'IF(N({t("tsk_ActCostInput")})=0,"",{t("tsk_ActCostInput")})')),
         Col("Constraint Type", width=22, formula=not_summary(
             f'IF({t("tsk_Mode")}="Manual","{CONSTRAINTS[0]}",CHOOSE({code}+1,{names}))')),
         Col("Constraint Date", width=12, fmt=SHORT_DATE, formula=(
@@ -66,8 +64,7 @@ def build_msp_resources(wb, n_rows):
         Col("Initials", width=9, formula=text("res_Initials")),
         Col("Group", width=20, formula=text("res_Group")),
         Col("Type", width=10, formula=text("res_Type")),
-        Col("Max Units", width=10, formula=f'IF({blank},"",ROUND({t("res_MaxUnits")}*100,0)&"%")'),
-        Col("Standard Rate", width=12, formula=f'IF({blank},"",{t("res_Rate")}&"/h")'),
+        Col("Max Units", width=10, formula=f'IF({blank},"",ROUND({t("res_Allocation")}*100,0)&"%")'),
         Col("Email Address", width=26, formula=text("res_Email")),
     ]
     add_table(ws, "MSPResources", 1, 1, cols, n_rows)

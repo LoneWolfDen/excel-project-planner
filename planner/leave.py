@@ -92,7 +92,7 @@ def team_leave_hours(grid, column):
     in ResourceTable order) of days x Max Units x HoursPerDay, for Work resources. Reading the grid, which already
     holds each person's days, is far cheaper than parsing everyone's leave text again."""
     people = f"ROWS({grid})"
-    units = f"INDEX(res_MaxUnits,1):INDEX(res_MaxUnits,{people})"
+    units = f"INDEX(res_Allocation,1):INDEX(res_Allocation,{people})"
     work = f'(INDEX(res_Type,1):INDEX(res_Type,{people})="Work")'
     return f"(HoursPerDay*SUMPRODUCT({work}*{units}*INDEX({grid},0,{column})))"
 

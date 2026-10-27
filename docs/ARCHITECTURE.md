@@ -36,12 +36,13 @@ How the workbook is put together, and the rules every change follows. These rule
 |---|---|---|
 | Start | (named cells) | The five essential settings (`ESSENTIAL` in `planner/settings.py`), quick start, reference |
 | Settings | (named cells) | The other settings, calendar mask (`WorkWeek`, from the Working week preset or the seven day rows), Gantt and sprint settings |
-| Tasks | `Tasks` | All scheduling: WBS, summaries, links, planned / forecast dates, variances, progress, work, cost. Columns are in `SECTIONS`: the essentials, then one collapsed Excel column group per optional section, each with one visible key column (Excel merges groups that touch); the helpers are a level-2 group |
+| Tasks | `Tasks` | All scheduling: WBS, summaries, links, planned / forecast dates, variances, progress, work. Columns are in `SECTIONS`: the essentials, then one collapsed Excel column group per optional section, each with one visible key column (Excel merges groups that touch); the helpers are a level-2 group |
 | Gantt | `GanttView` + timeline | Task panel reads Tasks by position; timeline = conditional formatting only |
-| Resources | `ResourceTable` | Assigned tasks, work, cost per resource, then one leave column per month (`leave_Grid` / `leave_Months` name only the month columns, so the leave look-ups never depend on the calculated columns) |
+| Resources | `ResourceTable`, `cap_Days`, `cap_Points` | Allocation, dates and focus per person, assigned tasks and work, then one leave column per month (`leave_Grid` / `leave_Months` name only the month columns, so the leave look-ups never depend on the calculated columns) |
 | Settings (below the settings) | `HolidayTable` | Non-working dates (`Holidays` = `HolidayTable[Date]`) |
 | MSP_Tasks / MSP_Resources | `MSPTasks`, `MSPResources` | MS Project field names, for the Import Wizard; only with `--import-wizard-sheets` |
-| Status | `OverallStatus`, `StatusRAG`, `KPIs`, `StatusSummary`, `NextMilestones`, `EarnedValue`, `TopRAID`, `ChangeControl`, `StatusNotes`, `SnapshotNow` | The weekly page: status date (`StatusDateInput`), RAG by area, key figures, earned value (`evm_*` names), the snapshot row |
+| Status | `OverallStatus`, `StatusRAG`, `KPIs`, `StatusSummary`, `NextMilestones`, `TopRAID`, `ChangeControl`, `StatusNotes`, `SnapshotNow` | The weekly page: status date (`StatusDateInput`), RAG by area, key figures (`sch_Progress`, `sch_Planned`, `sch_SPI`), the snapshot row |
+| Cost | `RateCard`, `CostSummary`, `CostSnapshot`, `CostHistory`, `TaskCost` | Optional: day rates (`cost_Rate`), cost per task, earned value (`evm_*`), cost RAG; no other sheet reads it |
 | Schedule Report | `PhaseSummary`, `MilestoneReport`, `LateTasks`, `StartingSoon`, `DueSoon`, `CriticalTasks` | Ranked lists |
 | Resource Report | `ResourceSummary` + week and sprint grids | Hours (`rw_Load`, `load_Grid`) and utilisation (`rw_Util`) per resource by week and by sprint, leave by week (`rw_Leave`) and by sprint (`spr_LeaveGrid`, hidden) |
 | Agile | `SprintTable`, `AgileKPIs`, `SprintBacklog`, `SprintBurndown` | Sprint calendar, capacity, points and velocity (`spr_*`), release forecast (`agl_*`), current sprint |
@@ -188,13 +189,12 @@ TEXTSPLIT. Each slot looks only once the one before it found something, so empty
 read inputs only, so they are not volatile; the scheduling and reports read the parsed columns exactly as they read
 the old input columns.
 
-The first person uses `_Resource1` / `_Units1` and the `_Leaf...` columns; people 2-4 have their own work, cost,
-time-phasing, work done and actual cost columns (`tasks.PERSON_FIELDS`). Per-resource figures sum one SUMIFS per person
+The first person uses `_Resource1` / `_Units1` and the `_Leaf...` columns; people 2-4 have their own work,
+time-phasing and work done columns (`tasks.PERSON_FIELDS`). Per-resource figures sum one SUMIFS per person
 slot (`resources.by_resource`, `workload.work_upto`), and each slot beyond the first is wrapped in
 `IF(MaxPeople >= k, ...)`: MaxPeople (Settings) is the most people on any task, so a plan with one person per task pays
 for one slot only. Week and sprint boundaries are turned into working-day numbers once (`rw_CumWD`, SprintTable
-`_FirstWD` / `_LastWD`) instead of inside every grid cell's SUMIFS. A task's Actual Cost is shared between its
-people by cost.
+`_FirstWD` / `_LastWD`) instead of inside every grid cell's SUMIFS.
 
 ## Reports
 
@@ -206,15 +206,14 @@ phone, and are tested in CI. They follow three rules:
   list, otherwise a unique sort key (the row position breaks ties). Row *k* of the report finds the *k*-th key with
   `SMALL` / `LARGE` and `MATCH`, once, in its hidden `_Task` column; the visible columns only `INDEX` by it
   (`core.ranked_table`). No `FILTER` / `SORT` (Microsoft 365 only) and no `SUMPRODUCT` per row.
-- **Totals sum leaf helpers.** Earned value is worked out per detail task (`_LeafBudget`, `_LeafPV`, `_LeafEV`,
-  `_LeafAC`, zero on summaries), so a project total is one `SUM` and a phase total is the summary row's roll-up.
+- **Totals sum leaf helpers.** Progress is weighted per detail task (`_WeightDone`, `_WeightPlanned`, zero on
+  summaries), so a project total is one `SUM` and a phase total is one `SUMIFS` by `tsk_Phase`.
 - **One rule, one place.** RAG thresholds are settings; `planner/rag.py` turns a measure into a severity (0 / 1 / 2)
   and the worst severity into a word, for both the status rows and the phase table. A PM RAG typed next to a
   calculated RAG overrides it.
 
-Earned value at the status date: Budget = Baseline Cost (or Cost before a baseline); planned % = planned working days
-before the status date / planned working days; PV = Budget x planned %; EV = Budget x Progress; AC = Actual Cost, or
-Cost x Progress when blank; EAC = AC + (BAC - EV) / CPI.
+Schedule performance without money: SPI = progress / planned progress, both weighted by duration (`sch_SPI`), so
+the Status and Schedule Report RAGs work with the Cost sheet deleted.
 
 **Leave is text, read by formulas.** Each Leave cell holds days like `16, 17(0.5)` under a month header (`Nov-26`).
 `planner/leave.py` reads it with one `SUMPRODUCT` per calendar month over the constant `{1..31}` (`leave_Days`): every
@@ -239,6 +238,25 @@ of `SprintTable`, so the release burndown is one formula per column.
 The weekly resource grids first cost 0.25 s per edit at 1,000 tasks (six SUMIFS per cell). A hidden grid of
 cumulative hours at each week boundary (three SUMIFS, none outside the project's dates) brought that to about
 0.05 s; each week is then the difference of two neighbours.
+
+## Cost sheet (optional)
+
+Money lives on one sheet that nothing else reads, so a PM can delete it for an audience that shouldn't see rates
+(a test deletes it and checks no name or formula is left dangling). `TaskCost` has one row per Tasks row and follows
+it by position (`INDEX(tsk_..., _Row)`), like the Gantt panel. A detail task costs its people's work x day rate / hours
+per day (`RateCard`, looked up by name); a summary sums its descendants (`SUM(INDEX(col, n+1):INDEX(col,
+n+tsk_Descendants))`). Actual cost = work done x rate, as MS Project calculates it, so nobody types costs. Budget =
+baseline work x the task's cost per hour (cost before a baseline); PV = Budget x planned %; EV = Budget x Progress;
+EAC = AC + (BAC - EV) / CPI. The rate card also compares task cost with resource cost (allocated days on the project x
+day rate): the gap is paid time not assigned to tasks.
+
+## Sprint capacity
+
+Resources ends with two grids, person by sprint. `cap_Days` = working days in the sprint within the person's Start /
+End, minus their leave, x Allocation % (0 for a Cost or Material resource). `cap_Points` = days x Focus % (Settings >
+Focus factor, 80%, or the person's own; 0 for advisory roles), with 1 person-day = 1 story point. The sprint table
+sums the columns: Available Days, Capacity (points), and Advisory / Overhead = the difference (meetings, ceremonies,
+advisory time).
 
 ## MS Project interchange
 

@@ -6,10 +6,10 @@ from .tasks import take_links
 D = dt.date
 
 # Level, Task Name, Mode, Duration, Pred1 UID, Type, Lag, Pred2 UID, Type, Lag, Constraint Date, Deadline,
-# Actual Start, Actual Finish, % Complete, Resource, Units, Notes. Actual Cost (ACin), Story Points (SP), the
-# Constraint type and links 3-4 come from ACTUAL_COST, STORY_POINTS and EXTRA.
+# Actual Start, Actual Finish, % Complete, Resource, Units, Notes. Story Points (SP), the Constraint type and links
+# 3-4 come from STORY_POINTS and EXTRA. (Cost is calculated on the Cost sheet from day rates.)
 COLUMNS = ["Level", "Name", "Mode", "Dur", "P1", "T1", "L1", "P2", "T2", "L2", "Cons", "DL", "AS", "AF", "Pct", "Res",
-           "Units", "Notes", "ACin", "SP"]
+           "Units", "Notes", "SP"]
 _ = None
 TASKS = [
     (1, "Initiation", "Auto", _, _, _, _, _, _, _, _, _, _, _, _, _, _, "Phase 1 - summary rows roll up dates, work, cost and progress automatically."),
@@ -46,7 +46,6 @@ TASKS = [
 
 
 # Actual cost entered for a few tasks (by task number); the others use Cost x Progress.
-ACTUAL_COST = {2: 3040, 6: 5040, 13: 4080}
 # Story points (by task number) for the agile reports; milestones and summaries have none.
 STORY_POINTS = {2: 3, 3: 2, 6: 8, 7: 5, 8: 5, 12: 5, 13: 8, 14: 5, 16: 5, 17: 8, 18: 3, 21: 8, 22: 5, 23: 3, 24: 1,
                 26: 5, 28: 1, 29: 2}
@@ -59,38 +58,38 @@ ASSIGNMENTS = [(7, "Jordan Lee", 0.5), (17, "Casey Kim", 0.5), (21, "Sam Rivera"
 
 # The plan as first estimated (Core API 8 days, Feature screens 10, before any actuals), frozen as the baseline of the
 # committed sample (--baselined) so the Gantt shows planned against current on first open: UID -> (Baseline Start,
-# Baseline Finish, Baseline Duration, Baseline Work, Baseline Cost), as the BL Source columns calculated them.
+# Baseline Finish, Baseline Duration, Baseline Work), as the BL Source columns calculated them.
 BASELINE = {
-    1: (D(2026, 9, 7), D(2026, 9, 11), 5, 40, 3400),
-    2: (D(2026, 9, 7), D(2026, 9, 9), 3, 24, 2280),
-    3: (D(2026, 9, 10), D(2026, 9, 11), 2, 16, 1120),
-    4: (D(2026, 9, 11), D(2026, 9, 11), 0, 0, 0),
-    5: (D(2026, 9, 14), D(2026, 10, 1), 14, 152, 12480),
-    6: (D(2026, 9, 14), D(2026, 9, 23), 8, 64, 4480),
-    7: (D(2026, 9, 17), D(2026, 9, 23), 5, 40, 4400),
-    8: (D(2026, 9, 24), D(2026, 10, 1), 6, 48, 3600),
-    9: (D(2026, 10, 1), D(2026, 10, 1), 0, 0, 0),
-    10: (D(2026, 10, 2), D(2026, 10, 28), 19, 292, 24060),
-    11: (D(2026, 10, 2), D(2026, 10, 28), 19, 152, 12920),
-    12: (D(2026, 10, 2), D(2026, 10, 8), 5, 40, 3400),
-    13: (D(2026, 10, 9), D(2026, 10, 20), 8, 64, 5440),
-    14: (D(2026, 10, 21), D(2026, 10, 28), 6, 48, 4080),
-    15: (D(2026, 10, 2), D(2026, 10, 27), 18, 140, 11140),
-    16: (D(2026, 10, 2), D(2026, 10, 9), 6, 48, 3840),
-    17: (D(2026, 10, 13), D(2026, 10, 26), 10, 80, 6400),
-    18: (D(2026, 10, 23), D(2026, 10, 27), 3, 12, 900),
-    19: (D(2026, 10, 28), D(2026, 10, 28), 0, 0, 0),
-    20: (D(2026, 10, 29), D(2026, 12, 29), 44, 180, 13180),
-    21: (D(2026, 10, 29), D(2026, 11, 9), 8, 64, 4160),
-    22: (D(2026, 12, 7), D(2026, 12, 14), 6, 48, 3360),
-    23: (D(2026, 11, 2), D(2026, 11, 6), 5, 20, 1500),
-    24: (D(2026, 12, 15), D(2026, 12, 15), 1, 8, 760),
-    25: (D(2026, 12, 15), D(2026, 12, 15), 0, 0, 0),
-    26: (D(2026, 12, 16), D(2026, 12, 29), 10, 40, 3400),
-    27: (D(2026, 11, 16), D(2026, 12, 31), 34, 24, 2280),
-    28: (D(2026, 11, 16), D(2026, 11, 16), 1, 8, 760),
-    29: (D(2026, 12, 30), D(2026, 12, 31), 2, 16, 1520),
-    30: (D(2026, 12, 31), D(2026, 12, 31), 0, 0, 0),
+    1: (D(2026, 9, 7), D(2026, 9, 11), 5, 40),
+    2: (D(2026, 9, 7), D(2026, 9, 9), 3, 24),
+    3: (D(2026, 9, 10), D(2026, 9, 11), 2, 16),
+    4: (D(2026, 9, 11), D(2026, 9, 11), 0, 0),
+    5: (D(2026, 9, 14), D(2026, 10, 1), 14, 152),
+    6: (D(2026, 9, 14), D(2026, 9, 23), 8, 64),
+    7: (D(2026, 9, 17), D(2026, 9, 23), 5, 40),
+    8: (D(2026, 9, 24), D(2026, 10, 1), 6, 48),
+    9: (D(2026, 10, 1), D(2026, 10, 1), 0, 0),
+    10: (D(2026, 10, 2), D(2026, 10, 28), 19, 292),
+    11: (D(2026, 10, 2), D(2026, 10, 28), 19, 152),
+    12: (D(2026, 10, 2), D(2026, 10, 8), 5, 40),
+    13: (D(2026, 10, 9), D(2026, 10, 20), 8, 64),
+    14: (D(2026, 10, 21), D(2026, 10, 28), 6, 48),
+    15: (D(2026, 10, 2), D(2026, 10, 27), 18, 140),
+    16: (D(2026, 10, 2), D(2026, 10, 9), 6, 48),
+    17: (D(2026, 10, 13), D(2026, 10, 26), 10, 80),
+    18: (D(2026, 10, 23), D(2026, 10, 27), 3, 12),
+    19: (D(2026, 10, 28), D(2026, 10, 28), 0, 0),
+    20: (D(2026, 10, 29), D(2026, 12, 29), 44, 180),
+    21: (D(2026, 10, 29), D(2026, 11, 9), 8, 64),
+    22: (D(2026, 12, 7), D(2026, 12, 14), 6, 48),
+    23: (D(2026, 11, 2), D(2026, 11, 6), 5, 20),
+    24: (D(2026, 12, 15), D(2026, 12, 15), 1, 8),
+    25: (D(2026, 12, 15), D(2026, 12, 15), 0, 0),
+    26: (D(2026, 12, 16), D(2026, 12, 29), 10, 40),
+    27: (D(2026, 11, 16), D(2026, 12, 31), 34, 24),
+    28: (D(2026, 11, 16), D(2026, 11, 16), 1, 8),
+    29: (D(2026, 12, 30), D(2026, 12, 31), 2, 16),
+    30: (D(2026, 12, 31), D(2026, 12, 31), 0, 0),
 }
 
 
@@ -103,7 +102,7 @@ def assignments(blank=False, stress=0):
 
 
 def _row(i, t):
-    return dict(zip(COLUMNS, t), ACin=ACTUAL_COST.get(i + 1), SP=STORY_POINTS.get(i + 1), **EXTRA.get(i + 1, {}))
+    return dict(zip(COLUMNS, t), SP=STORY_POINTS.get(i + 1), **EXTRA.get(i + 1, {}))
 
 
 def tasks(blank=False, stress=0, baselined=False):
@@ -115,7 +114,7 @@ def tasks(blank=False, stress=0, baselined=False):
         rows = [take_links(dict(_row(i, t), UID=i + 1)) for i, t in enumerate(TASKS)]
         if baselined:
             for r in rows:
-                r.update(zip(("BS", "BF", "BD", "BW", "BC"), BASELINE[r["UID"]]))
+                r.update(zip(("BS", "BF", "BD", "BW"), BASELINE[r["UID"]]))
         return rows
     rows = []
     n = len(TASKS)

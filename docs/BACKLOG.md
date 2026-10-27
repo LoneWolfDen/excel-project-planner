@@ -22,7 +22,8 @@ flowchart LR
     A["v1.1 Trustworthy core<br/>Excel + MSP validation<br/>frozen baseline, stable IDs, CI"] --> B["v1.2 Scheduling parity<br/>critical path, constraints<br/>deadlines, MSP XML export"]
     B --> C["v1.3 Resources & cost<br/>multiple resources, weekly usage<br/>cost model, earned value"]
     C --> D["v2.0 Agile & reporting<br/>story points, burndown<br/>board, reports, roadmap"]
-    D --> E["Later<br/>resource calendars, VBA add-on<br/>import from MSP"]
+    D --> F["v1.7 Simpler to use<br/>fewer sheets and inputs<br/>upgrade path, Simple / Full"]
+    F --> E["Later<br/>resource calendars, VBA add-on"]
 ```
 
 | Release | Goal | Items |
@@ -31,9 +32,27 @@ flowchart LR
 | **v1.2 Scheduling parity** | Behaves like MS Project's scheduler | B-101, B-103, B-105, B-501, B-503, B-701, B-703 |
 | **v1.3 Resources & cost** | Real resource planning | B-203, B-301, B-302, B-303, B-304, B-401 |
 | **v2.0 Agile & reporting** | Sprint planning and status reporting | B-402, B-403, B-404, B-505, B-601, B-602 |
+| **v1.7 Simpler to use** | A first plan in minutes; a weekly update on three sheets ([review](SIMPLIFICATION_REVIEW.md)) | B-901 – B-918 (E9) |
 | **Later** | | everything else |
 
-## Top 10 recommendations
+## Next up (after v1.6)
+
+Most of the original top 10 is done. The planner now does nearly everything; the next step is to make it ask for less.
+See [SIMPLIFICATION_REVIEW.md](SIMPLIFICATION_REVIEW.md) for the findings behind E9.
+
+1. **B-001 / B-002** – Finish validating in real Excel (opened, works at a high level) and MS Project (XML round trip).
+2. **B-901** – Upgrade path first: every later E9 item moves or renames inputs.
+3. **B-903 / B-904** – Collapse Tasks to its essential columns and one Issues column: the biggest win for the least change.
+4. **B-902** – Start sheet: quick start plus the six settings a plan needs.
+5. **B-905 / B-906** – Predecessors and Resources as one text cell each, as in MS Project.
+6. **B-907 / B-909** – One row per person (Resources + Leave); Holidays and Lists into Settings.
+7. **B-908** – Drop MSP_Tasks / MSP_Resources from the default build.
+8. **B-910 / B-911** – One Status page (weekly hub) and one Log.
+9. **B-913** – Modules and two downloads: Simple and Full.
+10. **B-916** – Progress by Stage: standard steps with fixed % instead of a free % Complete; actual dates kept.
+11. **B-914** – Start from a list: paste an outline or CSV into the converter page, get a workbook.
+
+## Original top 10 (v1.1 – v1.6, mostly done)
 
 1. **B-001 / B-002** – Prove it in real Excel and MS Project before adding features.
 2. **B-003** – Frozen baseline. Without it, "planned vs actual" can silently drift.
@@ -98,7 +117,7 @@ flowchart LR
 |---|---|---|---|---|---|
 | [B-301](https://github.com/LoneWolfDen/excel-project-planner/issues/30) | ✅ Multiple resources per task (assignments) | P1 | L | F | v1.5: Assignments sheet (Task UID, Resource, Units) for the people beyond Tasks > Resource; work and cost per assignment; Tasks shows `A[50%], B` in Resource Names; resource totals, weekly and sprint load and over-allocation include them; MSP export and import carry all. |
 | [B-302](https://github.com/LoneWolfDen/excel-project-planner/issues/31) | Cost model | P2 | M | F | Overtime rate, cost per use, fixed cost per task; Material = quantity × rate (no hours); Cost resources take an amount. |
-| [B-303](https://github.com/LoneWolfDen/excel-project-planner/issues/32) | Resource availability and leave | P2 | M | F | Leave sheet (resource, from, to); part-time max units by date range; capacity excludes leave. |
+| [B-303](https://github.com/LoneWolfDen/excel-project-planner/issues/32) | 🟡 Resource availability and leave | P2 | M | F | v1.4: leave by month (`16, 17(0.5)`) lowers capacity. Left: part-time max units by date range. Leave moves onto Resources in B-907. |
 | [B-304](https://github.com/LoneWolfDen/excel-project-planner/issues/33) | ✅ Weekly resource usage | P1 | M | F | Resource × week grid of hours counting working days only, over-allocation in red, resource histogram chart. |
 | [B-305](https://github.com/LoneWolfDen/excel-project-planner/issues/34) | ✅ Over-allocation flag on tasks (after leave) | P2 | S | F | Task row flags when its resource is over-allocated in any week of the task. |
 | [B-306](https://github.com/LoneWolfDen/excel-project-planner/issues/35) | Role-based (generic) resources | P3 | S | F | Plan by role, then swap in named people; capacity by role. |
@@ -120,7 +139,7 @@ flowchart LR
 | ID | Item | Pri | Size | How | Acceptance criteria |
 |---|---|---|---|---|---|
 | [B-501](https://github.com/LoneWolfDen/excel-project-planner/issues/43) | ✅ Expand / collapse outline | P1 | S | Py + F | v1.6: rows grouped by outline level on Tasks and Gantt; "Show to level N" setting (OutlineShowLevel) through the Show filter column. |
-| [B-502](https://github.com/LoneWolfDen/excel-project-planner/issues/44) | Indented names on Tasks | P2 | S | F | Display column with indentation, or conditional number format, verified in Excel. |
+| [B-502](https://github.com/LoneWolfDen/excel-project-planner/issues/44) | Indented names on Tasks | P2 | S | F | Display column with indentation, or conditional number format, verified in Excel. Part of B-903's default view. |
 | [B-503](https://github.com/LoneWolfDen/excel-project-planner/issues/45) | ✅ Gantt enhancements | P1 | M | F | v1.6: critical and deadline formatting; month / quarter scales. Not built: a label after each bar and colours from a Settings table: both need a formula in every timeline cell (conditional formatting can't show per-row text or read a colour), which the performance rule rules out; the resource is in the panel's Resource column. |
 | [B-504](https://github.com/LoneWolfDen/excel-project-planner/issues/46) | Calendar view | P3 | M | F | Month grid listing tasks active each day. |
 | [B-505](https://github.com/LoneWolfDen/excel-project-planner/issues/47) | ✅ Roadmap / timeline view | P1 | M | F | v1.6: Roadmap sheet, one landscape page of phases and milestones by month. |
@@ -145,11 +164,39 @@ flowchart LR
 |---|---|---|---|---|---|
 | [B-701](https://github.com/LoneWolfDen/excel-project-planner/issues/57) | ✅ Export to Microsoft Project XML (MSPDI) | P1 | L | Web + Py | `planner export-xml file.xlsx out.xml` writes tasks, outline, links by UID, calendar and holidays, constraints, baselines, resources, assignments; MS Project opens it with matching dates. Delivered as a browser page (drop the .xlsx, download the .xml; works on a phone) and a Python CLI sharing the same field mapping. |
 | [B-702](https://github.com/LoneWolfDen/excel-project-planner/issues/58) | 🟡 Import from MS Project (.xml done; .mpp: save as XML in MS Project first) | P1 | L | Web + Py | `planner import file.mpp` fills a fresh workbook's inputs; round-trips with B-701. The browser page reads MS Project XML; binary `.mpp` needs the Python CLI (MPXJ) or saving as XML first. |
-| [B-703](https://github.com/LoneWolfDen/excel-project-planner/issues/59) | Saved Import Wizard map | P1 | S | – | Documented / saved map so the Excel import takes three clicks; MS Project → Excel export map for the reverse. |
+| [B-703](https://github.com/LoneWolfDen/excel-project-planner/issues/59) | ⛔ Saved Import Wizard map (superseded by the XML converter; see B-908) | P3 | S | – | Documented / saved map so the Excel import takes three clicks; MS Project → Excel export map for the reverse. |
 | [B-704](https://github.com/LoneWolfDen/excel-project-planner/issues/60) | Optional macro add-on (.xlsm) | P2 | L | VBA | Buttons: Set Baseline, Insert Task (keeps links), Indent / Outdent, Expand / Collapse, Record Snapshot. The .xlsx stays macro-free and every button has a documented manual equivalent. |
 | [B-705](https://github.com/LoneWolfDen/excel-project-planner/issues/61) | Office Scripts for Excel for the web | P3 | M | TS | Same actions as B-704 for Excel online. |
 | [B-706](https://github.com/LoneWolfDen/excel-project-planner/issues/62) | CSV export for Jira / Azure DevOps / Planner | P3 | S | F/Py | Export sheet or script producing a CSV that Jira, Azure DevOps and Microsoft Planner can import (summary, description, dates, assignee, parent). |
 | [B-707](https://github.com/LoneWolfDen/excel-project-planner/issues/63) | Portfolio roll-up | P3 | L | Py | Combine several planners into one portfolio dashboard; optional link to project_finance_engine costs. |
+
+## E9 – Simplify (fewer sheets, fewer inputs)
+
+From the [simplification review](SIMPLIFICATION_REVIEW.md) (project manager, delivery manager and architect views).
+Principle: keep every capability of the engine, ask the user for less, and hide rather than delete. Targets: 22
+sheets → 12; Tasks inputs to start a plan 34 → 9–10; predecessor columns 12 → 1; places a person is entered 4 → 2;
+weekly update 6 sheets → 3. Each item keeps Excel 2019 compatibility, no macros and the performance budgets.
+
+| ID | Item | Pri | Size | How | Acceptance criteria |
+|---|---|---|---|---|---|
+| [B-901](https://github.com/LoneWolfDen/excel-project-planner/issues/84) | Upgrade path: move a plan into the new template | P0 | M | Web + Py | The converter page (and a CLI) reads an older planner workbook's inputs by header name, including renamed ones (`Start No Earlier Than`, Pred1–4 columns, Assignments, Leave), and builds the current template with them; a test round-trips the v1.4, v1.5 and v1.6 samples with identical schedules. Ships before or with the first E9 change that moves inputs. |
+| [B-902](https://github.com/LoneWolfDen/excel-project-planner/issues/85) | Start sheet | P0 | S | F | Replaces Instructions as the first tab: a 5-step quick start (name the project, set dates, list people, type tasks, set the baseline), the six essential settings as inputs (project name, manager, start date, status date, working week, hours/day), the weekly-update checklist and links to each sheet. The full reference moves to the end of the sheet. |
+| [B-903](https://github.com/LoneWolfDen/excel-project-planner/issues/86) | Tasks: essential view with collapsible groups | P0 | S | Py + F | Default view shows only the essential inputs (UID, Level, Task Name, Duration, Predecessors, Resources, Stage (B-916; % Complete until then), Actual Start, Actual Finish, Notes) and key results (ID, WBS, Start, Finish, Status, Critical, Issues). Scheduling, Tracking, Agile, Analysis and Baseline groups are Excel column groups, collapsed. Task Name is indented by level (B-502). Nothing is removed; formulas unchanged. Same on the Gantt panel. |
+| [B-904](https://github.com/LoneWolfDen/excel-project-planner/issues/87) | One Issues column per task | P0 | S | F | Plain-language list of everything wrong on the row: bad links, link to a task below, missing UID / duplicate UID, unknown resource, over-allocation, deadline missed, constraint without a date, predecessor / resource text it can't read. Red when not blank; the detailed check columns stay in the Analysis group. Dashboard "problems" count reads it. |
+| [B-905](https://github.com/LoneWolfDen/excel-project-planner/issues/88) | Predecessors as one text cell | P1 | M | F | Input `12, 14SS+2d, 9FF-1d` (by UID, as MS Project's "Unique ID Predecessors") parsed by non-volatile formulas into the existing hidden per-link columns (up to `LINKS`); the 12 Pred UID / Type / Lag inputs go. By-ID text stays as a calculated column. Unreadable text is reported in Issues. Parse formula < 8,192 characters, no array entry; perf budgets met; export / import unchanged. |
+| [B-906](https://github.com/LoneWolfDen/excel-project-planner/issues/89) | Resources as one text cell (replaces Units and the Assignments sheet) | P1 | M | F | Input `Alex Chen, JL[50%]` (names or initials from Resources, optional `[units]`, up to 4 people) parsed into hidden per-person columns. Per-resource totals, weekly and sprint grids and over-allocation sum the slots. Assignments sheet and Units column removed; B-901 converts them. Spike first: measure the per-resource grids with 4 slots against the Assignments design and keep the faster within budget. |
+| [B-907](https://github.com/LoneWolfDen/excel-project-planner/issues/90) | One row per person: Resources + Leave | P1 | S | F | Leave month columns move onto the Resources table, to the right of the person's details (grouped, collapsible); the Leave sheet and its second name column go. Capacity, utilisation and over-allocation unchanged. Includes B-303's remaining "part-time by date range" as optional From / To / Units columns. |
+| B-908 (issue once confirmed) | Drop MSP_Tasks / MSP_Resources (read-only Import Wizard copies) | P1 | S | Py | Not built by default (`--import-wizard-sheets` adds them back); Instructions point to the XML converter, which carries more (calendar, holidays, constraints, all links and assignments, baseline). Saves about 5,500 formulas on the sample. B-703 closed as superseded. |
+| [B-909](https://github.com/LoneWolfDen/excel-project-planner/issues/91) | Settings: fewer inputs, holidays and lists inside | P1 | S | F | Working week becomes one preset dropdown (Mon–Fri, Sun–Thu, Mon–Sat, Custom → the 7 Yes/No rows appear in a collapsed group). GanttStart, RoadmapStart and ResourceWeekStart default from one "View from" date (each still overridable). Holidays table and the dropdown lists move onto Settings (lists in a collapsed group); the Holidays and Lists sheets go. Essential settings appear on Start (B-902), the rest stay here in sections: Calendar, Views, Sprints, RAG thresholds. |
+| [B-910](https://github.com/LoneWolfDen/excel-project-planner/issues/92) | One Status page (weekly hub) | P1 | M | F | Dashboard and Status Report merge into Status, printable on one page: overall and area RAG with PM override and comment, finish and slip, earned value, next milestones, top RAID, pending changes, sprint load (when Agile is built). The status date input and the History snapshot row to copy live here. Dashboard sheet removed. |
+| [B-911](https://github.com/LoneWolfDen/excel-project-planner/issues/93) | One Log for RAID, decisions and changes | P1 | M | F | A single table with Type (Risk, Assumption, Issue, Dependency, Decision, Change); shared columns (Ref, Title, Owner, Raised, Due, Status, Task UID, Update) and type-specific columns that grey out when they don't apply (probability, impact and score; options and reasons; schedule and cost impact). Status page totals and History counts unchanged. RAID, Decisions and Changes sheets merge. |
+| [B-912](https://github.com/LoneWolfDen/excel-project-planner/issues/94) | One Agile sheet | P2 | S | F | Sprint calendar (goal, points capacity), velocity, burndown and burn-up, current sprint backlog on one sheet; the per-person sprint load grid moves to the Resource Report (next to the weekly grid). Sprints and Agile Report merge. |
+| [B-913](https://github.com/LoneWolfDen/excel-project-planner/issues/95) | Modules and two downloads: Simple and Full | P2 | L | Py | Build option `--modules agile,log,evm,history` includes only the chosen modules (no formulas left referencing a missing sheet; a test builds every combination). Releases ship `Project_Planner_Simple.xlsx` (Tasks, Gantt, Roadmap, Status, Resources, Settings, Start) and the full workbook. |
+| [B-914](https://github.com/LoneWolfDen/excel-project-planner/issues/96) | Start from a list | P2 | M | Web + Py | The converter page accepts a pasted outline (indented bullets, `-` or tabs = levels, optional `; 5d; after 3; Alex`) or a CSV and returns a workbook with Level, names, durations, links and resources filled in. |
+| [B-915](https://github.com/LoneWolfDen/excel-project-planner/issues/97) | Input prompts on essential columns | P2 | S | F | Data-validation input messages (shown when a cell is selected, in every Excel including web and iPhone) on each essential input: what to type, with an example. |
+| [B-916](https://github.com/LoneWolfDen/excel-project-planner/issues/98) | Progress by Stage (standard steps instead of free %) | P1 | M | F | **Stage** dropdown on Tasks replaces typing % Complete: Not Started, Design, In Development, Test Ready, In Testing, Complete (defaults 0 / 15 / 40 / 70 / 85 / 100%). A Stages table on Settings holds each stage's name and %: editable for other kinds of work, same stage = same progress everywhere (weighted-milestone earned value). Milestones use Not Started / Complete only. Actual Start and Actual Finish stay as typed dates in the essential view; Issues asks for Actual Start once the stage is past Not Started and Actual Finish at Complete, and flags a date that disagrees with the stage. % Complete stays as an optional override (Tracking group). Progress, status, EV, sprint "done", the Gantt and the MS Project export (PercentComplete) use the stage %. B-901 maps an old % to the nearest stage. |
+| [B-917](https://github.com/LoneWolfDen/excel-project-planner/issues/99) | Plain column names | P3 | S | F | Start / Finish (current schedule) instead of Forecast Start / Finish; Baseline Start / Finish for the commitment; the same names on Tasks, Gantt, Roadmap and reports. Converter reads both names (B-901). |
+| [B-918](https://github.com/LoneWolfDen/excel-project-planner/issues/100) | Gantt panel: essential columns | P3 | S | F | Panel shows ID, Task (indented), Start, Finish, %, Resources; WBS, Dur, Planned dates and Status in a collapsed group, so more timeline fits on screen. |
 
 ## E8 – Documentation and packaging
 

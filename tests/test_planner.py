@@ -32,7 +32,7 @@ H = {
     "P1": "Predecessors", "Res": "Resources", "AS": "Actual Start", "AF": "Actual Finish", "Pct": "% Complete",
     "PS": "Planned Start", "PF": "Planned Finish", "FS": "Forecast Start", "FF": "Forecast Finish",
     "SVar": "Start Var", "Var": "Finish Var", "DLChk": "Deadline Check", "Link": "Link Check", "Prog": "Progress",
-    "Status": "Status", "Work": "Work", "Cost": "Cost", "Over-allocated": "Over-allocated", "Sprint": "Sprint", "Pred": "Predecessors",
+    "Status": "Status", "Work": "Work", "Cost": "Cost", "Over-allocated": "Over-allocated", "Sprint": "Sprint", "Pred": "Predecessors by ID",
     "DVar": "Duration Var", "WVar": "Work Var", "CVar": "Cost Var",
 }
 SOURCE = ["BL Source Start", "BL Source Finish", "BL Source Duration", "BL Source Work", "BL Source Cost"]
@@ -1307,11 +1307,12 @@ class LeaveTest(Tmp):
         first = serial(named_cell(self.wb, "ResourceWeekStart").value)
         want = []
         for t in table_rows(self.wb, "Tasks", "Tasks"):
-            if t["_IsLeaf"] != 1 or not t["Resource"] or t["Progress"] >= 1:
+            names = [n for n in (t["_Resource1"], t["_Res2"], t["_Res3"], t["_Res4"]) if n]   # everyone on the task
+            if t["_IsLeaf"] != 1 or not names or t["Progress"] >= 1:
                 continue
             a = max(0, (t["Forecast Start"] - first).days // 7)
             b = min(25, (t["Forecast Finish"] - first).days // 7)
-            if any((u or 0) > 1 for u in util[t["Resource"]][a:b + 1] if isinstance(u, (int, float))):
+            if any((u or 0) > 1 for n in names for u in util[n][a:b + 1] if isinstance(u, (int, float))):
                 want.append(t["Task Name"])
         flagged = [t["Task Name"] for t in table_rows(self.wb, "Tasks", "Tasks") if t["Over-allocated"] == "Yes"]
         self.assertEqual(flagged, want)

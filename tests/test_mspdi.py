@@ -127,7 +127,7 @@ class ExportTest(unittest.TestCase):
         for a in self.root.iter(NS + "Assignment"):
             assignments.setdefault(int(text(a, "TaskUID")), []).append(
                 (uid_of[text(a, "ResourceUID")], float(text(a, "Units")), text(a, "Work")))
-        expected = {u: r for u, r in self.sheet.items() if r["Resource"] and not r["_IsSummary"]}
+        expected = {u: r for u, r in self.sheet.items() if r["_Resource1"] and not r["_IsSummary"]}
         self.assertEqual(sorted(assignments), sorted(expected))
         self.assertEqual(assignments[18], [("Casey Kim", 0.5, "PT12H0M0S")])     # 3 days at 50%
         self.assertEqual(assignments[2], [("Priya Sharma", 1.0, "PT24H0M0S")])
@@ -324,8 +324,8 @@ class ImportTest(unittest.TestCase):
         self.assertEqual((survey["Res"], survey["Units"]), ("Ben Okafor", 0.5))
         self.assertEqual((rows[12]["Res"], rows[12]["Units"]), ("Ana Silva", None))     # the one with the most work
         self.assertEqual(project.assignments, [(12, "Ben Okafor", 0.5)])     # the other: into its Resources cell
-        self.assertEqual(rows[12]["PredIn"], "11+1d, 11SS")      # 1 elapsed day; the % lag dropped
-        self.assertEqual((rows[13]["PredIn"], rows[13]["DL"]), ("11+2d, 12FF, 40", dt.date(2027, 3, 19)))
+        self.assertEqual(rows[12]["PredIn"], "11FS+1d, 11SS")    # 1 elapsed day; the % lag dropped
+        self.assertEqual((rows[13]["PredIn"], rows[13]["DL"]), ("11FS+2d, 12FF, 40", dt.date(2027, 3, 19)))
         # every constraint type is kept, with its date (none for As Late As Possible)
         self.assertEqual((rows[12]["CType"], rows[12]["Cons"]), ("As Late As Possible", None))
         self.assertEqual((rows[13]["CType"], rows[13]["Cons"]), ("Must Start On", dt.date(2027, 3, 10)))

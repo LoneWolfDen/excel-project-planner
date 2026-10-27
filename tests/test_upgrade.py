@@ -24,12 +24,23 @@ from test_mspdi import table_rows  # noqa: E402
 FIXTURES = ROOT / "tests" / "fixtures"
 SCHEDULE = ["Task Name", "Level", "Duration", "Forecast Start", "Forecast Finish", "Planned Start", "Late Finish",
             "Total Slack", "Work", "Cost", "Status", "Critical", "Progress"]
-LOGS = [("RAID", "RAIDLog", "Title"), ("Decisions", "DecisionLog", "Decision"), ("Changes", "ChangeLog", "Title"),
-        ("History", "StatusHistory", "Status Date")]
+OLD_LOGS = {"RAIDLog": "RAID", "DecisionLog": "Decisions", "ChangeLog": "Changes"}      # sheets before v1.7
 
 
 def log(wb, sheet, table, column):
     return [r for r in table_rows(wb, sheet, table) if r[column]]
+
+
+def old_log_items(old):
+    """The v1.6 logs' rows under the Log's headers, as the upgrade should have written them (Ref left out: decisions
+    and changes are renumbered), with what the old workbook calculated for them (score, rating, linked task)."""
+    items = []
+    for table, (kind, headers) in upgrade.LOGS.items():
+        for r in table_rows(old, OLD_LOGS[table], table):
+            r = {headers.get(h, h): v for h, v in r.items() if not h.startswith("_")}
+            if r.get("Title"):
+                items.append({"Type": kind, **r} if kind else r)
+    return items
 
 
 class ReadTest(unittest.TestCase):
@@ -46,8 +57,9 @@ class ReadTest(unittest.TestCase):
         self.assertEqual(project.resources[0][:2], ("Priya Sharma", "PS"))
         self.assertIn("Casey Kim", project.leave)
         self.assertEqual(project.assignments, [])                       # v1.4 had no Assignments sheet
-        self.assertIn("RAIDLog", copies)
-        self.assertEqual(warnings, [])
+        self.assertIn("Log", copies)                                     # RAID, decision and change logs, merged
+        self.assertEqual([w.split(" refs")[0] for w in warnings], ["Decision", "Change"])   # renumbered, and said so
+        self.assertIn("Decision 2 is now Decision 8", warnings[0])
 
     def test_current_workbooks_report_their_version(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -77,14 +89,14 @@ class ReadTest(unittest.TestCase):
     def test_custom_dropdown_values_are_kept_and_new_ones_added(self):
         wb = openpyxl.load_workbook(FIXTURES / "planner_v1.4.xlsx")
         ws = wb["Lists"]
-        table = ws.tables["ListRAIDType"]
+        table = ws.tables["ListRAIDType"]                               # now ListLogType
         last = openpyxl.utils.cell.range_boundaries(table.ref)
         ws.cell(last[3], last[0]).value = "Escalation"                  # the user replaced the last RAID type
         old = io.BytesIO()
         wb.save(old)
         new = openpyxl.load_workbook(io.BytesIO(upgrade.convert(old.getvalue())[0]))
-        values = [r["RAID Type"] for r in table_rows(new, "Settings", "ListRAIDType") if r["RAID Type"]]
-        self.assertEqual(values, ["Risk", "Assumption", "Issue", "Dependency", "Escalation"])
+        values = [r["Log Type"] for r in table_rows(new, "Settings", "ListLogType") if r["Log Type"]]
+        self.assertEqual(values, ["Risk", "Assumption", "Issue", "Dependency", "Decision", "Change", "Escalation"])
         periods = [r["Gantt Days per Column"] for r in table_rows(new, "Settings", "ListPeriod")]
         self.assertEqual(periods, [1, 7, 30, 91])                       # v1.6 values the v1.4 list didn't have
 
@@ -107,16 +119,24 @@ class UpgradeRecalcTest(unittest.TestCase):
         self.assertEqual(sorted(after), sorted(before))
         diffs = [(u, k, before[u][k], after[u][k]) for u in before for k in SCHEDULE if before[u][k] != after[u][k]]
         self.assertEqual(diffs, [])
-        for sheet, table, column in LOGS:
-            self.assertEqual(log(new, sheet, table, column), log(old, sheet, table, column), table)
+        self.assertEqual(log(new, "History", "StatusHistory", "Status Date"),
+                         log(old, "History", "StatusHistory", "Status Date"))
+        items = old_log_items(old)
+        logged = log(new, "Log", "Log", "Title")
+        self.assertEqual(len(logged), len(items))
+        for want, got in zip(items, logged):
+            self.assertEqual({k: got[k] for k in want if k != "Ref"}, {k: v for k, v in want.items() if k != "Ref"})
+        raid = [(r["Ref"], r["Type"]) for r in log(old, "RAID", "RAIDLog", "Title")]
+        self.assertEqual([(r["Ref"], r["Type"]) for r in logged[:len(raid)]], raid)     # RAID items keep their Ref
+        self.assertEqual([r["Ref"] for r in logged], list(range(1, len(logged) + 1)))
         before = {r["Resource"]: r["Nov-26"] for r in table_rows(old, "Leave", "LeaveTable") if r["Resource"]}
         after = {r["Resource Name"]: r["Nov-26"] for r in table_rows(new, "Resources", "ResourceTable")
                  if r["Resource Name"] in before}                       # the Leave sheet's rows, now on Resources
         self.assertEqual(after, before)
-        rag = lambda wb: [(r["Area"], r["PM RAG"], r["Comment"]) for r in table_rows(wb, "Status Report", "StatusRAG")]
-        self.assertEqual(rag(new), rag(old))
-        goals = lambda wb: [r["Goal"] for r in table_rows(wb, "Sprints", "SprintTable")]
-        self.assertEqual(goals(new), goals(old))
+        rag = lambda wb, sheet: [(r["Area"], r["PM RAG"], r["Comment"]) for r in table_rows(wb, sheet, "StatusRAG")]
+        self.assertEqual(rag(new, "Status"), rag(old, "Status Report"))
+        goals = lambda wb, sheet: [r["Goal"] for r in table_rows(wb, sheet, "SprintTable")]
+        self.assertEqual(goals(new, "Agile"), goals(old, "Sprints"))
         return new
 
     def test_from_v1_4(self):

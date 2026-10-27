@@ -56,7 +56,7 @@ Legend: ✅ equivalent · 🟡 partial / simplified · ❌ missing · ⛔ not pr
 |---|---|---|
 | Auto / manual scheduled tasks | ✅ | Manual pins to the date entered. |
 | Outline levels, summary tasks, WBS codes | ✅ | Summary dates, work, cost, % complete roll up. |
-| Project summary task (ID 0) | ❌ | Dashboard shows the equivalent numbers. |
+| Project summary task (ID 0) | ❌ | The Status sheet shows the equivalent numbers. |
 | Milestones | 🟡 | Duration 0 only; no "Mark as milestone" for non-zero tasks. |
 | Link types FS / SS / FF / SF with lag and lead | ✅ | Lag in working days. |
 | Unlimited predecessors | 🟡 | v1.5: four per task (`LINKS` in `planner/tasks.py`). |
@@ -85,7 +85,7 @@ Legend: ✅ equivalent · 🟡 partial / simplified · ❌ missing · ⛔ not pr
 | Baseline (frozen) and Baseline 1–10 | 🟡 | v1.1: one frozen baseline (start, finish, duration, work, cost) set by copy → paste values. No Baseline 1–10. |
 | Variance: finish | ✅ | Working days. |
 | Variance: start, duration, work, cost | ✅ | v1.1. |
-| Earned value (PV, EV, AC, SPI, CPI, EAC) | ✅ | v1.3: per task and project, plus phase SPI / CPI; Status Report. |
+| Earned value (PV, EV, AC, SPI, CPI, EAC) | ✅ | v1.3: per task and project, plus phase SPI / CPI; Status sheet. |
 | Tracking Gantt | ✅ | |
 | Progress lines | ❌ | |
 | Status indicators | 🟡 | Text status with colours. |
@@ -125,9 +125,9 @@ Legend: ✅ equivalent · 🟡 partial / simplified · ❌ missing · ⛔ not pr
 
 | MS Project feature | Planner | Notes |
 |---|---|---|
-| Dashboard / Project Overview | ✅ | KPIs, status counts, next milestones, sprint chart. |
+| Dashboard / Project Overview | ✅ | Status sheet: key figures, status counts, next milestones, sprint chart. |
 | Burndown / burnup | ✅ | v1.3: burndown from the plan; burn-up and trends from History snapshots. |
-| Risk / issue / decision / change logs | ✅ | v1.3: RAID, Decisions and Changes sheets (not in MS Project desktop). |
+| Risk / issue / decision / change logs | ✅ | v1.3; one Log sheet since v1.7 (not in MS Project desktop). |
 | Cost overview, Work overview, Resource overview | 🟡 | v1.3: earned value, phase cost and the Resource Report; no time-phased cost. |
 | Late tasks, upcoming tasks, milestone report | ✅ | v1.3: Schedule Report (late, starting / due in a look-ahead window, milestones, critical). |
 | Project status with RAG | ✅ | v1.3: calculated RAG by area with thresholds, PM override, commentary. |

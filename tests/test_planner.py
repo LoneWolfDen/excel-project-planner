@@ -42,7 +42,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(ROOT))
 import perf_check  # noqa: E402
-from planner import mspdi  # noqa: E402
+from planner import log, mspdi  # noqa: E402
 
 
 def build(path, *flags):
@@ -135,10 +135,8 @@ class StructureTest(Tmp):
         cls.wb = openpyxl.load_workbook(cls.path)
 
     def test_sheets(self):
-        self.assertEqual(self.wb.sheetnames, ["Start", "Dashboard", "Roadmap", "Status Report", "Schedule Report",
-                                              "Resource Report", "Agile Report", "RAID", "Decisions", "Changes",
-                                              "History", "Settings", "Tasks", "Gantt", "Resources", "Sprints",
-                                              ])
+        self.assertEqual(self.wb.sheetnames, ["Start", "Status", "Roadmap", "Schedule Report", "Resource Report",
+                                              "Agile", "Log", "History", "Settings", "Tasks", "Gantt", "Resources"])
 
     def test_named_ranges(self):
         names = set(self.wb.defined_names)
@@ -157,7 +155,7 @@ class StructureTest(Tmp):
         calculated = {c.name for c in tasks.tableColumns if c.calculatedColumnFormula is not None}
         self.assertIn("Forecast Finish", calculated)
         self.assertNotIn("Duration", calculated)                 # inputs are not calculated columns
-        for sheet, table in (("Resources", "ResourceTable"), ("Sprints", "SprintTable"), ("Gantt", "GanttView"),
+        for sheet, table in (("Resources", "ResourceTable"), ("Agile", "SprintTable"), ("Gantt", "GanttView"),
                              ("Settings", "HolidayTable"), ("Settings", "ListRAG")):
             self.assertIn(table, self.wb[sheet].tables)
 
@@ -221,8 +219,7 @@ class StructureTest(Tmp):
 
     def test_views_read_tasks_by_name_not_row(self):
         # Gantt and the reports use INDEX(tsk_..., n), so rows inserted on Tasks still show up
-        for sheet in ("Gantt", "Status Report", "Schedule Report", "Resource Report", "Agile Report",
-                      "RAID", "Decisions", "Changes", "History"):
+        for sheet in ("Gantt", "Status", "Schedule Report", "Resource Report", "Agile", "Log", "History"):
             for row in self.wb[sheet].iter_rows(max_row=120, max_col=25):
                 for c in row:
                     if isinstance(c.value, str) and c.value.startswith("="):
@@ -345,7 +342,8 @@ class ScheduleTest(Tmp):
         self.assertEqual(self.val(19, "DLChk"), "Late by 1d")   # forecast Mon 09-Nov vs deadline Fri 06-Nov
         self.assertEqual(self.val(25, "DLChk"), "OK")
         self.assertIsNone(self.val(2, "DLChk"))
-        self.assertEqual(self.dashboard("Missed deadlines"), 1)
+        rag = {r["Area"]: r for r in table_rows(self.wb, "Status", "StatusRAG")}
+        self.assertEqual(rag["Deadlines"]["Value"], 1)
         gantt = self.wb["Gantt"]
         col = {c.value: c.column for c in gantt[5] if c.value}
         self.assertEqual(d(gantt.cell(self.t.row_of(19), col["_Deadline"]).value), dt.date(2026, 11, 6))
@@ -385,11 +383,7 @@ class ScheduleTest(Tmp):
         self.assertEqual(self.dashboard("Current sprint"), "Sprint 4")
 
     def dashboard(self, label):
-        ws = self.wb["Dashboard"]
-        for r in range(1, 40):
-            if ws.cell(r, 2).value == label:
-                return ws.cell(r, 3).value
-        raise KeyError(label)
+        return key_figures(self.wb)[label]
 
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")
@@ -420,8 +414,7 @@ class BaselineTest(Tmp):
         self.assertEqual(t.get(2, "CVar"), 16 * 95)
         self.assertEqual(t.get(1, "DVar"), 0)       # summary duration from dates; actual finish unchanged
         self.assertEqual(t.get(3, "Var"), 0)        # completed tasks keep their actual dates
-        dash = {wb["Dashboard"].cell(r, 2).value: wb["Dashboard"].cell(r, 3).value for r in range(5, 20)}
-        self.assertEqual(dash["Baseline"], "Set on 30 tasks")
+        self.assertEqual(key_figures(wb)["Baseline"], "Set on 30 tasks")
 
     def test_unstarted_task_slip_shows_against_baseline(self):
         first = recalc(self.path, self.dir)
@@ -450,6 +443,11 @@ def table_rows(wb, sheet, table):
     return [{h: d(c.value) for h, c in zip(head, row)} for row in cells[1:]]
 
 
+def key_figures(wb):
+    """The Status sheet's KEY FIGURES, {measure: value}."""
+    return {r["Measure"]: r["Value"] for r in table_rows(wb, "Status", "KPIs")}
+
+
 def working_days(a, b, holidays):
     """NETWORKDAYS: Mon-Fri working days from a to b inclusive, skipping holidays."""
     n, day = 0, a
@@ -461,7 +459,7 @@ def working_days(a, b, holidays):
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")
 class ReportTest(Tmp):
-    """Status Report and Schedule Report, checked against values worked out in Python from the Tasks sheet."""
+    """Status sheet and Schedule Report, checked against values worked out in Python from the Tasks sheet."""
 
     @classmethod
     def setUpClass(cls):
@@ -512,8 +510,7 @@ class ReportTest(Tmp):
                                                         "Project Close"])
         for col, want in (("Budget", bac), ("PV", pv), ("EV", ev), ("AC", ac)):
             self.assertAlmostEqual(sum(r[col] for r in phases), want, places=6, msg=col)
-        dash = {self.wb["Dashboard"].cell(r, 2).value: self.wb["Dashboard"].cell(r, 3).value for r in range(5, 30)}
-        self.assertAlmostEqual(dash["Cost performance (CPI)"], ev / ac)
+        self.assertAlmostEqual(named_cell(self.wb, "evm_CPI").value, ev / ac)
         self.assertEqual(sum(r["Actual Cost"] or 0 for r in table_rows(self.wb, "Resources", "ResourceTable")), ac)
 
     def test_earned_value_uses_the_baseline(self):
@@ -533,27 +530,27 @@ class ReportTest(Tmp):
         self.assertAlmostEqual(self.evm(wb, "EAC"), ac + (bac - ev) / (ev / ac), places=6)
 
     def test_rag(self):
-        rag = {r["Area"]: r for r in table_rows(self.wb, "Status Report", "StatusRAG")}
+        rag = {r["Area"]: r for r in table_rows(self.wb, "Status", "StatusRAG")}
         self.assertEqual({a: r["RAG"] for a, r in rag.items()}, {
             "Schedule": "Green", "Schedule performance": "Red", "Cost performance": "Amber", "Deadlines": "Red",
             "Critical path": "Amber", "RAID": "Amber", "Plan quality": "Green"})
         self.assertEqual(rag["Plan quality"]["Value"], 0)    # "?" in COUNTIF is a wildcard; the formula escapes it
         self.assertEqual(rag["Critical path"]["Value"], 5)
-        self.assertEqual(table_rows(self.wb, "Status Report", "OverallStatus")[0]["RAG"], "Red")
+        self.assertEqual(table_rows(self.wb, "Status", "OverallStatus")[0]["RAG"], "Red")
 
     def test_pm_override_and_thresholds(self):
         def edit(wb):
-            ws = wb["Status Report"]
-            for row in ws.iter_rows(min_row=8, max_row=13):
+            ws = wb["Status"]
+            for row in ws.iter_rows(min_row=1, max_row=40):
                 if row[1].value in ("Schedule performance", "Deadlines"):
                     row[5].value = "Amber"                  # PM RAG
             named_cell(wb, "RAGRedIndex").value = 0.5     # CPI 0.93 stays amber
         wb = recalc(self.path, self.dir, edit)
-        rag = {r["Area"]: r for r in table_rows(wb, "Status Report", "StatusRAG")}
+        rag = {r["Area"]: r for r in table_rows(wb, "Status", "StatusRAG")}
         self.assertEqual(rag["Deadlines"]["Calculated"], "Red")
         self.assertEqual(rag["Deadlines"]["RAG"], "Amber")
         self.assertEqual(rag["Schedule performance"]["Calculated"], "Amber")   # SPI 0.78 with red below 0.5
-        overall = table_rows(wb, "Status Report", "OverallStatus")[0]
+        overall = table_rows(wb, "Status", "OverallStatus")[0]
         self.assertEqual((overall["RAG"], overall["Value"]), ("Amber", "0 red, 5 amber"))
 
     def listed(self, table):
@@ -600,7 +597,7 @@ class AgileTest(Tmp):
         cls.wb = recalc(cls.path, cls.dir)
 
     def sprints(self, wb):
-        return [r for r in table_rows(wb, "Sprints", "SprintTable") if r["Sprint"]]
+        return [r for r in table_rows(wb, "Agile", "SprintTable") if r["Sprint"]]
 
     def kpi(self, wb, n):
         return named_cell(wb, f"agl_{n}").value
@@ -632,9 +629,9 @@ class AgileTest(Tmp):
         self.assertEqual(serial(self.kpi(self.wb, "FinishDate")), dt.date(2026, 12, 27))
 
     def test_current_sprint_backlog_and_burndown(self):
-        backlog = [r["Task"] for r in table_rows(self.wb, "Agile Report", "SprintBacklog") if r["_Task"] not in (None, "")]
+        backlog = [r["Task"] for r in table_rows(self.wb, "Agile", "SprintBacklog") if r["_Task"] not in (None, "")]
         self.assertEqual(backlog, ["Feature screens"])
-        days = [r for r in table_rows(self.wb, "Agile Report", "SprintBurndown") if r["Day"]]
+        days = [r for r in table_rows(self.wb, "Agile", "SprintBurndown") if r["Day"]]
         self.assertEqual((serial(days[0]["Day"]), serial(days[-1]["Day"]), len(days)),
                          (dt.date(2026, 10, 19), dt.date(2026, 11, 1), 14))
         self.assertEqual(days[6]["Remaining"], 8)                               # 25-Oct, the status date
@@ -653,7 +650,7 @@ class AgileTest(Tmp):
         committed = {s["Sprint"]: s["Committed Points"] for s in self.sprints(wb)}
         self.assertEqual(committed["Sprint 4"], 13)
         self.assertEqual((self.kpi(wb, "Total"), self.kpi(wb, "Unestimated")), (74, 1))
-        backlog = [r["Task"] for r in table_rows(wb, "Agile Report", "SprintBacklog") if r["_Task"] not in (None, "")]
+        backlog = [r["Task"] for r in table_rows(wb, "Agile", "SprintBacklog") if r["_Task"] not in (None, "")]
         self.assertEqual(backlog, ["Payment gateway integration", "Feature screens"])
 
 
@@ -901,7 +898,7 @@ class IssuesTest(Tmp):
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")
 class LogsTest(Tmp):
-    """RAID, decision and change logs, the Status Report's summaries of them, and status snapshots."""
+    """The Log (RAID items, decisions and changes), the Status sheet's summaries of it, and status snapshots."""
 
     @classmethod
     def setUpClass(cls):
@@ -909,7 +906,7 @@ class LogsTest(Tmp):
         cls.wb = recalc(cls.path, cls.dir)
 
     def raid(self, wb):
-        return {r["Ref"]: r for r in table_rows(wb, "RAID", "RAIDLog") if r["Title"]}
+        return {r["Ref"]: r for r in table_rows(wb, "Log", "Log") if r["Title"] and r["Type"] in log.RAID}
 
     def test_no_formula_errors(self):
         self.assertEqual(errors_in(self.wb), [])
@@ -923,12 +920,12 @@ class LogsTest(Tmp):
         self.assertEqual([k for k, r in raid.items() if r["Overdue"] == "Overdue"], [3])   # due 23-Oct, not closed
         self.assertEqual((raid[1]["Task"], serial(raid[1]["Task Finish"])),
                          ("Payment gateway integration", dt.date(2026, 11, 9)))
-        top = [r["Item"] for r in table_rows(self.wb, "Status Report", "TopRAID") if r["_Task"] not in (None, "")]
+        top = [r["Item"] for r in table_rows(self.wb, "Status", "TopRAID") if r["_Task"] not in (None, "")]
         self.assertEqual([t.split(":")[0] for t in top], ["Issue 3", "Risk 1", "Dependency 5", "Risk 2", "Assumption 4"])
 
     def test_raid_edits(self):
         def edit(wb):
-            ws = wb["RAID"]
+            ws = wb["Log"]
             head = {c.value: c.column for c in ws[4]}
             ws.cell(6, head["Task UID"]).value = 999          # Ref 2 now points at a missing task
             ws.cell(7, head["Status"]).value = "Closed"       # the issue is resolved
@@ -939,23 +936,24 @@ class LogsTest(Tmp):
         self.assertEqual(raid[2]["Task"], "UID 999 not found")
         self.assertIn(raid[3]["Overdue"], (None, ""))
         self.assertEqual(raid[5]["Rating"], "Medium")          # 15 is below the new threshold
-        rag = {r["Area"]: r for r in table_rows(wb, "Status Report", "StatusRAG")}
+        rag = {r["Area"]: r for r in table_rows(wb, "Status", "StatusRAG")}
         self.assertEqual(rag["RAID"]["Value"], 1)              # only Risk 1 (16) is still high and open
-        top = [r["Item"] for r in table_rows(wb, "Status Report", "TopRAID") if r["_Task"] not in (None, "")]
+        top = [r["Item"] for r in table_rows(wb, "Status", "TopRAID") if r["_Task"] not in (None, "")]
         self.assertNotIn("Issue 3", " ".join(top))
 
     def test_change_control_summary(self):
-        cc = {r["Measure"]: r["Value"] for r in table_rows(self.wb, "Status Report", "ChangeControl")}
+        cc = {r["Measure"]: r["Value"] for r in table_rows(self.wb, "Status", "ChangeControl")}
         self.assertEqual(cc, {
             "Change requests awaiting decision": 1, "Change requests approved or implemented": 1,
             "Approved schedule impact (working days)": 2, "Approved cost impact": 1360,
-            "Cost impact awaiting decision": 6800, "Decisions awaiting approval": 1, "Overdue RAID actions": 1})
-        waiting = {r["Ref"]: r["Waiting (days)"] for r in table_rows(self.wb, "Changes", "ChangeLog") if r["Title"]}
-        self.assertEqual(waiting[2], 3)                        # raised 22-Oct, status date 25-Oct
-        self.assertIn(waiting[1], (None, ""))
+            "Cost impact awaiting decision": 6800, "Decisions awaiting approval": 1, "Overdue log items": 1})
+        waiting = {r["Ref"]: r["Waiting (days)"] for r in table_rows(self.wb, "Log", "Log") if r["Title"]}
+        self.assertEqual((waiting[11], waiting[9]), (3, 3))   # raised 22-Oct, status date 25-Oct, still open
+        self.assertIn(waiting[10], (None, ""))                 # approved
+        self.assertIn(waiting[3], (None, ""))                  # an issue: waiting applies to decisions and changes
 
     def test_snapshot_matches_the_reports(self):
-        snap = table_rows(self.wb, "History", "SnapshotNow")[0]
+        snap = table_rows(self.wb, "Status", "SnapshotNow")[0]
         self.assertEqual(serial(snap["Status Date"]), STATUS_DATE)
         for field, n in (("BAC", "evm_BAC"), ("EV", "evm_EV"), ("SPI", "evm_SPI"), ("Points Done", "agl_Done")):
             self.assertAlmostEqual(snap[field], named_cell(self.wb, n).value, msg=field)
@@ -1090,9 +1088,8 @@ class LinkCheckTest(Tmp):
         self.assertEqual(t.get(7, "PS"), dt.date(2026, 9, 7))      # bad link ignored -> project start
         self.assertEqual(t.get(13, "PS"), dt.date(2026, 10, 9))    # good link still applies
         self.assertIn(t.get(7, "Pred"), (None, ""))
-        dash = {wb["Dashboard"].cell(r, 2).value: wb["Dashboard"].cell(r, 3).value for r in range(5, 20)}
         issues = [r for r in table_rows(wb, "Tasks", "Tasks") if r["Issues"]]
-        self.assertEqual(dash["Tasks with issues (see Tasks > Issues)"], len(issues))
+        self.assertEqual(key_figures(wb)["Tasks with issues (see Tasks > Issues)"], len(issues))
         self.assertGreaterEqual(len(issues), 6)                       # the six bad links, at least
 
 
@@ -1283,7 +1280,7 @@ class LeaveTest(Tmp):
                 start = first + dt.timedelta(days=7 * w)
                 self.assertAlmostEqual(got or 0, leave_between(leave, person, start, start + dt.timedelta(days=6)),
                                        msg=f"{person} week of {start}")
-        sprints = [s for s in table_rows(wb, "Sprints", "SprintTable") if s["Sprint"]]
+        sprints = [s for s in table_rows(wb, "Agile", "SprintTable") if s["Sprint"]]
         by_sprint = self.grid(wb, "spr_LeaveGrid", 0, people)
         units = {r["Resource Name"]: r["Max Units"] for r in table_rows(wb, "Resources", "ResourceTable") if r["Resource Name"]}
         for j, s in enumerate(sprints):
@@ -1298,7 +1295,7 @@ class LeaveTest(Tmp):
         leave, weekly = self.check(self.wb)
         self.assertEqual(weekly["Casey Kim"][6:8], [4.5, 5])           # weeks of 16 and 23 November
         self.assertEqual(leave_between(leave, "Jordan Lee", dt.date(2026, 12, 21), dt.date(2026, 12, 27)), 2.5)
-        sprints = {s["Sprint"]: s for s in table_rows(self.wb, "Sprints", "SprintTable") if s["Sprint"]}
+        sprints = {s["Sprint"]: s for s in table_rows(self.wb, "Agile", "SprintTable") if s["Sprint"]}
         self.assertEqual(sprints["Sprint 6"]["Capacity"], 480 - 9.5 * 8)  # Casey off 9.5 days
         summary = {r["Resource"]: r for r in table_rows(self.wb, "Resource Report", "ResourceSummary") if r["Resource"]}
         self.assertEqual((summary["Casey Kim"]["Leave Days"], summary["Casey Kim"]["Weeks Over"]), (9.5, 1))
@@ -1352,7 +1349,7 @@ class BuildOptionsTest(unittest.TestCase):
             rows = lambda sheet, table: openpyxl.utils.cell.range_boundaries(raw[sheet].tables[table].ref)[3] - \
                 openpyxl.utils.cell.range_boundaries(raw[sheet].tables[table].ref)[1]
             self.assertEqual((rows("Resources", "ResourceTable"), rows("MSP_Resources", "MSPResources"),
-                              rows("Sprints", "SprintTable")), (resources, resources, sprints))
+                              rows("Agile", "SprintTable")), (resources, resources, sprints))
             origin = named_cell(raw, "gantt_Origin")
             gantt_ws = raw["Gantt"]
             self.assertIsNotNone(gantt_ws.cell(origin.row, origin.column + gantt).value)    # last timeline date
@@ -1397,8 +1394,7 @@ class BlankTemplateTest(unittest.TestCase):
             self.assertEqual([r["Date"] for r in table_rows(wb, "Settings", "HolidayTable") if r["Date"]], [])
             self.assertIsNone(named_cell(wb, "ProjectStartDate").value)      # required input, highlighted yellow
             self.assertIsNone(named_cell(wb, "StatusDateInput").value)
-            dash = {wb["Dashboard"].cell(r, 2).value: wb["Dashboard"].cell(r, 3).value for r in range(5, 20)}
-            self.assertEqual(dash["Detail tasks"], 0)
+            self.assertEqual(key_figures(wb)["Detail tasks"], 0)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-"""RAG (red / amber / green) rules shared by the Status Report and the Schedule Report.
+"""RAG (red / amber / green) rules shared by the Status sheet and the Schedule Report.
 
 Thresholds are settings (RAGAmberSlipDays, RAGRedSlipDays, RAGAmberIndex, RAGRedIndex), so a PMO changes them in
 one place. Each rule gives a severity (0 green, 1 amber, 2 red); several measures combine with MAX, then

@@ -927,6 +927,30 @@ class IssuesTest(Tmp):
         self.assertEqual(t.get(13, "Issues"), "Over-allocated: see the Resource Report.")
         self.assertIn(t.get(2, "Issues"), (None, ""))
 
+    def test_pasted_inputs_and_near_names(self):
+        # B-1013: pasting skips validation, so Issues names text where a number or date belongs, and suggests a name
+        def edit(wb):
+            set_input(wb, 6, "Dur", "2d")
+            set_input(wb, 7, "AS", "18.09.2026")           # a date typed in another locale: text
+            set_input(wb, 8, "Res", "Casey")               # first name only
+            set_input(wb, 12, "Res", "JL")                 # initials still work
+            set_input(wb, 14, "Res", "Jordan Lee, Sam Riviera[50%]")
+
+        wb = recalc(self.path, self.dir, edit)
+        self.assertEqual(errors_in(wb), [])
+        t = Tasks(wb)
+        self.assertIn("Duration isn't a number: type working days, e.g. 3.", t.get(6, "Issues"))
+        self.assertIn("Actual Start isn't a date: type it as a date.", t.get(7, "Issues"))
+        self.assertIn("Casey is not on Resources. Did you mean Casey Kim?", t.get(8, "Issues"))
+        self.assertEqual(t.get(8, "Work"), 0)
+        self.assertIn("Sam Riviera is not on Resources. Did you mean Sam Rivera?", t.get(14, "Issues"))
+        # B-1017: each person's Resources row is found once and reused (initials too)
+        rows = {r["UID"]: r for r in table_rows(wb, "Tasks", "Tasks")}
+        people = [r["Resource Name"] for r in table_rows(wb, "Resources", "ResourceTable") if r["Resource Name"]]
+        self.assertEqual((rows[12]["_Res1Row"], rows[12]["_Resource1"]), (people.index("Jordan Lee") + 1, "Jordan Lee"))
+        self.assertEqual((rows[14]["_Res1Row"], rows[14]["_Res2Row"]), (people.index("Jordan Lee") + 1, 0))
+        self.assertEqual(rows[8]["_Res1Row"], 0)
+
     def test_working_week_preset(self):
         wb = recalc(self.path, self.dir, lambda wb: setattr(named_cell(wb, "WorkingWeek"), "value", "Sun-Thu"))
         self.assertEqual(errors_in(wb), [])
@@ -1544,6 +1568,51 @@ def leave_by_day(wb):
 
 def leave_between(leave, person, start, end):
     return sum(f for (p, when), f in leave.items() if p == person and start <= when <= end)
+
+
+class ProtectionTest(Tmp):
+    """B-1019: the view sheets are protected without a password; their inputs stay unlocked; Tasks isn't."""
+
+    def test_view_sheets(self):
+        wb = openpyxl.load_workbook(self.path)
+        for sheet in ("Status", "Roadmap", "Resource Report"):
+            p = wb[sheet].protection
+            self.assertTrue(p.sheet, sheet)
+            self.assertIsNone(p.password, sheet)                        # Review > Unprotect Sheet, no password
+            self.assertFalse(p.autoFilter or p.formatColumns or p.formatRows, sheet)   # still allowed
+        for sheet in ("Tasks", "Resources", "Settings", "Agile", "Log", "History", "Cost", "Start"):
+            self.assertFalse(wb[sheet].protection.sheet, sheet)
+        status = wb["Status"]
+        self.assertFalse(named_cell(wb, "StatusDateInput").protection.locked)
+        rag = status.tables["StatusRAG"]
+        c1, r1, c2, r2 = openpyxl.utils.cell.range_boundaries(rag.ref)
+        head = {status.cell(r1, c).value: c for c in range(c1, c2 + 1)}
+        for header, locked in (("PM RAG", False), ("Comment", False), ("RAG", True), ("Calculated", True)):
+            self.assertEqual(status.cell(r1 + 1, head[header]).protection.locked, locked, header)
+
+
+@unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+class LiveGridsTest(Tmp):
+    """B-1011: Settings > Live resource grids = No stops the per-person grids for bulk entry; Status says so."""
+
+    def test_grids_off(self):
+        wb = recalc(self.path, self.dir, lambda wb: setattr(named_cell(wb, "LiveGrids"), "value", "No"))
+        self.assertEqual(errors_in(wb), [])
+        ws = wb["Resource Report"]
+        for grid in ("rw_Cum", "rw_Load", "rw_Util"):
+            sheet, ref = wb.defined_names[grid].attr_text.split("!")
+            self.assertTrue(all(c.value in (None, "") for row in ws[ref.replace("$", "")] for c in row), grid)
+        self.assertIn("Resource grids are OFF", wb["Status"]["B3"].value)
+        self.assertIn("OFF", ws["A3"].value)
+        self.assertTrue(all(r["Over-allocated"] in (None, "") for r in table_rows(wb, "Tasks", "Tasks")))
+        t = Tasks(wb)
+        self.assertEqual(t.get(13, "FF"), Tasks(self.on).get(13, "FF"))     # the schedule doesn't change
+        self.assertIn(self.on["Status"]["B3"].value, (None, ""))
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.on = recalc(cls.path, cls.dir)
 
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")

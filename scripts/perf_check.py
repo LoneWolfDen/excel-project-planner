@@ -162,7 +162,8 @@ def time_recalc(path, runs=3):
     """Median seconds for a full recalculation and for single edits followed by an incremental recalculation.
 
     Edits: a duration near the top of the plan (worst case: every task below may move), the last task's duration,
-    and a note (should recalculate almost nothing)."""
+    a note (should recalculate almost nothing), and the duration again with Settings > Live resource grids = No
+    (B-1011: bulk entry without the per-person grids)."""
     import uno                                            # python3-uno, part of LibreOffice
     from com.sun.star.beans import PropertyValue
 
@@ -172,6 +173,7 @@ def time_recalc(path, runs=3):
         return p
 
     wb = openpyxl.load_workbook(path, read_only=True)
+    grids = wb.defined_names["LiveGrids"].attr_text if "LiveGrids" in wb.defined_names else None
     ws = wb["Tasks"]
     header_row = next(r for r in range(1, 20) if any(c.value == "Duration" for c in ws[r]))
     head = {c.value: c.column_letter for c in ws[header_row] if c.value}
@@ -223,6 +225,19 @@ def time_recalc(path, runs=3):
                 doc.calculate()
                 times.append(time.perf_counter() - t)
             out[key] = statistics.median(times)
+        if grids:
+            sheet_name, ref = grids.split("!")
+            switch = doc.Sheets.getByName(sheet_name.strip("'")).getCellRangeByName(ref.replace("$", ""))
+            switch.setString("No")
+            doc.calculate()
+            target = sheet.getCellRangeByName(edits["edit_recalc_s"])
+            original, times = target.getValue(), []
+            for i in range(runs):
+                target.setValue(original + 1 + i)
+                t = time.perf_counter()
+                doc.calculate()
+                times.append(time.perf_counter() - t)
+            out["edit_grids_off_s"] = statistics.median(times)
         doc.close(True)
         try:
             desktop.terminate()
@@ -272,7 +287,8 @@ def markdown(path, profile, report, budget, problems):
              f"| Longest formula | {report['longest_formula']:,} chars | {MAX_LENGTH:,} |"]
     for k, label in (("full_recalc_s", "Full recalculation (LibreOffice)"),
                      ("edit_recalc_s", "Edit a duration near the top, then recalculate"),
-                     ("edit_last_task_s", "Edit the last task's duration"), ("edit_note_s", "Edit a note")):
+                     ("edit_last_task_s", "Edit the last task's duration"), ("edit_note_s", "Edit a note"),
+                     ("edit_grids_off_s", "Edit a duration with Live resource grids off")):
         if k in report:
             limit = budget.get(k + "_max")
             lines.append(f"| {label} | {report[k]:.3f} s | {f'{limit} s' if limit else '-'} |")

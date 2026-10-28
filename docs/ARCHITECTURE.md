@@ -200,6 +200,22 @@ slot (`resources.by_resource`, `workload.work_upto`), and each slot beyond the f
 for one slot only. Week and sprint boundaries are turned into working-day numbers once (`rw_CumWD`, SprintTable
 `_FirstWD` / `_LastWD`) instead of inside every grid cell's SUMIFS.
 
+## Bulk entry, look-ups and protection (B-1011, B-1017, B-1019)
+
+- **Live resource grids.** The Resource Report's hidden cumulative-hours grid (`rw_Cum`, which feeds the weekly
+  hours and utilisation) and the per-person sprint hours are the heaviest cells after the schedule itself. Each is
+  wrapped in `IF(LiveGrids="No","",...)`: `IF` evaluates only the branch it takes, so with the setting off none of
+  their SUMIFS run. Tasks > Over-allocated (which reads `rw_Util`) is blank meanwhile, and Status says the grids are
+  off. `perf_check --timing` measures a duration edit both ways.
+- **One look-up per person.** Each person in a task's Resources cell is found once on Resources (`_Res{k}Row`: by
+  name, then initials, 0 when absent). The full name, work, Issues ("not on Resources", "Did you mean ...") and
+  over-allocation (the grids follow Resources' row order) reuse that position. The Cost sheet matches names on its own
+  rate card, so it stays independent and deletable.
+- **Protected views.** Status, Roadmap and the Resource Report are protected without a password (`core.protect_view`);
+  every cell in the blue input font is unlocked, so the PM RAG, comments, notes and the status date still take
+  typing. Tasks isn't: Excel can't add table rows on a protected sheet, and Allow Edit Ranges doesn't work on the
+  web or iPhone.
+
 ## Reports
 
 Reports are formulas, not Power Query, so they are current after every edit, work in Excel for the web and on a

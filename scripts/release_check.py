@@ -1,0 +1,146 @@
+"""Check the Release 1.0 workbooks against docs/RELEASE_CHECKLIST.md: the items a script can check.
+
+    python scripts/release_check.py                 # the committed workbooks in release-1.0/
+    python scripts/release_check.py --recalc        # also recalculate the sample in LibreOffice at 25-Oct-2026
+
+Prints one line per item (PASS / FAIL / MANUAL) and exits 1 if anything failed. The tests, the three builds and
+perf_check are separate commands (CLAUDE.md "Before pushing"); MANUAL items are done in Excel
+(docs/TESTING_IN_EXCEL.md, docs/TESTING_ON_IPHONE.md).
+"""
+import argparse
+import datetime as dt
+import re
+import sys
+import zipfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
+import openpyxl  # noqa: E402
+
+import perf_check  # noqa: E402
+
+RELEASE = ROOT / "release-1.0"
+FILES = {"sample": RELEASE / "Project_Planner.xlsx", "blank": RELEASE / "Project_Planner_Blank.xlsx",
+         "simple": RELEASE / "Project_Planner_Simple.xlsx"}
+STATUS_DATE = dt.date(2026, 10, 25)
+ERRORS = ("#NAME?", "#VALUE!", "#REF!", "#DIV/0!", "#N/A", "#NUM!", "#NULL!", "Err:")
+CF_MAX = 120                       # Release 1.0's budget: fewer rules than v1.8's 121
+SIZE_MAX = 5 * 1024 * 1024
+
+
+def errors(wb):
+    out = []
+    for ws in wb.worksheets:
+        charts = set()
+        for table in ws.tables.values():
+            cells = list(ws[table.ref])
+            for i, h in enumerate(cells[0]):
+                if str(h.value).startswith("_Chart"):
+                    charts.update(row[i].coordinate for row in cells[1:])
+        out += [f"{ws.title}!{c.coordinate}" for row in ws.iter_rows() for c in row
+                if isinstance(c.value, str) and c.value.startswith(ERRORS)
+                and not (c.value == "#N/A" and c.coordinate in charts)]
+    return out
+
+
+def validation_problems(wb):
+    """Data validations with no cells, or a list / formula naming something that isn't defined."""
+    names = set(wb.defined_names.keys())
+    out = []
+    for ws in wb.worksheets:
+        for dv in ws.data_validations.dataValidation:
+            if not str(dv.sqref).strip():
+                out.append(f"{ws.title}: a rule with no cells")
+            for f in (dv.formula1, dv.formula2):
+                for word in re.findall(r"\b([A-Za-z_][A-Za-z0-9_.]*)\b(?!\()", str(f or "").lstrip("=")):
+                    if "_" in word and word not in names and not re.match(r"^[A-Z]{1,3}\d+$", word):
+                        out.append(f"{ws.title}: {word} in {f}")
+    return out
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--recalc", action="store_true", help="recalculate the sample at 25-Oct-2026 with LibreOffice")
+    a = p.parse_args(argv)
+    from planner.build import RELEASE_VIEWS
+    results = []
+
+    def item(label, ok, detail=""):
+        results.append((label, "PASS" if ok else "FAIL", detail))
+
+    books = {k: openpyxl.load_workbook(v) for k, v in FILES.items()}
+    values = {k: openpyxl.load_workbook(v, data_only=True) for k, v in FILES.items()}
+    status = values["sample"]
+    sd = status["Status"]["C5"].value
+    item("Status date of the sample is 25-Oct-2026", (sd.date() if hasattr(sd, "date") else sd) == STATUS_DATE, sd)
+    found = {k: errors(v) for k, v in values.items()}
+    item("No formula errors in the three workbooks (as calculated by the build)", not any(found.values()),
+         {k: v[:3] for k, v in found.items() if v})
+    if a.recalc:
+        sys.path.insert(0, str(ROOT / "tests"))
+        import tempfile
+        from test_planner import recalc
+        with tempfile.TemporaryDirectory() as tmp:
+            again = recalc(FILES["sample"], tmp)
+        item("No formula errors after recalculating the sample at 25-Oct-2026", not errors(again), errors(again)[:3])
+    reports = {k: perf_check.static_report(v) for k, v in FILES.items()}
+    item("No A1 references in formulas", not any(r["a1_references"] for r in reports.values()))
+    item("No OFFSET outside the scheduling helpers; no INDIRECT, TODAY, NOW",
+         all(r["volatile"] in ({}, {"Tasks": {"OFFSET": r["volatile"].get("Tasks", {}).get("OFFSET", 0)}})
+             and r["volatile"].get("Tasks", {}).get("OFFSET", 0) <= 2200 for r in reports.values()),
+         {k: r["volatile"] for k, r in reports.items()})
+    item("No references to a missing sheet, table or name (Simple included)",
+         not any(r["missing_references"] for r in reports.values()))
+    bad_dv = {k: validation_problems(v) for k, v in books.items()}
+    item("Every data validation has cells and names that exist", not any(bad_dv.values()),
+         {k: v[:3] for k, v in bad_dv.items() if v})
+    cf = {k: sum(x["rules"] for x in r["cf"].values()) for k, r in reports.items()}
+    per_row = {k: [s for s, x in r["cf"].items() if x["single_row"] > perf_check.SINGLE_ROW_RANGES_MAX]
+               for k, r in reports.items()}
+    item(f"Conditional formatting: at most {CF_MAX} rules, none per row", max(cf.values()) <= CF_MAX
+         and not any(per_row.values()), cf)
+    unprotected = [s for s in RELEASE_VIEWS if s in books["sample"].sheetnames
+                   and not (books["sample"][s].protection.sheet and books["sample"][s].protection.password is None)]
+    item("Report sheets protected without a password", not unprotected, unprotected)
+    tasks = books["sample"]["Tasks"]
+    head = {tasks.cell(5, c).value: c for c in range(1, tasks.max_column + 1)}
+    item("Tasks' blue inputs unlocked, formulas locked (ready for Protect Sheet)",
+         not tasks.cell(6, head["Duration"]).protection.locked and tasks.cell(6, head["Finish"]).protection.locked)
+    sizes = {k: v.stat().st_size for k, v in FILES.items()}
+    item("Each file under 5 MB", max(sizes.values()) < SIZE_MAX, {k: f"{v / 1e6:.1f} MB" for k, v in sizes.items()})
+    external = []
+    for k, path in FILES.items():
+        with zipfile.ZipFile(path) as z:
+            external += [f"{k}: {n}" for n in z.namelist() if "externalLink" in n]
+        external += [f"{k}: {f}" for _, _, f in perf_check.formulas(books[k]) if re.search(r"\[[^\]]+\.xls", f)]
+    item("No external links", not external, external[:3])
+    item("Simple: six sheets, 12 tasks", books["simple"].sheetnames == ["Start", "Status", "Roadmap", "Settings",
+                                                                        "Tasks", "Resources"]
+         and sum(1 for r in values["simple"]["Tasks"].iter_rows(min_row=6, min_col=head["Task Name"],
+                                                                 max_col=head["Task Name"], values_only=True)
+                 if r[0]) == 12)
+    item("TemplateVersion is 1.0 in every workbook",
+         all(b.defined_names["TemplateVersion"].attr_text == '"1.0"' for b in books.values()))
+    readme = (ROOT / "README.md").read_text()
+    item("README has the Release 1.0 and Limits sections", "## Release 1.0" in readme and "## Limits" in readme)
+    page = (ROOT / "docs" / "export.html").read_text()
+    loads = sorted(set(re.findall(r"https?://[^\"' )]+", page)))
+    item("export.html loads nothing but Pyodide (the workbook never leaves the device)",
+         all("cdn.jsdelivr.net/pyodide" in u for u in loads), loads)
+    for label in ("Opens in Excel desktop, web and iPhone; protection and pickers work (TESTING_IN_EXCEL.md, "
+                  "TESTING_ON_IPHONE.md)", "export.html: export, upgrade, import a CSV / list / XML, reorder, in a "
+                  "browser"):
+        results.append((label, "MANUAL", ""))
+
+    width = max(len(r[0]) for r in results)
+    for label, verdict, detail in results:
+        print(f"{verdict:6}  {label.ljust(width)}  {detail if detail not in ('', None, {}, []) else ''}")
+    failed = [r for r in results if r[1] == "FAIL"]
+    print(f"\n{len(results) - len(failed)} of {len(results)} pass or are manual; {len(failed)} failed.")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

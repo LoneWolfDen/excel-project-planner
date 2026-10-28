@@ -35,6 +35,7 @@ flowchart LR
 | **v2.0 Agile & reporting** | Sprint planning and status reporting | B-402, B-403, B-404, B-505, B-601, B-602 |
 | **v1.7 Simpler to use** | A first plan in minutes; a weekly update on three sheets ([review](SIMPLIFICATION_REVIEW.md)) | B-901 – B-918 (E9) |
 | **v1.8 Real-world fit** | What a PM using it in Excel asked for: one plan sheet, visible slip, real sprint capacity and cost ([design](REAL_WORLD_FIT.md)) | B-1001 – B-1020 (E10), then B-913 / B-914 |
+| **Release 1.0 (final freeze)** | A first-time PM can't break it and reports in 10 minutes: a separate workbook in `release-1.0/` | R1-01 – R1-16 ✅ DONE; the rest is v1.1 Future |
 | **Later** | | everything else |
 
 ## Next up (v1.8)
@@ -48,6 +49,61 @@ From the owner's review of v1.7 in Excel; the designs agreed for it are in [REAL
 5. ✅ **B-1006 / B-1007** – Sprint capacity per person (allocation, leave, dates, 80/20 focus) and the Agile sheet's per-sprint task list.
 6. ✅ **B-1008 / B-1009** – Schedule Report folded into Status; Roadmap reworked around the phases.
 7. ✅ Then B-913 (Simple / Full, redone on the new sheet set) and B-914 (start from a list).
+
+## Release 1.0: final freeze ✅ DONE
+
+The owner's brief: *no new scheduling engine work, no new reports; only make it so a first-time PM cannot break it
+and can deliver a status report in 10 minutes.* It is a **separate workbook**, built with `--release` into
+`release-1.0/` (`Project_Planner.xlsx`, `_Blank`, `_Simple`); the classic v1.8 workbooks at the repository root
+don't change. Template version **1.0** (the `TemplateVersion` name, shown on Start and every printed footer); the
+code's `PlannerVersion` is 2.0, which the upgrade reads. The checks before release are in
+[RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
+
+Decisions taken with the owner before coding (the brief asked for some things the rules or Excel rule out):
+
+| Asked | Done instead | Why |
+|---|---|---|
+| LET, LAMBDA, XLOOKUP, FILTER, SEQUENCE; `L_PARSE_DURATION` and friends in Name Manager | Excel 2019 functions; `TEXTJOIN` (Excel 2019) for the pickers and leave grid; a `_Days` column is the duration parser; Check uses ranked lists | Excel 2019 is the stated minimum (a test enforces it), and the CI recalculates in LibreOffice, which has no LAMBDA. An M365 edition is v1.1 |
+| No OFFSET | OFFSET stays in the 2,200 scheduling helper cells only (allow-listed); nothing new uses it | The only insert-safe, non-circular way to read another row's calculated date (docs/ARCHITECTURE.md) |
+| `UID = MAX(Tasks[UID])+1` as a formula | UIDs stay pre-filled; a typed UID must be new (validation); Settings and Check count duplicates and missing ones | A formula UID is circular and renumbers when rows move, which would break every link |
+| Protect Tasks with Allow Edit Ranges | Tasks, Resources, Settings and History ship unprotected with their blue inputs unlocked (Review > Protect Sheet locks only formulas); every other sheet ships protected | Excel can't add table rows on a protected sheet; Allow Edit Ranges doesn't work on the web or iPhone |
+| Fewer than 15 conditional-formatting rules | 114 rules (121 in v1.8); no rule per row; the summary grey-out is one rule | The Gantt alone needs about 15 rules |
+| Phase 3 (RACI, Sandbox, PERT, narrative, burndown, capacity chart) | v1.1 below | The freeze: no new reports |
+
+### P0 (Release 1.0): all done
+
+| ID | Item | Problem | Before | Fix | Excel | Acceptance | Perf |
+|---|---|---|---|---|---|---|---|
+| R1-01 | ✅ UID safety | A typed duplicate UID sends links to the wrong task | Issues flags it after the fact | Validation refuses a duplicate or non-whole UID; Settings > DuplicateUIDs / MissingUIDs; Check lists them; Next free UID at the top of Tasks | Custom rule `AND(ISNUMBER(x),x>=1,x=INT(x),COUNTIF(tsk_UID,x)=1)` | `test_release.StructureTest.test_validation`, `EditTest.test_uids_and_check` | 2 cells |
+| R1-02 | ✅ Predecessor and resource pickers | Typing `12, 14SS+2d` is the biggest source of errors for a new PM | One text cell each | Pred1-4 (dropdown of the detail tasks, "UID Name"), Type1-4, Lag1-4; Res1-4 (dropdown of Resources), Units1-4. Pred1 / Type1 / Lag1 and Res1 / Units1 shown, the rest behind +. The typed text still works while the pickers are blank (imports and pastes land there); Issues says when it is ignored | `_Predecessors` / `_Resources` = TEXTJOIN of the pickers, else the text; the scheduler reads them unchanged. `_PickList` (SMALL over `_PickKey`) feeds the dropdown | `EditTest.test_pickers`, `CommittedSampleTest.test_same_plan_as_the_classic_sample` (the sample's links come from the pickers and schedule identically) | +1,000 formulas (5 per task) |
+| R1-03 | ✅ Leave by day | `16, 17(0.5)` in a month cell is hard to get right | Month text cells | LEAVE BY DAY grid under the people: person, month (dropdowns), days 1-31 (1 or 0.5); its Days column builds the text; every leave look-up adds it to the month cell | TEXTJOIN of 31 cells; one MATCH per leave look-up on the person and month | `CommittedSampleTest.test_same_capacity_with_leave_on_the_day_grid` (two people's leave on the grid gives the same capacity), `ToolsTest` (upgrade carries it) | +80 formulas; grids unchanged |
+| R1-04 | ✅ Duration as 3, 3d or 2w | "2d" pasted counted as 0 | A number only | `_Days` reads 3, 3d, 2w (5 days a week); validation refuses "2days"; Issues explains a pasted one | Custom validation; `_Days` with VALUE / LEFT / RIGHT | `EditTest.test_duration`, `StructureTest.test_duration_rule_accepts_and_refuses` | +200 formulas |
+| R1-05 | ✅ Date checks | A date before the project start, or text | Any date | Actual / constraint / deadline dates must be on or after ProjectStart | Date validation `>= ProjectStart` | `StructureTest.test_validation` | none |
+| R1-06 | ✅ Sheet set-up | | | Frozen panes and filters on every input table (as v1.8), a plain table style | | `StructureTest` | none |
+| R1-07 | ✅ TakeBaseline | Re-baselining overwrote agreed baselines; new tasks had none | BL Source = current dates | Settings > TakeBaseline: No (default) = BL Source keeps each pasted baseline, current dates only for tasks without one; Yes = re-baseline everything. One Copy, one Paste Values | `IF(OR(TakeBaseline="Yes",N([@Baseline Start])=0),[@Start],[@Baseline Start])` (reads an input: not circular) | `EditTest.test_take_baseline*` | none |
+| R1-08 | ✅ TakeSnapshot sheet (optional, not in Simple) | The weekly snapshot and the baseline were steps buried in the reference | SnapshotNow at the bottom of Status | Steps with links: the snapshot row (`snap_Row`), History, the BL Source and Baseline columns (`tsk_BLSource`, `tsk_Baseline`) | Hyperlinks to defined names | `StructureTest.test_snapshot_links`, `CommittedSampleTest.test_check_and_snapshot` | 15 formulas |
+| R1-09 | ✅ Check sheet (optional, not in Simple) | No single place says "ready to report" | Issues per row, counts on Status | Counts per kind of problem, a verdict (All clear / n to fix), lists of tasks with Issues, over-allocated tasks, overdue Log items | Ranked tables (SMALL + MATCH over key columns), no FILTER | `CommittedSampleTest.test_check_and_snapshot`, `EditTest.test_uids_and_check` | 370 formulas |
+| R1-10 | ✅ Protection | Formulas typed over by accident | Status, Roadmap, Resource Report | Also Start, Agile, Log, Cost, Check, TakeSnapshot protected (no password); input sheets ship with blue cells unlocked | `core.protect_view`; `release._unlock_inputs` | `StructureTest.test_protection` | none |
+| R1-11 | ✅ Printing | Reports printed over several pages | Some fit-to-page | Status, Roadmap, Resource Report on one page, Check one page wide; header sheet and file name, footer "Project Planner template 1.0" and page n of m. Excel headers can't read cells, so the project name and status date print from each sheet's title rows | Page set-up | `StructureTest.test_printing` | none |
+| R1-12 | ✅ TemplateVersion 1.0 | | PlannerVersion only | `TemplateVersion` = "1.0" on Start and in footers; the upgrade carries Pred1-4, Res1-4 and the leave grid by header (RACI, Sandbox, Opt / Pess will follow the same way in v1.1) | Defined name | `ToolsTest` | none |
+| R1-13 | ✅ Simple has no references to missing sheets; a 12-task sample | | The 30-task sample | Release Simple: 12 tasks of the sample, linked among themselves, with its own baseline | | `ModulesTest`, `CommittedSampleTest.test_simple_sample` | |
+| R1-14 | ✅ Start: five onboarding steps with links | | Five steps, some without a link | Project, People, Tasks (pickers), Check, Baseline: each links to its sheet | Hyperlinks | `StructureTest.test_start_has_five_linked_steps` | none |
+| R1-15 | ✅ Docs | | | README (Release 1.0, Limits), ARCHITECTURE (named formulas, why no LAMBDA), TESTING_ON_IPHONE (Release 1.0 steps), this backlog, RELEASE_CHECKLIST | | | |
+| R1-16 | ✅ Release checklist | | | [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md), each item checked by `scripts/release_check.py` or a named test | | `python scripts/release_check.py` | |
+
+### P1 / P2: v1.1 Future (not built: the freeze)
+
+| ID | Item | Pri | Notes |
+|---|---|---|---|
+| F-1101 | RACI per task (Responsible, Accountable, Consulted, Informed) | P1 | Inputs on Tasks (WORK section), a RACI matrix on the Roadmap or Resources; the upgrade carries them by header |
+| F-1102 | External dependencies in the Log, top 5 on Status | P1 | A Dependency type exists; add an expected date and the linked task's slack, and a ranked list on Status |
+| F-1103 | Sandbox what-if | P1 | A "Sandbox Duration" column that overrides Duration when Settings > Sandbox = Yes, and Status showing the what-if finish |
+| F-1104 | Automatic status narrative | P1 | One text cell on Status from the RAG, slip, next milestone and top risk |
+| F-1105 | 3-point estimates (PERT) with P50 / P80 | P1 | Optimistic / Pessimistic inputs; expected = (O + 4M + P) / 6; P80 on the project finish by sum of variances on the critical path |
+| F-1106 | Risk-exposure burndown in History | P2 | A snapshot field (sum of open risk scores) and a chart |
+| F-1107 | Capacity chart | P2 | Available vs committed days per sprint on Agile |
+| F-1108 | Microsoft 365 edition | P2 | LET / LAMBDA named formulas (`L_PARSE_DURATION`, `L_WORKING_DAYS`, `L_IS_WORKING_DAY`), FILTER lists, a searchable pick list; needs a recalculation engine other than LibreOffice 24.2 in CI |
+| F-1109 | Fewer conditional-formatting rules | P2 | Merge the Gantt's rules where Excel's multi-range rules allow (relative references across ranges need checking in Excel) |
 
 ## Done in v1.7 (was "Next up after v1.6")
 

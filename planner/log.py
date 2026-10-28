@@ -13,7 +13,7 @@ from openpyxl.formatting.rule import FormulaRule
 from openpyxl.styles import Font
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from .core import DATE, Col, Tab, add_table, col_range, fill, linked_task, name, title
+from .core import DATE, Col, Tab, add_table, col_range, fill, has, linked_task, name, title
 
 SHEET = "Log"
 D = dt.date
@@ -139,10 +139,13 @@ def build_log(wb, blank, n_rows=ROWS):
         Col("_TopKey", "help", 8, note="Open RAID items ranked by score (the Status sheet's top list).",
             formula=(f'IF(AND({r("Score")}<>"",{open_}),'
                      f'{r("Score")}+1-(ROW()-ROW({t.head("Ref")}))/100000,"")')),
-    ], n_rows)
-    for column, defined in NAMES.items():
+    ] + ([Col("_OverdueKey", "help", 8, note="Overdue items by due date (the Check sheet's list).",
+              formula=(f'IF({r("Overdue")}="Overdue",{r("Due")}+(ROW()-ROW({t.head("Ref")}))/100000,"")'))]
+         if has("check") else []), n_rows)
+    for column, defined in {**NAMES, **({"_OverdueKey": "log_OverdueKey"} if has("check") else {})}.items():
         name(wb, defined, f"Log[{column}]")
-    ws.column_dimensions.group(letters["_Open"], letters["_TopKey"], hidden=True, outline_level=1)
+    ws.column_dimensions.group(letters["_Open"], letters["_OverdueKey" if has("check") else "_TopKey"], hidden=True,
+                               outline_level=1)
     first, last = 5, 4 + n_rows
     rng = lambda k: col_range(letters[k], first, last)
     type_cell = f'${letters["Type"]}{first}'

@@ -88,7 +88,8 @@ def read_planner(data):
     input tables, {table: (headers, rows)}, for copy_inputs."""
     from .build import ProjectData, Sizes
     from .settings import settings_rows, week_preset
-    from .tasks import LAYOUT, N, take_links
+    from .settings import RELEASE_ROWS
+    from .tasks import N, input_keys, take_links
     try:
         wb = openpyxl.load_workbook(io.BytesIO(data))
     except Exception as e:                                   # not a zip / not a workbook
@@ -100,7 +101,7 @@ def read_planner(data):
     version = _named_value(wb, "PlannerVersion") or "1.6 or earlier"
 
     settings = {}
-    for n, _label, _default, _fmt, is_input, _note in settings_rows(True, 26):
+    for n, _label, _default, _fmt, is_input, _note in settings_rows(True, 26) + RELEASE_ROWS:
         v = _named_value(wb, n)
         if is_input and v is not None:
             settings[n] = v
@@ -108,7 +109,7 @@ def read_planner(data):
     if "WorkingWeek" not in settings:                # before v1.7 the week was only the seven Yes / No days
         settings["WorkingWeek"] = week_preset(settings)
 
-    key_of = {N[k]: k for k, kind, *_ in LAYOUT if kind == "in"}
+    key_of = {N[k]: k for k in input_keys()}
     # before v1.7 each link was three inputs (Pred1 UID / Type / Lag ...): they become the Predecessors text
     key_of.update({f"Pred{k} {label}": f"{x}{k}" for k in range(1, 10) for x, label in (("P", "UID"), ("T", "Type"),
                                                                                        ("L", "Lag"))})
@@ -182,6 +183,8 @@ def read_planner(data):
                   sprints=max(default.sprints, len(tables.get("SprintTable", (None, None, []))[2])))
     project = ProjectData(settings=settings, tasks=tasks, resources=resources, holidays=holidays, leave=leave,
                           leave_months=months, assignments=assignments)
+    from .build import RELEASE_VERSION
+    project.release = str(version) == RELEASE_VERSION    # a Release 1.0 workbook stays one
     modules = _named_value(wb, "PlannerModules")          # since v1.8: a Simple workbook upgrades to a Simple one
     if modules is not None:
         project.modules = [m for m in str(modules).split(",") if m]
@@ -251,12 +254,27 @@ def copy_inputs(wb, copies, warnings):
                 ws.cell(r1 + 1 + k, c1 + i).value = v
 
 
-def convert(data):
-    """(xlsx bytes of the latest template holding the old workbook's inputs, warnings)."""
+def rebuild(data, release=None):
+    """(the latest template's workbook holding the old workbook's inputs, warnings, the old version). release: True
+    moves a classic workbook into the Release 1.0 one, False the other way; None keeps the workbook's own edition."""
     from .build import make_workbook
-    project, copies, sizes, warnings, _version = read_planner(data)
-    wb = make_workbook(sizes=sizes, data=project)
+    from .core import MODULES
+    project, copies, sizes, warnings, version = read_planner(data)
+    if release is not None:
+        project.release = release
+    if project.modules is not None:
+        if project.release and set(MODULES) <= set(project.modules):
+            project.modules = None                       # a full workbook: Release 1.0 adds Check and TakeSnapshot
+        elif not project.release:
+            project.modules = [m for m in project.modules if m in MODULES]
+    wb = make_workbook(sizes=sizes, data=project, release_edition=project.release)
     copy_inputs(wb, copies, warnings)
+    return wb, warnings, version
+
+
+def convert(data, release=None):
+    """(xlsx bytes of the latest template holding the old workbook's inputs, warnings)."""
+    wb, warnings, _version = rebuild(data, release)
     out = io.BytesIO()
     wb.save(out)
     return out.getvalue(), warnings

@@ -3,7 +3,7 @@ the full reference below them."""
 from openpyxl.styles import Alignment
 from openpyxl.worksheet.hyperlink import Hyperlink
 
-from .core import CALC_FILL, HEADER_FILLS, HEADER_FONT, INPUT_FONT, NOTE_FONT, font, missing
+from .core import CALC_FILL, HEADER_FILLS, HEADER_FONT, INPUT_FONT, NOTE_FONT, font, has, missing, release
 from .settings import ESSENTIAL, START, START_ROW
 
 # (label, text, sheet to link to)
@@ -23,6 +23,63 @@ QUICK_START = [
     ("5. Baseline", "When the plan is agreed, freeze it: on Tasks open the BASELINE section (+), copy the 4 'BL "
                     "Source' columns and Paste Special > Values onto the 4 Baseline columns.", "Tasks"),
 ]
+# Release 1.0: five onboarding steps, each with a link (the sheet or the cells to fill in)
+RELEASE_QUICK_START = [
+    ("1. Your project", "Fill in the blue cells above: name, manager, start date, working week, hours per day and "
+                        "the project type (it sets the stages, sprint length and RAG thresholds). Everything else "
+                        "has a sensible default on Settings.", "Settings"),
+    ("2. People", "List the people (or roles) with their Allocation %. Leave: type 1 (or 0.5) under each day off in "
+                  "the LEAVE BY DAY grid under the people (or type the days in a month column).", "Resources"),
+    ("3. Tasks", "One row per task: Level (1 = phase, 2 = task ...), Task Name and Duration (3, 3d or 2w). Pick "
+                 "what must come first in Pred1 (a dropdown of the tasks above) and who does it in Res1; + opens "
+                 "links and people 2-4. Dates, the critical path, the Gantt and the reports follow.", "Tasks"),
+    ("4. Check", "The Check sheet lists everything to fix: Issues on tasks, duplicate UIDs, ignored links, "
+                 "over-allocation, overdue Log items. Fix them until it says All clear.", "Check"),
+    ("5. Baseline", "When the plan is agreed, freeze it: the TakeSnapshot sheet links straight to the BL Source "
+                    "columns to copy and the Baseline columns to paste values onto (Settings > TakeBaseline says "
+                    "which tasks).", "TakeSnapshot"),
+]
+RELEASE_WEEKLY = [
+    ("Status sheet", "Type the status date at the top of Status and follow its steps (progress on Tasks, the Log, "
+                     "the RAG, the commentary). Then the Check sheet, and the snapshot row on TakeSnapshot. A report "
+                     "in about ten minutes.", "Status"),
+]
+# Release 1.0 reference entries: (label to replace or None to add after `after`, label, text)
+RELEASE_TEXT = {
+    "Protected views": ("Protected sheets", "Start, Status, Roadmap, Resource Report, Agile, Log, Cost, Check and "
+                        "TakeSnapshot are protected without a password: their blue cells take typing, the formulas "
+                        "can't be typed over. Tasks, Resources, Settings and History stay open because rows are "
+                        "added there (Excel can't add table rows on a protected sheet), but their formula cells are "
+                        "locked: Review > Protect Sheet (no password) protects them too, and Unprotect Sheet lifts "
+                        "it before adding rows."),
+    "Leave": ("Leave", "On Resources. Easiest: the LEAVE BY DAY grid under the people: pick the person and the "
+                       "month, then type 1 (all day) or 0.5 (half a day) under each day off; its Days column "
+                       "builds the text the reports read. Or type the days in the person's month column: '16, "
+                       "17(0.5)' under Nov-26. Both count (don't enter a day in both). Weekends and holidays are "
+                       "ignored. Leave lowers capacity, it doesn't move task dates."),
+    "Predecessors": ("Predecessors", "Pick each predecessor in Pred1-4 (a dropdown of the detail tasks, 'UID "
+                                     "Name'; typing a UID works too), with an optional Type (FS, SS, FF, SF) and Lag "
+                                     "in working days. While Pred1-4 are blank the typed Predecessors text is used "
+                                     "('12, 14SS+2d'), which is where pasted and imported plans land. A predecessor "
+                                     "must be a detail task listed ABOVE its successor; anything else is ignored "
+                                     "and explained in Link Check and Issues."),
+    "ID and UID": ("ID and UID", "ID = position of the task (renumbers when rows move). UID = permanent number "
+                                 "that predecessors refer to: pre-filled for every row, and a typed UID must be a "
+                                 "whole number no other task uses (the cell refuses a duplicate). Settings counts "
+                                 "duplicate and missing UIDs; the Check sheet lists them."),
+}
+RELEASE_EXTRA = [
+    ("Duration", "Working days: 3, 3d or 2w (a week = 5 working days); 0 = a milestone. Anything else (e.g. "
+                 "'2days') is refused when typed and flagged in Issues when pasted."),
+    ("Check", "The Check sheet counts every kind of problem and lists the tasks with Issues, the over-allocated "
+              "tasks and the overdue Log items. It says All clear when there is nothing to fix."),
+    ("TakeSnapshot", "The two copy-and-paste jobs: the snapshot row to paste onto History each reporting date, and "
+                     "links that select the BL Source and Baseline columns for setting the baseline."),
+    ("Printing", "Status, Roadmap, Resource Report and Check are set to print on one page wide, with the template "
+                 "version and page number in the footer."),
+    ("Limits", "See README > Limits: the predecessor rule (above its successor), 4 links and 4 people per task, "
+               "the fixed grid sizes, and what needs a rebuild."),
+]
 WEEKLY = [
     ("Status sheet", "The weekly update starts on the Status sheet: type the status date at its top, then follow "
                      "the steps under it (progress on Tasks, the Log, the RAG, the commentary, the History "
@@ -31,6 +88,15 @@ WEEKLY = [
 
 
 def text(sizes, wizard=False):
+    entries = _text(sizes, wizard)
+    if release():
+        entries = [(RELEASE_TEXT[e[0]] if e[0] in RELEASE_TEXT else e) for e in entries]
+        at = next(i for i, e in enumerate(entries) if e[0] == "RULES (same as MS Project)")
+        entries[at:at] = RELEASE_EXTRA
+    return entries
+
+
+def _text(sizes, wizard=False):
     return [
         ("REQUIREMENTS", None),
         ("Excel version", "Excel 2019 or Microsoft 365 (Windows or Mac), or Excel for the web. No macros needed."),
@@ -236,10 +302,10 @@ WIZARD = [
 
 def _left_out(label):
     """A reference entry about an optional sheet this build doesn't include (its label names the sheet)."""
-    from .core import MODULES, has
+    from .core import all_modules
     if label == "Earned value":                     # on the Cost sheet
         return not has("cost")
-    return any(missing(sheet) and sheet in str(label) for sheet in MODULES.values())
+    return any(missing(sheet) and sheet in str(label) for sheet in all_modules().values())
 
 
 def build_instructions(wb, sizes, wizard=False):
@@ -252,12 +318,15 @@ def build_instructions(wb, sizes, wizard=False):
     ws["B2"].font = NOTE_FONT
     _header(ws, START_ROW - 1, "YOUR PROJECT")
     r = START_ROW + len(ESSENTIAL) + 1
-    for heading, steps in (("QUICK START", QUICK_START), ("EVERY WEEK", WEEKLY)):
+    quick, weekly = (RELEASE_QUICK_START, RELEASE_WEEKLY) if release() else (QUICK_START, WEEKLY)
+    for heading, steps in (("QUICK START", quick), ("EVERY WEEK", weekly)):
         _header(ws, r, heading)
         r += 1
-        for label, body, sheet in steps:
+        for k, (label, body, sheet) in enumerate(steps):
             if missing(sheet):                      # B-913: a step for a sheet this build leaves out
-                continue
+                if steps is not RELEASE_QUICK_START:
+                    continue
+                label, body, sheet = QUICK_START[k]    # Release 1.0 Simple: the classic step (it uses Tasks)
             ws.cell(r, 2, label).font = font(bold=True)
             c = ws.cell(r, 3, body + (f"  Go to {sheet}." if sheet else ""))
             c.alignment = Alignment(wrap_text=True, vertical="top")

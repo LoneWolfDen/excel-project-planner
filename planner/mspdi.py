@@ -318,7 +318,7 @@ def to_mspdi(plan):
     assignments = []
     for t in plan["tasks"]:
         summary = bool(t.get("_IsSummary"))
-        days = _num(t.get("Duration"))
+        days = _num(t["_Days"] if "_Days" in t else t.get("Duration"))     # Release 1.0: "2w" is read by _Days
         if summary:
             days = _num(t.get("BL Source Duration"))
         milestone = not summary and days == 0

@@ -9,6 +9,28 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 
 **Requires Excel 2019 or Microsoft 365** (Windows or Mac; Excel for the web works too).
 
+## Release 1.0
+A separate, frozen edition for first-time project managers, in [`release-1.0/`](release-1.0/): `Project_Planner.xlsx`
+(the 30-task sample), `Project_Planner_Blank.xlsx` and `Project_Planner_Simple.xlsx` (a 12-task sample on six
+sheets). The workbooks at the repository root stay as they are. Template version 1.0 (shown on Start and in the printed
+footers). What it adds, all in Excel alone (Excel 2019 functions, no macros):
+
+- **Pickers** on Tasks: Pred1-4 (a dropdown of the tasks, with Type and Lag) and Res1-4 (with Units). The typed
+  Predecessors / Resources cells still work while the pickers are blank: pasted and imported plans land there.
+- **Duration** as `3`, `3d` or `2w`; "2days" is refused. Dates must be on or after the project start. A typed UID must
+  be new.
+- **Leave by day**: a grid under the people (person, month, 1 or 0.5 under each day off).
+- **Check** sheet: everything to fix before reporting, ending in "All clear".
+- **TakeSnapshot** sheet: links to the snapshot row and to the BL Source / Baseline columns. Settings > TakeBaseline
+  chooses between baselining only new tasks and re-baselining all of them.
+- **Protected** report sheets; input sheets ready for Review > Protect Sheet. **Printing** set to one page.
+
+Build: `python scripts/build_planner.py release-1.0/Project_Planner.xlsx --release --baselined --recalc` (and
+`--release --blank`, `--release --baselined --simple`). Check: `python scripts/release_check.py` and
+[docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md). Upgrade a classic workbook into it with
+`python scripts/upgrade_planner.py Old.xlsx New.xlsx --release`. What was decided and what waits for v1.1:
+[docs/BACKLOG.md](docs/BACKLOG.md#release-10-final-freeze--done).
+
 ## Files
 - `Project_Planner.xlsx` – the template, loaded with a 30-task sample project.
 - `Project_Planner_Blank.xlsx` – the same template with no sample data, for a new project.
@@ -16,6 +38,7 @@ table rows get their formulas automatically. Recalculation cost is measured on e
   Resources and Settings, without the Agile, Log, History, Resource Report and Cost sheets. Build any mix with
   `--modules agile,log,history,resources,cost` (`--simple` = none of them); nothing in it points at a sheet that
   isn't there, and an upgrade keeps the same set.
+- `release-1.0/` – the Release 1.0 workbooks (above).
 - `docs/` – [architecture and rules](docs/ARCHITECTURE.md), [scheduling spec](docs/SCHEDULING_SPEC.md), [MS Project gap analysis](docs/MSP_GAP_ANALYSIS.md), [backlog](docs/BACKLOG.md), [testing in Excel desktop](docs/TESTING_IN_EXCEL.md), [testing on iPhone](docs/TESTING_ON_IPHONE.md).
 - `planner/` – the generator: one module per sheet (`tasks.py`, `gantt.py`, `agile.py`, `log.py`, `status.py`, ...) plus `core.py` helpers.
 - `scripts/perf_check.py` and `perf_budget.json` – performance and structure checks run on every PR.
@@ -95,6 +118,12 @@ depend on each other both ways it says which links to change and writes nothing.
 - Insert tasks with right-click → Insert → Table Rows Above (formulas fill in), then give the row `NextFreeUID`.
 - **A predecessor must be a detail task listed above its successor.** It keeps the schedule and the critical path consistent. Links that break it (or point to the task itself, an empty row or a missing UID) are ignored and explained in Link Check. Plans imported from MS Project may need reordering.
 - The status date is a typed date (Ctrl+; for today), not `TODAY()`, so it doesn't force a full recalculation after every edit. Update it when you report progress.
+- **Release 1.0:** the Pred dropdown lists every detail task (Excel 2019 has no searchable or filtered dropdown):
+  picking one below the task is allowed and explained in Link Check. Leave for a person and month is read from the
+  first matching row of the day grid; don't enter the same day in the grid and in the month cell. Tasks, Resources,
+  Settings and History are not protected, because Excel can't add table rows on a protected sheet (Review > Protect
+  Sheet locks their formulas when you want it). Printed headers can't show a cell's value, so the project name and
+  status date print from each sheet's title rows. The converter page needs the internet once, to load Pyodide.
 
 ## Tests
 ```

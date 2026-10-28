@@ -17,7 +17,9 @@ Reading the text needs no helper cells:
     at most four characters (0.5, 0.25, 1);
   * only working days count (WorkWeek and Holidays), so leave typed on a weekend or holiday changes nothing.
 """
-from .core import Col, name
+from openpyxl.worksheet.datavalidation import DataValidation
+
+from .core import Col, Tab, add_table, col_range, font, name, release
 
 TABLE = "ResourceTable"           # the months are columns of the Resources table, after each person's details
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -82,8 +84,11 @@ def leave_days(start, end, row, columns):
     """One person's working days of leave from start to end. row = leave_row(...); columns = [(first day of month,
     month_column(...)), ...] for each calendar month the period can touch. Pass row and columns as references to
     helper cells, so each lookup is done once per grid row / column rather than in every cell."""
-    terms = [f'IF(OR({row}=0,{col}=0),0,{_in_month(start, end, first, _text(f"INDEX(leave_Grid,{row},{col})"))})'
-             for first, col in columns]
+    cell = lambda col: f"INDEX(leave_Grid,{row},{col})"
+    if release():                                      # Release 1.0: plus the days ticked on the leave day grid
+        cell = lambda col: (f"INDEX(leave_Grid,{row},{col})&\",\"&IFERROR(INDEX(lv_Days,MATCH(INDEX({TABLE}"
+                            f"[Resource Name],{row})&\"|\"&INDEX(leave_Months,{col}),lv_Key,0)),\"\")")
+    terms = [f'IF(OR({row}=0,{col}=0),0,{_in_month(start, end, first, _text(cell(col)))})' for first, col in columns]
     return "(" + "+".join(terms) + ")"
 
 
@@ -102,6 +107,8 @@ def leave_columns(people, blank, entries=None, months=None):
     Resources rows, name first). entries: {person: {month header: days text}} replacing the sample (an import)."""
     labels = months or month_labels()
     data = entries if entries is not None else {} if blank else SAMPLE
+    if release() and entries is None:                  # the Release 1.0 sample enters some leave on the day grid
+        data = {p: m for p, m in data.items() if p not in GRID_SAMPLE}
     names = [p[0] for p in people]
     return [Col(label, "in", 11, values=[data.get(n, {}).get(label) for n in names],
                 note=f'Days off in {label}: "16, 17(0.5)" = 16th all day, 17th half a day.') for label in labels]
@@ -117,3 +124,59 @@ def name_leave(wb, months):
     name(wb, "leave_Grid", f"{TABLE}[[#Data],{span}]")
     name(wb, "leave_Months", f"{TABLE}[[#Headers],{span}]")
     name(wb, "leave_Days", LEAVE_DAYS)
+
+
+GRID_ROWS = 40                    # rows of the leave day grid (Release 1.0): one per person per month with leave
+GRID = "LeaveDays"
+GRID_SAMPLE = {"Casey Kim": {"Nov-26": "16, 17(0.5), 18, 19, 20, 23, 24, 25, 26, 27"},
+               "Jordan Lee": {"Oct-26": "30", "Dec-26": "21, 22, 23(0.5)"}}
+
+
+def _days_of(text):
+    """{day: amount} from leave text: "16, 17(0.5)" -> {16: 1, 17: 0.5}."""
+    out = {}
+    for part in str(text).replace(";", ",").split(","):
+        part = part.strip()
+        if part:
+            day, _, amount = part.partition("(")
+            out[int(day)] = float(amount.rstrip(")")) if amount else 1
+    return out
+
+
+def build_leave_grid(wb, ws, top, blank, n_rows=GRID_ROWS):
+    """Release 1.0: the leave day grid (table LeaveDays) under the Resources table. One row per person per month:
+    pick the person and the month, then type 1 (a day) or 0.5 (half a day) under each day off. Days builds the
+    same text a month cell holds ("16, 17(0.5)") with TEXTJOIN, and every leave look-up adds it to the person's
+    month cell, so either way of entering leave counts (once each: don't enter the same day in both).
+    Returns the row under the grid."""
+    ws.cell(top - 2, 2, "LEAVE BY DAY: one row per person and month; type 1 (all day) or 0.5 (half a day) under "
+                        "each day off. It adds to the month columns above.").font = font(bold=True, color="1F4E78")
+    data = {} if blank else GRID_SAMPLE
+    entries = [(person, month, _days_of(text)) for person, months in data.items() for month, text in months.items()]
+    t = Tab(GRID)
+    day = lambda k: t.row(str(k))
+    text = ",".join(f'IF({day(k)}="","",{k}&IF(N({day(k)})=1,"","("&N({day(k)})&")"))' for k in range(1, 32))
+    cols = [Col("Resource", "in", 22, values=[e[0] for e in entries], note="Pick the person (Resources)."),
+            Col("Month", "in", 9, values=[e[1] for e in entries], note="Pick the month: one of the month columns "
+                                                                         "above, e.g. Nov-26."),
+            *[Col(str(k), "in", 3.6, center=True, values=[e[2].get(k) for e in entries]) for k in range(1, 32)],
+            Col("Days", "calc", 26, formula=f'_xlfn.TEXTJOIN(", ",TRUE(),{text})',
+                note="The days off as the month cells write them: what the reports read."),
+            Col("_Key", "help", 6, formula=f'{t.row("Resource")}&"|"&{t.row("Month")}',
+                note="Person|month: the look-up key (helper).")]
+    letters = add_table(ws, GRID, top, 2, cols, n_rows)
+    ws.column_dimensions[letters["_Key"]].hidden = True
+    name(wb, "lv_Days", f"{GRID}[Days]")
+    name(wb, "lv_Key", f"{GRID}[_Key]")
+    first, last = top + 1, top + n_rows
+    for formula, key, kind in (("=res_Name", "Resource", "list"), ("=leave_Months", "Month", "list")):
+        dv = DataValidation(type=kind, formula1=formula, showErrorMessage=True, showInputMessage=True,
+                            promptTitle=key, prompt=cols[0 if key == "Resource" else 1].note)
+        ws.add_data_validation(dv)
+        dv.add(col_range(letters[key], first, last))
+    amount = DataValidation(type="decimal", operator="between", formula1="0", formula2="1", showErrorMessage=True,
+                            error="1 = a day off, 0.5 = half a day.", showInputMessage=True, promptTitle="Day off",
+                            prompt="1 = all day, 0.5 = half a day. Weekends and holidays don't count.")
+    ws.add_data_validation(amount)
+    amount.add(f"{letters['1']}{first}:{letters['31']}{last}")
+    return last + 1

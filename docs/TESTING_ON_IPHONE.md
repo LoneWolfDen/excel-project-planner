@@ -61,6 +61,25 @@ Tick each one and note anything odd (a screenshot is ideal).
 - [ ] Agile: the sprint table, release figures and charts show; picking a sprint under "Sprint to show" lists its tasks. Resources: the person-days and points grids fill in. Cost: task costs and earned value show; deleting the sheet leaves no #REF! elsewhere. Resource Report: hours and utilisation by sprint fill in; red cells only where someone is over capacity.
 - [ ] Tasks: the Resource and Type cells show dropdowns.
 
+## Release 1.0 (`release-1.0/Project_Planner.xlsx`, about 10 minutes)
+
+Open the Release 1.0 sample the same way. On a phone the dropdowns open as a list at the bottom of the screen.
+
+- [ ] Opens with no repair message; no `#` errors (the sample's status date is 25-Oct-2026).
+- [ ] Tasks: Pred1 on task 14 shows a dropdown of "UID Name" entries; pick "12 Data model & database setup": Start
+      moves, no Issues. Undo. The input message shows when the cell is selected.
+- [ ] Type `2days` in a Duration: refused. `2w` is taken; the row's Finish moves to 10 working days. Undo.
+- [ ] Type a UID that another task has (e.g. `5` in task 6's UID): refused.
+- [ ] Res1 offers the people on Resources; Units1 takes 50%.
+- [ ] Resources > LEAVE BY DAY (under the people): Casey Kim's November row has 1s and a 0.5; its Days column reads
+      "16, 17(0.5), 18 ...". Type 1 under a weekday for Sam Rivera in a new row (pick the person and month): the
+      Resource Report's leave for that week rises.
+- [ ] Check: the counts, "n to fix before you report" in red, and the lists of tasks with Issues, over-allocated tasks
+      and overdue Log items. Fix one (e.g. close the overdue Log item): the count drops.
+- [ ] TakeSnapshot: each link jumps to its place (the snapshot row, History, the BL Source and Baseline columns).
+- [ ] Status, Check, Log: typing in a grey cell is refused; the blue cells take it. Tasks: Insert a table row works.
+- [ ] Simple (`release-1.0/Project_Planner_Simple.xlsx`): six sheets, 12 tasks, no errors.
+
 ## Timing in Microsoft 365 (desktop, about 5 minutes)
 
 CI times recalculation in LibreOffice only. Once per release, time the same edits in Excel (B-1016):

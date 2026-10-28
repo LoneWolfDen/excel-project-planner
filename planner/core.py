@@ -178,15 +178,35 @@ MODULES = {"agile": "Agile", "log": "Log", "history": "History", "resources": "R
 _MODULE_NAMES = {"agile": r"\b(spr_|agl_|cap_|ShownSprint|ShowSprintInput|CurrentSprint|SprintLastEnd|TotalPoints)",
                  "log": r"\blog_", "resources": r"\b(rw_|load_Grid|spr_LeaveGrid)", "cost": r"\b(evm_|cost_)"}
 ACTIVE = set(MODULES)
+# Release 1.0 (the --release build, its own workbooks in release-1.0/): two more optional sheets, never in Simple
+RELEASE_MODULES = {"check": "Check", "snapshot": "TakeSnapshot"}
+RELEASE = {"on": False}
+_MODULE_NAMES.update({"check": r"\bchk_", "snapshot": r"\bsnap_"})
+
+
+def set_release(on):
+    """Build the Release 1.0 edition (pickers, the leave day grid, Check, TakeSnapshot ...) or the classic workbook.
+    Called once per build, before set_modules, by build.make_workbook."""
+    RELEASE["on"] = bool(on)
+
+
+def release():
+    return RELEASE["on"]
+
+
+def all_modules():
+    """The optional sheets this edition can have: {module: sheet name}."""
+    return {**MODULES, **RELEASE_MODULES} if release() else dict(MODULES)
 
 
 def set_modules(modules):
     """The modules this build includes (None = all)."""
-    unknown = set(modules or ()) - set(MODULES)
+    known = all_modules()
+    unknown = set(modules or ()) - set(known)
     if unknown:
-        raise ValueError(f"unknown modules: {', '.join(sorted(unknown))} (choose from {', '.join(MODULES)})")
+        raise ValueError(f"unknown modules: {', '.join(sorted(unknown))} (choose from {', '.join(known)})")
     ACTIVE.clear()
-    ACTIVE.update(MODULES if modules is None else modules)
+    ACTIVE.update(known if modules is None else modules)
 
 
 def has(module):
@@ -197,8 +217,9 @@ def missing(text):
     """True when a formula (or a sheet name) needs a module this build leaves out."""
     import re
     text = str(text or "")
-    gone = [m for m in MODULES if m not in ACTIVE]
-    return any(text == MODULES[m] or (m in _MODULE_NAMES and re.search(_MODULE_NAMES[m], text)) for m in gone)
+    known = all_modules()
+    gone = [m for m in known if m not in ACTIVE]
+    return any(text == known[m] or (m in _MODULE_NAMES and re.search(_MODULE_NAMES[m], text)) for m in gone)
 
 
 def col_range(letter, first_row, last_row):

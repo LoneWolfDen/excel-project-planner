@@ -27,12 +27,22 @@ jobs:
           python3 scripts/build_planner.py dist/Project_Planner_Blank.xlsx --blank --recalc
           python3 scripts/build_planner.py dist/Project_Planner_Simple.xlsx --baselined --simple --recalc
           python3 scripts/build_planner.py dist/Stress_1000_tasks.xlsx --tasks 1000 --stress 33
+          python3 scripts/build_planner.py dist/Release_Planner.xlsx --release --baselined --recalc
+          python3 scripts/build_planner.py dist/Release_Stress_1000_tasks.xlsx --release --tasks 1000 --stress 33
 
       - name: Performance check (sample)
         run: python3 scripts/perf_check.py dist/Project_Planner.xlsx --profile sample --timing
 
       - name: Performance check (1,000-task stress workbook)
         run: python3 scripts/perf_check.py dist/Stress_1000_tasks.xlsx --profile stress --timing
+
+      - name: Performance check (Release 1.0 sample and 1,000-task stress workbook)
+        run: |
+          python3 scripts/perf_check.py dist/Release_Planner.xlsx --profile sample --timing
+          python3 scripts/perf_check.py dist/Release_Stress_1000_tasks.xlsx --profile stress --timing
+
+      - name: Release 1.0 checklist
+        run: python3 scripts/release_check.py
 
       # docs/export.html in headless Chromium, with Pyodide from its GitHub release instead of the CDN
       - name: Browser export page

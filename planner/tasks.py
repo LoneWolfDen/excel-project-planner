@@ -24,7 +24,8 @@ from openpyxl.utils import column_index_from_string, get_column_letter
 from openpyxl.worksheet.cell_range import MultiCellRange
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from .core import (DATE, LABEL_FONT, NOTE_FONT, Col, Tab, add_table, col_range, fill, has, missing, name, title)
+from .core import (DATE, LABEL_FONT, NOTE_FONT, Col, Tab, add_table, col_range, fill, has, missing, name, release,
+                   title)
 
 TABLE = "Tasks"
 HEADER_ROW = 5
@@ -95,6 +96,13 @@ N = {
     # the timeline to the right of the table (planner/gantt.py) reads these in its conditional formatting
     "IsMile": "_IsMilestone", "GDoneFrom": "_DoneFrom", "GDoneTo": "_DoneTo", "GRemFrom": "_RemFrom",
     "GRemTo": "_RemTo", "ShowPlan": "_ShowPlan",
+    # Release 1.0 only (configure): the typed cells, the pickers and the cleaned values the formulas read instead
+    "DurIn": "Duration", "Days": "_Days", "PredRaw": "Predecessors", "PredUse": "_Predecessors",
+    "ResRaw": "Resources", "ResUse": "_Resources", "PickKey": "_PickKey", "Pick": "_PickList",
+    "IssueKey": "_IssueKey", "OverKey": "_OverAllocKey",
+    **{f"Pick{k}": f"Pred{k}" for k in LINK_NUMBERS}, **{f"PickT{k}": f"Type{k}" for k in LINK_NUMBERS},
+    **{f"PickL{k}": f"Lag{k}" for k in LINK_NUMBERS}, **{f"Who{k}": f"Res{k}" for k in range(1, PEOPLE + 1)},
+    **{f"WhoU{k}": f"Units{k}" for k in range(1, PEOPLE + 1)},
 }
 
 # defined names used by every other sheet (tsk_Duration = Tasks[Duration], ...)
@@ -124,19 +132,27 @@ NAMES = {
 }
 
 
+# Release 1.0: these inputs are read through a cleaned helper column (configure): Duration "2w" -> _Days 10, the
+# Predecessors / Resources text -> _Predecessors / _Resources (the pickers when used, otherwise the typed text)
+ALIAS = {}
+RELEASE_ALIAS = {"Dur": "Days", "PredIn": "PredUse", "ResIn": "ResUse"}
+RELEASE_NAMES = {"DurIn": "tsk_DurationInput", "Pick": "tsk_PickList", "IssueKey": "tsk_IssueKey",
+                 "OverKey": "tsk_OverAllocKey"}
+
+
 def R(key):
     """This row's value of a column: [@Column]."""
-    return T.row(N[key])
+    return T.row(N[ALIAS.get(key, key)])
 
 
 def C(key):
     """The whole column: Tasks[Column]."""
-    return T.col(N[key])
+    return T.col(N[ALIAS.get(key, key)])
 
 
 def H(key):
     """The column's header cell: an anchor for ROW."""
-    return T.head(N[key])
+    return T.head(N[ALIAS.get(key, key)])
 
 
 def other_row(key, pos):
@@ -287,8 +303,14 @@ def input_issues(R, leaf):
     checks = [("Dur", "Duration", "a number", "type working days, e.g. 3."),
               ("AS", "Actual Start", "a date", "type it as a date."), ("AF", "Actual Finish", "a date", "type it as a date."),
               ("Cons", "Constraint Date", "a date", "type it as a date."), ("DL", "Deadline", "a date", "type it as a date.")]
-    return "".join(f"&IF(AND({R(key)}<>\"\",NOT(ISNUMBER({R(key)}))),\"{label} isn't {kind}: {fix} \",\"\")"
+    if release():                                      # Duration takes 3, 3d or 2w: _Days says when it can't be read
+        checks = checks[1:]
+    text = "".join(f"&IF(AND({R(key)}<>\"\",NOT(ISNUMBER({R(key)}))),\"{label} isn't {kind}: {fix} \",\"\")"
                    for key, label, kind, fix in checks)
+    if release():
+        text = (f'&IF(AND({R("DurIn")}<>"",{R("Days")}=""),"Duration "&{R("DurIn")}&" can\'t be read: type 3, 3d or '
+                f'2w. ","")' + text)
+    return text
 
 
 def each_link(template):
@@ -549,8 +571,69 @@ def formulas():
                      f'"Only the first {PEOPLE} people in Resources are used. ",""))'
                    f'&IF({R("OverAlloc")}="Yes","Over-allocated: see the Resource Report. ","")'
                    + progress_issues(R, leaf)
-                   + f'&IF(LEFT({R("DLChk")},4)="Late","Misses its deadline ("&LOWER({R("DLChk")})&"). ","")))')
+                   + f'&IF(LEFT({R("DLChk")},4)="Late","Misses its deadline ("&LOWER({R("DLChk")})&"). ","")'
+                   + (release_issues() if release() else "") + "))")
+    if release():
+        f.update(release_formulas(f))
     return f
+
+
+def release_issues():
+    """Issues text the Release 1.0 inputs add: typed text that the pickers override."""
+    picked = lambda keys: "OR(" + ",".join(f'{R(k)}<>""' for k in keys) + ")"
+    return (f'&IF(AND({R("PredRaw")}<>"",{picked(each("Pick"))}),"The Predecessors text is ignored: the Pred '
+            f'pickers are used. ","")'
+            f'&IF(AND({R("ResRaw")}<>"",{picked([f"Who{k}" for k in range(1, PEOPLE + 1)])}),"The Resources text is '
+            f'ignored: the Res pickers are used. ","")')
+
+
+def release_formulas(f):
+    """Release 1.0 columns: the cleaned Duration, the pickers' links and people as the text the scheduler already
+    reads (so the scheduling formulas are the same in both editions), the pick list, the Check sheet's keys and
+    the baseline source that Settings > TakeBaseline steers. Excel 2019: TEXTJOIN, no LET / LAMBDA."""
+    nm, blank, s = R("Name"), f'{R("Name")}=""', R("IsSum")
+    g = {}
+    # Duration: 3, "3d" or "2w" (5 working days a week); "" when it can't be read (Issues says so). The named-formula
+    # idea (L_PARSE_DURATION) needs LAMBDA, which Excel 2019 lacks: this one column is the parser.
+    raw = R("DurIn")
+    t = f'LOWER(TRIM({raw}))'
+    unit = f'IF(RIGHT({t},1)="w",5,IF(RIGHT({t},1)="d",1,NA()))'
+    g["Days"] = (f'IF({raw}="","",IF(ISNUMBER({raw}),{raw},IFERROR(VALUE({t}),'
+                 f'IFERROR(VALUE(LEFT({t},LEN({t})-1))*{unit},""))))')
+
+    # predecessor pickers: Pred k holds a UID or a pick-list entry "12 Requirements"; Type k and Lag k are optional
+    def link(k):
+        pick, typ, lag = R(f"Pick{k}"), R(f"PickT{k}"), f'N({R(f"PickL{k}")})'
+        uid = f'IFERROR(VALUE(LEFT({pick}&"",FIND(" ",{pick}&" ")-1)),{pick})'
+        return (f'IF({pick}="","",{uid}&IF(AND(OR({typ}="",{typ}="FS"),{lag}=0),"",IF({typ}="","FS",{typ})'
+                f'&IF({lag}=0,"",IF({lag}>0,"+","")&{lag}&"d")))')
+    none = lambda keys: "AND(" + ",".join(f'{R(k)}=""' for k in keys) + ")"
+    g["PredUse"] = (f'IF({none(each("Pick"))},{R("PredRaw")}&"",'
+                    f'_xlfn.TEXTJOIN(", ",TRUE(),{",".join(link(k) for k in LINK_NUMBERS)}))')
+
+    def person(k):
+        who, units = R(f"Who{k}"), R(f"WhoU{k}")
+        return (f'IF({who}="","",{who}&IF(OR({units}="",N({units})=1),"",'
+                f'"["&ROUND(N({units})*100,0)&"%]"))')
+    people_keys = [f"Who{k}" for k in range(1, PEOPLE + 1)]
+    g["ResUse"] = (f'IF({none(people_keys)},{R("ResRaw")}&"",'
+                   f'_xlfn.TEXTJOIN(", ",TRUE(),{",".join(person(k) for k in range(1, PEOPLE + 1))}))')
+    # the Pred pickers' list: detail tasks only, in plan order, with no gaps (row k = the k-th detail task)
+    g["PickKey"] = f'IF({R("IsLeaf")}=1,{R("Idx")},"")'
+    nth = f'SMALL({C("PickKey")},{R("Idx")})'
+    g["Pick"] = f'IFERROR(INDEX({C("UID")},{nth})&" "&INDEX({C("Name")},{nth}),"")'
+    # the Check sheet's lists
+    if has("check"):
+        g["IssueKey"] = f'IF(AND({nm}<>"",{R("Issues")}<>""),{R("Idx")},"")'
+        g["OverKey"] = f'IF({R("OverAlloc")}="Yes",{R("Idx")},"")'
+    # the baseline source: TakeBaseline = Yes re-baselines every task; No keeps each pasted baseline and gives the
+    # current dates only to tasks that have none, so one copy and paste never loses an agreed baseline
+    keep = lambda current, base: f'IF({blank},"",IF(OR(TakeBaseline="Yes",N({R(base)})=0),{current},{R(base)}))'
+    duration = f'IF({s},NETWORKDAYS.INTL({R("FS")},{R("FF")},{WD}),N({R("Dur")}))'
+    g["SrcS"], g["SrcF"] = keep(R("FS"), "BS"), keep(R("FF"), "BF")
+    g["SrcD"], g["SrcW"] = keep(duration, "BD"), keep(R("Work"), "BW")
+    g["DVar"] = f'IF(OR({blank},{R("BD")}=""),"",{duration}-N({R("BD")}))'
+    return g
 
 
 def each(prefix):
@@ -562,7 +645,7 @@ HELPER_DATES = {"CPS", "CPF", "LCS", "LCF", "LFS", "LFF", "XCS", "XCF", "XFS", "
                 "DoneDate", "CStart", "CLow", "CHigh", *each("D"), *each("E"), "GDoneFrom", "GDoneTo", "GRemFrom",
                 "GRemTo"}
 # key, kind, width, number format, centre, header note
-LAYOUT = [
+_BASE_LAYOUT = [
     ("ID", "calc", 5, None, True, "Position in the list; renumbers when rows move (like MS Project)."),
     ("UID", "in", 6, None, True, "Permanent number that predecessors refer to. Each task needs a different one."),
     ("WBS", "calc", 8, None, True, "Outline number, generated from Level."),
@@ -642,6 +725,20 @@ LAYOUT = [
                "LWDone", "DoneDate", "LPts", "CurKey", "IsMile", "GDoneFrom", "GDoneTo", "GRemFrom", "GRemTo",
                "ShowPlan")]
 
+# Release 1.0 columns (configure adds them): the pickers are inputs; the rest are helpers
+_RELEASE_LAYOUT = (
+    [row for k in LINK_NUMBERS for row in (
+        (f"Pick{k}", "in", 16, None, False, f"Predecessor {k}: pick a task (its UID and name) or type its UID. It must "
+                                            "be a detail task above this one."),
+        (f"PickT{k}", "in", 6, None, True, "Link type: FS (blank: finish to start), SS, FF or SF."),
+        (f"PickL{k}", "in", 6, None, True, "Lag in working days (negative = lead). Blank = 0."))]
+    + [row for k in range(1, PEOPLE + 1) for row in (
+        (f"Who{k}", "in", 18, None, False, f"Person {k} on the task: pick a name from Resources."),
+        (f"WhoU{k}", "in", 7, "0%", True, "Share of their time on this task (blank = Settings > DefaultUnits)."))]
+    + [(k, "help", 11, None, False, None) for k in ("Days", "PredUse", "ResUse", "PickKey", "Pick")]
+)
+CHECK_LAYOUT = [(k, "help", 8, None, False, None) for k in ("IssueKey", "OverKey")]
+
 # The sheet's sections, left to right. The first holds what a plan needs and is always shown; each optional section is
 # an Excel column group, collapsed, whose +/- button sits on its first (key) column, which stays visible. (Excel would
 # merge groups that touch, so every section keeps one visible column.) Nothing is removed: + shows the rest.
@@ -656,11 +753,47 @@ SECTIONS = [
     ("BASELINE", "DVar",
      ["WVar", "SrcS", "SrcF", "SrcD", "SrcW", "BS", "BF", "BD", "BW"]),
 ]
-_by_key = {row[0]: row for row in LAYOUT}
-_shown = [k for _, key, rest in SECTIONS for k in ([key] if key else []) + rest]
-assert len(_shown) == len(set(_shown)) and all(_by_key[k][1] != "help" for k in _shown), "every column once"
-LAYOUT = [_by_key[k] for k in _shown] + [row for row in LAYOUT if row[1] == "help"]
-assert len(LAYOUT) == len(_by_key), "a visible column is missing from SECTIONS"
+# Release 1.0: the pickers first (Pred1 / Type1 / Lag1 and Res1 / Units1 shown; + shows links 2-4, people 2-4 and the
+# typed text cells, which still work when the pickers are blank), then the progress columns
+RELEASE_SECTIONS = [
+    ("PLAN: type or pick in the blue columns", None, ["ID", "UID", "Level", "Name", "Dur"]),
+    ("PREDECESSORS: pick", None, ["Pick1", "PickT1"]),
+    ("+ links 2-4, text", "PickL1", [f"{x}{k}" for k in LINK_NUMBERS[1:] for x in ("Pick", "PickT", "PickL")]
+     + ["PredIn"]),
+    ("RESOURCES: pick", None, ["Who1"]),
+    ("+ people 2-4, text", "WhoU1", [f"{x}{k}" for k in range(2, PEOPLE + 1) for x in ("Who", "WhoU")] + ["ResIn"]),
+    ("PROGRESS", None, ["Stage", "AS", "AF", "FS", "FF", "Sprint", "Notes", "Issues"]),
+] + SECTIONS[1:]
+LAYOUT = []
+SHOWN_SECTIONS = []
+
+
+def configure():
+    """Set the Tasks layout, sections and input aliases for this build's edition (core.release) and modules. Called
+    once per build by build.make_workbook; LAYOUT and SHOWN_SECTIONS are changed in place, so modules that imported
+    them see the current build's."""
+    rows = list(_BASE_LAYOUT)
+    sections = SECTIONS
+    ALIAS.clear()
+    if release():
+        rows += _RELEASE_LAYOUT + (CHECK_LAYOUT if has("check") else [])
+        sections = RELEASE_SECTIONS
+        ALIAS.update(RELEASE_ALIAS)
+    by_key = {row[0]: row for row in rows}
+    shown = [k for _, key, rest in sections for k in ([key] if key else []) + rest]
+    assert len(shown) == len(set(shown)) and all(by_key[k][1] != "help" for k in shown), "every column once"
+    ordered = [by_key[k] for k in shown] + [row for row in rows if row[1] == "help"]
+    assert len(ordered) == len(by_key), "a visible column is missing from SECTIONS"
+    LAYOUT[:] = ordered
+    SHOWN_SECTIONS[:] = sections
+
+
+def input_keys():
+    """Every Tasks input key of either edition (the upgrade reads a workbook by header before it knows which)."""
+    return [row[0] for row in _BASE_LAYOUT + _RELEASE_LAYOUT if row[1] == "in"]
+
+
+configure()
 STATUS_COLOURS = {"Complete": "548235", "In Progress": "2F75B5", "Behind": "C00000", "Late Start": "C55A11",
                   "Not Started": "7F7F7F"}
 
@@ -694,7 +827,7 @@ def build_tasks(wb, rows, n_rows):
     L = add_table(ws, TABLE, HEADER_ROW, 1, cols, n_rows)
     ws.row_dimensions[HEADER_ROW].height = 42
     ws.sheet_properties.outlinePr.summaryRight = False       # a group's +/- sits on the column left of it
-    for label, key, rest in SECTIONS:
+    for label, key, rest in SHOWN_SECTIONS:
         first = L[key] if key else L[rest[0]]
         ws[f"{first}4"] = label
         ws[f"{first}4"].font = LABEL_FONT
@@ -702,8 +835,12 @@ def build_tasks(wb, rows, n_rows):
             group_columns(ws, L[rest[0]], L[rest[-1]], 1)
     ws[f"{L['Lvl']}4"] = "HELPER COLUMNS (hidden)"
     ws[f"{L['Lvl']}4"].font = LABEL_FONT
-    for key, defined in NAMES.items():
+    extra = {k: v for k, v in RELEASE_NAMES.items() if k in L} if release() else {}
+    for key, defined in {**NAMES, **extra}.items():
         name(wb, defined, C(key))
+    if release():                                      # what TakeSnapshot's baseline links select
+        name(wb, "tsk_BLSource", f"{TABLE}[[{N['SrcS']}]:[{N['SrcW']}]]")
+        name(wb, "tsk_Baseline", f"{TABLE}[[{N['BS']}]:[{N['BW']}]]")
     ws.freeze_panes = f"{L['Dur']}{HEADER_ROW + 1}"
     group_outline(ws, [r.get("Level") for r in rows], HEADER_ROW + 1)
     for i, r in enumerate(rows):                              # names indented by level, for the rows built in
@@ -765,6 +902,29 @@ PROMPTS = {
 }
 
 
+# Release 1.0: every picker says what to pick (Excel 2019 has no searchable dropdown, so the list is in plan order)
+RELEASE_PROMPTS = {
+    "Dur": ("Duration (working days)", "e.g. 5, 5d or 2w (a week = 5 days). 0 = a milestone. Summaries roll up: "
+                                       "leave them blank."),
+    "UID": ("UID", "Pre-filled and permanent: predecessors point at it. A new row: type the Next free UID shown at "
+                   "the top of this sheet. A duplicate is refused."),
+    "PredIn": ("Predecessors (typed)", "Used only while Pred1-4 are blank: e.g. 12, 14SS+2d (by UID). Pasted or "
+                                       "imported plans land here."),
+    "ResIn": ("Resources (typed)", "Used only while Res1-4 are blank: e.g. Alex Chen, JL[50%]. Pasted or imported "
+                                   "plans land here."),
+    **{f"Pick{k}": (f"Predecessor {k}", "Pick the task that must come first (UID and name), or type its UID. It must "
+                                        "be a detail task listed above this one.") for k in LINK_NUMBERS},
+    **{f"PickT{k}": (f"Link type {k}", "Blank or FS = after it finishes; SS = after it starts; FF = finish together; "
+                                       "SF = finish after it starts.") for k in LINK_NUMBERS},
+    **{f"PickL{k}": (f"Lag {k} (working days)", "Optional: days to wait after the link, e.g. 2. Negative = a lead "
+                                                "(overlap), e.g. -1.") for k in LINK_NUMBERS},
+    **{f"Who{k}": (f"Resource {k}", "Pick a person from Resources (add people there first).")
+       for k in range(1, PEOPLE + 1)},
+    **{f"WhoU{k}": (f"Units {k}", "Optional: their share of time on this task, e.g. 50%. Blank = Settings > "
+                                  "DefaultUnits.") for k in range(1, PEOPLE + 1)},
+}
+
+
 def _validation_and_formatting(ws, L, n_rows):
     """Data validation and conditional formatting: Excel only accepts A1 ranges here (it shifts them on insert)."""
     first, last = HEADER_ROW + 1, HEADER_ROW + n_rows
@@ -776,20 +936,43 @@ def _validation_and_formatting(ws, L, n_rows):
         for k in keys:
             r = copy.copy(rule)
             r.sqref = MultiCellRange()
-            if k in PROMPTS:
-                r.showInputMessage, (r.promptTitle, r.prompt) = True, PROMPTS[k]
+            prompts = {**PROMPTS, **RELEASE_PROMPTS} if release() else PROMPTS
+            if k in prompts:
+                r.showInputMessage, (r.promptTitle, r.prompt) = True, prompts[k]
             ws.add_data_validation(r)
             r.add(rng(k))
 
-    dv(DataValidation(type="whole", operator="greaterThanOrEqual", formula1="1", showErrorMessage=True, errorTitle="UID",
-                      error="UID must be a whole number; give each task a different one (see Settings > NextFreeUID)."), "UID")
+    if release():
+        # Release 1.0: a typed UID must be new as well as whole (a duplicate would send links to the wrong task)
+        uid = at("UID").replace("$", "")
+        dv(DataValidation(type="custom", formula1=f"AND(ISNUMBER({uid}),{uid}>=1,{uid}=INT({uid}),"
+                                                  f"COUNTIF(tsk_UID,{uid})=1)",
+                          showErrorMessage=True, errorTitle="UID",
+                          error="A UID is a whole number used by no other task: type Settings > NextFreeUID (also at "
+                                "the top of this sheet)."), "UID")
+    else:
+        dv(DataValidation(type="whole", operator="greaterThanOrEqual", formula1="1", showErrorMessage=True,
+                          errorTitle="UID", error="UID must be a whole number; give each task a different one (see "
+                                                  "Settings > NextFreeUID)."), "UID")
     dv(DataValidation(type="whole", operator="between", formula1="1", formula2="9", showErrorMessage=True,
                       errorTitle="Level", error="Outline level must be 1-9 and at most 1 more than the row above."), "Level")
     dv(DataValidation(type="list", formula1="=L_Mode"), "Mode")
-    dv(DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0", showErrorMessage=True,
-                      error="Duration is in working days (0 = milestone)."), "Dur")
+    if release():
+        # 3, 3d or 2w (0 = milestone); "2days" is refused. Each part is wrapped so a number can't make it an error.
+        x = at("Dur").replace("$", "")
+        unit = f'OR(LOWER(RIGHT({x},1))="d",LOWER(RIGHT({x},1))="w")'
+        dv(DataValidation(type="custom", formula1=f"OR(AND(ISNUMBER({x}),{x}>=0),"
+                                                  f"IFERROR(AND({unit},VALUE(LEFT({x},LEN({x})-1))>=0),FALSE))",
+                          showErrorMessage=True, errorTitle="Duration",
+                          error="Working days: 3, 3d or 2w (a week = 5 days). 0 = a milestone."), "Dur")
+        dv(DataValidation(type="date", operator="greaterThanOrEqual", formula1="ProjectStart", showErrorMessage=True,
+                          errorTitle="Date", error="Type a date on or after the project start (Start sheet)."),
+           "Cons", "DL", "AS", "AF")
+    else:
+        dv(DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0", showErrorMessage=True,
+                          error="Duration is in working days (0 = milestone)."), "Dur")
+        dv(DataValidation(type="date", operator="greaterThan", formula1="1"), "Cons", "DL", "AS", "AF")
     dv(DataValidation(type="list", formula1="=L_Constraint"), "CType")
-    dv(DataValidation(type="date", operator="greaterThan", formula1="1"), "Cons", "DL", "AS", "AF")
     dv(DataValidation(type="decimal", operator="between", formula1="0", formula2="1", showErrorMessage=True,
                       error="Enter 0% - 100%."), "Pct")
     dv(DataValidation(type="list", formula1="=L_Stage"), "Stage")
@@ -798,11 +981,28 @@ def _validation_and_formatting(ws, L, n_rows):
     if has("agile"):
         dv(DataValidation(type="list", formula1="=spr_Name"), "SprIn")
     dv(DataValidation(allow_blank=True), "Name", "Notes", "PredIn", "Owner")  # prompts only: any text
+    if release():
+        # the pickers: a list to pick from (typing a UID or a name not on the list is allowed; Issues checks it)
+        dv(DataValidation(type="list", formula1="=tsk_PickList", showErrorMessage=False), *each("Pick"))
+        dv(DataValidation(type="list", formula1="=L_DepType"), *each("PickT"))
+        dv(DataValidation(type="decimal", operator="between", formula1="-999", formula2="999", showErrorMessage=True,
+                          error="Lag in working days, e.g. 2 or -1."), *each("PickL"))
+        dv(DataValidation(type="list", formula1="=res_Name", showErrorMessage=False),
+           *[f"Who{k}" for k in range(1, PEOPLE + 1)])
+        dv(DataValidation(type="decimal", operator="between", formula1="0", formula2="1", showErrorMessage=True,
+                          error="A share of their time: 0% - 100%."), *[f"WhoU{k}" for k in range(1, PEOPLE + 1)])
 
     cf = ws.conditional_formatting
     cf.add(f"A{first}:{L['BW']}{last}", FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(bold=True), fill=fill("DDEBF7")))
-    for k in ("Dur", "PredIn", "CType", "Cons", "AS", "AF", "Stage", "Pct", "ResIn", "SprIn", "SP"):
-        cf.add(rng(k), FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(color="A6A6A6", italic=True, bold=True)))
+    greyed = ("Dur", "PredIn", "CType", "Cons", "AS", "AF", "Stage", "Pct", "ResIn", "SprIn", "SP")
+    if release():                     # one rule over every input a summary ignores (the formula's column is fixed)
+        greyed += tuple(k for k in L if k.startswith(("Pick", "Who")))
+        cf.add(" ".join(rng(k) for k in greyed),
+               FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(color="A6A6A6", italic=True, bold=True)))
+    else:
+        for k in greyed:
+            cf.add(rng(k), FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(color="A6A6A6", italic=True,
+                                                                                      bold=True)))
     for status, colour in STATUS_COLOURS.items():
         cf.add(rng("Status"), FormulaRule(formula=[f'{at("Status")}="{status}"'], font=Font(color=colour, bold=True)))
     for k in ("SVar", "Var", "DVar", "WVar"):

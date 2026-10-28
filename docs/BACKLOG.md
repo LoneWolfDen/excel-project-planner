@@ -109,11 +109,13 @@ Template 1.1 is its own workbook too: `--release 1.1` builds `release-1.1/` (Tem
 | F-1107 | ✅ Capacity chart | P2 | Agile: available vs planned person-days per sprint (bar chart over SprintTable) | `test_capacity_chart` | none (a chart) |
 | F-1109 | ✅ Fewer conditional-formatting rules (part) | P2 | 119 -> 106 in the 1.1 sample: `release.merge_rules` makes one rule of identical rules whose formula fixes every column and whose ranges start on the same row (the Log's type grey-outs), and the Log's status words share a rule per colour. The Gantt, RAG and variance rules use relative column references, which Excel reads against a range's top-left cell, so merging them could change their meaning; they stay | `test_merged_rules_mean_the_same` (every cell gets the same rules in the same order), `test_committed_rule_count` | fewer rules |
 
+| F-1108 | ✅ Microsoft 365 edition | P2 | A separate edition, `--release m365` -> `release-1.1-m365/` (TemplateVersion "1.1 M365", PlannerVersion 2.1-m365), so 1.1 is never at risk: named LAMBDAs with LET (`L_PARSE_DURATION` for `_Days` and Sandbox, `L_WORKING_DAYS` for the Log's Gap and the finish variance, `L_IS_WORKING_DAY` for a new Issues check), the Check lists as FILTER array formulas (the three key columns go). The scheduling passes are unchanged. Saved without values (LibreOffice can't calculate it) | `tests/test_m365.py` (structure: the names as Excel stores them, the formulas call them, the 1.1 inputs, no missing names, the other editions unchanged); **values: by hand in Excel**, TESTING_IN_EXCEL.md section 8 | -900 formulas (47,890 vs 48,800) |
+
 ### v1.1 Future (not built yet)
 
 | ID | Item | Pri | Notes |
 |---|---|---|---|
-| F-1108 | Microsoft 365 edition | P2 | LET / LAMBDA named formulas (`L_PARSE_DURATION`, `L_WORKING_DAYS`, `L_IS_WORKING_DAY`), FILTER lists, a searchable pick list; needs a recalculation engine other than LibreOffice 24.2 in CI |
+| F-1110 | Microsoft 365 edition: spilled lists and a searchable pick list | P3 | Real spilled arrays (Excel's dynamic-array metadata, which openpyxl can't write) instead of fixed-size array formulas; a Pred dropdown filtered to the tasks above the row; CI recalculation once LibreOffice (24.8+) or another engine can evaluate LAMBDA |
 
 ## Done in v1.7 (was "Next up after v1.6")
 

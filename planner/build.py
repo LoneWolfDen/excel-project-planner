@@ -84,7 +84,8 @@ class ProjectData:
 VERSION = "1.8"          # PlannerVersion in every workbook: planner/upgrade.py reads it to know what to convert
 # PlannerVersion of each release-line edition (the code that builds it; planner/upgrade.py reads it), by its
 # TemplateVersion (the release users see: Start, every printed footer)
-PLANNER_VERSIONS = {"1.0": "2.0", "1.1": "2.1"}
+PLANNER_VERSIONS = {"1.0": "2.0", "1.1": "2.1", "m365": "2.1-m365"}
+TEMPLATE_LABELS = {"1.0": "1.0", "1.1": "1.1", "m365": "1.1 M365"}      # TemplateVersion, as users see it
 RELEASE_VERSION, TEMPLATE_VERSION = PLANNER_VERSIONS["1.0"], "1.0"
 
 
@@ -158,9 +159,12 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
         from .snapshot import build_snapshot
         build_snapshot(wb)
     build_instructions(wb, sizes, import_wizard)
+    if release_edition == "m365":                     # F-1108: the named LAMBDA functions the formulas call
+        from .m365 import define
+        define(wb)
     if release_edition:
         from .release import finish_release
-        finish_release(wb, release_edition)
+        finish_release(wb, TEMPLATE_LABELS[release_edition])
     for view in RELEASE_VIEWS if release_edition else VIEWS:     # B-1019: formulas can't be typed over by accident
         if view in wb.sheetnames:
             protect_view(wb[view])
@@ -257,11 +261,15 @@ def main(argv=None):
     p.add_argument("--release", nargs="?", const="1.0", default=None, choices=list(PLANNER_VERSIONS),
                    help="a release-line workbook: 1.0 (the default; release-1.0/: predecessor and resource pickers, a "
                         "leave day grid, Duration as 3 / 3d / 2w, the Check and TakeSnapshot sheets, more protection, "
-                        "print set-up) or 1.1 (release-1.1/: adds RACI, dependencies on Status, Sandbox, the status "
-                        "narrative and PERT estimates)")
+                        "print set-up), 1.1 (release-1.1/: adds RACI, dependencies on Status, Sandbox, the status "
+                        "narrative and PERT estimates) or m365 (release-1.1-m365/: 1.1 with named LAMBDA functions and "
+                        "FILTER lists; Microsoft 365 only, saved without --recalc)")
     a = p.parse_args(argv)
     modules = () if a.simple else None if a.modules is None else [m.strip() for m in a.modules.split(",") if m.strip()]
     sizes = Sizes(a.tasks, a.resources, a.grid_resources, a.sprints, a.gantt_columns, a.weeks)
+    if a.recalc and a.release == "m365":       # LibreOffice 24.2 has no LAMBDA / FILTER: its values would be errors
+        print("note: the m365 workbook is saved without --recalc; Excel calculates it when it opens")
+        a.recalc = False
     save(make_workbook(a.blank, stress=a.stress, sizes=sizes, import_wizard=a.import_wizard_sheets,
                        baselined=a.baselined, project_type=a.project_type, modules=modules,
                        release_edition=a.release), a.out, a.recalc)

@@ -25,7 +25,7 @@ from openpyxl.worksheet.cell_range import MultiCellRange
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from .core import (DATE, LABEL_FONT, NOTE_FONT, Col, Tab, add_table, col_range, fill, has, missing, name, release,
-                   title, v11)
+                   title, v11, m365)
 
 TABLE = "Tasks"
 HEADER_ROW = 5
@@ -591,7 +591,14 @@ def release_issues():
             f'pickers are used. ","")'
             f'&IF(AND({R("ResRaw")}<>"",{picked([f"Who{k}" for k in range(1, PEOPLE + 1)])}),"The Resources text is '
             f'ignored: the Res pickers are used. ","")'
-            + (v11_issues() if v11() else ""))
+            + (v11_issues() if v11() else "") + (m365_issues() if m365() else ""))
+
+
+def m365_issues():
+    """Microsoft 365 edition: actual dates on a day off (L_IS_WORKING_DAY, a named LAMBDA)."""
+    from .m365 import is_working_day
+    return "".join(f'&IF(AND(ISNUMBER({R(k)}),NOT({is_working_day(R(k))})),"{label} is not a working day. ","")'
+                   for k, label in (("AS", "Actual Start"), ("AF", "Actual Finish")))
 
 
 def v11_issues():
@@ -607,7 +614,11 @@ def v11_issues():
 
 def parse_days(raw):
     """Working days from a Duration-style cell: 3, "3d" or "2w" (5 working days a week); "" when it can't be read.
-    The named-formula idea (L_PARSE_DURATION) needs LAMBDA, which Excel 2019 lacks: the formula is written out."""
+    The named-formula idea (L_PARSE_DURATION) needs LAMBDA, which Excel 2019 lacks: the formula is written out,
+    except in the Microsoft 365 edition, which calls the named LAMBDA (planner/m365.py)."""
+    if m365():
+        from .m365 import days
+        return days(raw)
     t = f'LOWER(TRIM({raw}))'
     unit = f'IF(RIGHT({t},1)="w",5,IF(RIGHT({t},1)="d",1,NA()))'
     return (f'IF({raw}="","",IF(ISNUMBER({raw}),{raw},IFERROR(VALUE({t}),'
@@ -658,7 +669,7 @@ def release_formulas(f):
     nth = f'SMALL({C("PickKey")},{R("Idx")})'
     g["Pick"] = f'IFERROR(INDEX({C("UID")},{nth})&" "&INDEX({C("Name")},{nth}),"")'
     # the Check sheet's lists
-    if has("check"):
+    if has("check") and not m365():
         g["IssueKey"] = f'IF(AND({nm}<>"",{R("Issues")}<>""),{R("Idx")},"")'
         g["OverKey"] = f'IF({R("OverAlloc")}="Yes",{R("Idx")},"")'
     # the baseline source: TakeBaseline = Yes re-baselines every task; No keeps each pasted baseline and gives the
@@ -828,7 +839,8 @@ def configure():
     sections = SECTIONS
     ALIAS.clear()
     if release():
-        rows += _RELEASE_LAYOUT + (CHECK_LAYOUT if has("check") else []) + (V11_LAYOUT if v11() else [])
+        # the Microsoft 365 edition's Check lists FILTER the tasks directly: no key columns
+        rows += _RELEASE_LAYOUT + (CHECK_LAYOUT if has("check") and not m365() else []) + (V11_LAYOUT if v11() else [])
         sections = RELEASE_SECTIONS + (V11_SECTIONS if v11() else [])
         ALIAS.update(RELEASE_ALIAS)
     by_key = {row[0]: row for row in rows}

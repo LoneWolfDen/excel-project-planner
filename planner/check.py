@@ -10,7 +10,7 @@ from openpyxl.formatting.rule import FormulaRule
 from openpyxl.styles import Font
 
 from .core import (BOX, CALC_FILL, CALC_FONT, LABEL_FONT, NOTE_FONT, TITLE_FONT, Show, fill, font, has, header_cell,
-                   name, ranked_table, v11)
+                   name, ranked_table, v11, m365)
 
 SHEET = "Check"
 ROWS = 20                     # rows per list; drag a table's corner down for more
@@ -42,6 +42,9 @@ def build_check(wb):
     for col, width in {"A": 3, "B": 34, "C": 10, "D": 46, "E": 14, "F": 14, "G": 60}.items():
         ws.column_dimensions[col].width = width
     counts = [c for c in COUNTS + (V11_COUNTS if v11() else []) if has("log") or "log_" not in c[1]]
+    if m365():                                         # no key columns: count the tasks and items directly
+        from .m365 import COUNTS as DIRECT
+        counts = [(label, DIRECT.get(f, f), where) for label, f, where in counts]
     top = 4
     for c, text in enumerate(("Check", "Count", "Where to fix it"), start=2):
         header_cell(ws.cell(top, c), text)
@@ -64,6 +67,23 @@ def build_check(wb):
         color="548235", size=14, bold=True)))
 
     at = verdict.row + 3
+    if m365():                                         # F-1108: FILTER lists instead of ranked tables
+        from .m365 import check_lists, note
+        note(ws, at - 2)
+        check_lists(ws, at, ROWS)
+    else:
+        _ranked_lists(ws, at)
+    for col, width in {"A": 3, "B": 34, "C": 10, "D": 46, "E": 14, "F": 14, "G": 60}.items():
+        ws.column_dimensions[col].width = width     # the lists share the page's columns
+    ws.freeze_panes = "A4"
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    return ws
+
+
+def _ranked_lists(ws, at):
+    """Release 1.0 / 1.1: ranked tables over the key columns (Excel 2019)."""
     task = Show("Task", "tsk_Name", width=46)
     ranked_table(ws, "CheckIssues", at, 1, "tsk_IssueKey", ROWS,
                  [Show("ID", "tsk_ID", "num", 34), Show("UID", "tsk_UID", "num", 10), task,
@@ -80,10 +100,3 @@ def build_check(wb):
                      [Show("Ref", "log_Ref", "num"), Show("Type", "log_Type"), Show("Title", "log_Title"),
                       Show("Due", "log_Due", "date", fmt="dd-mmm-yy"), Show("Owner", "log_Owner")],
                      label='"OVERDUE LOG ITEMS"')
-    for col, width in {"A": 3, "B": 34, "C": 10, "D": 46, "E": 14, "F": 14, "G": 60}.items():
-        ws.column_dimensions[col].width = width     # the lists share the page's columns
-    ws.freeze_panes = "A4"
-    ws.page_setup.orientation = "landscape"
-    ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
-    ws.sheet_properties.pageSetUpPr.fitToPage = True
-    return ws

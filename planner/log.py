@@ -13,7 +13,7 @@ from openpyxl.formatting.rule import FormulaRule
 from openpyxl.styles import Font
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from .core import DATE, Col, Tab, add_table, col_range, fill, has, linked_task, name, title, v11
+from .core import DATE, Col, Tab, add_table, col_range, fill, has, linked_task, m365, name, title, v11
 
 SHEET = "Log"
 D = dt.date
@@ -91,9 +91,10 @@ def _dependency_columns(r, blank_row, data):
             note="The linked task's forecast start."),
         Col("Gap (days)", width=9, fmt="+0;-0;0", center=True,
             note="Dependency: working days from Expected to the task's start; negative = it arrives too late.",
-            formula=(f'IF(OR({blank_row},N({expected})=0,N({r("Task Start")})=0),"",'
-                     f'IF({r("Task Start")}>={expected},NETWORKDAYS.INTL({expected},{r("Task Start")},WorkWeek,Holidays)'
-                     f'-1,1-NETWORKDAYS.INTL({r("Task Start")},{expected},WorkWeek,Holidays)))')),
+            formula=(f'IF(OR({blank_row},N({expected})=0,N({r("Task Start")})=0),"",' + (
+                f'L_WORKING_DAYS({expected},{r("Task Start")}))' if m365() else
+                f'IF({r("Task Start")}>={expected},NETWORKDAYS.INTL({expected},{r("Task Start")},WorkWeek,Holidays)'
+                f'-1,1-NETWORKDAYS.INTL({r("Task Start")},{expected},WorkWeek,Holidays)))'))),
     ]
 
 
@@ -165,19 +166,19 @@ def build_log(wb, blank, n_rows=ROWS):
                      f'{r("Score")}+1-(ROW()-ROW({t.head("Ref")}))/100000,"")')),
     ] + ([Col("_OverdueKey", "help", 8, note="Overdue items by due date (the Check sheet's list).",
               formula=(f'IF({r("Overdue")}="Overdue",{r("Due")}+(ROW()-ROW({t.head("Ref")}))/100000,"")'))]
-         if has("check") else [])
+         if has("check") and not m365() else [])
        + ([Col("_DepKey", "help", 8, note="Open dependencies with an Expected date, latest against the task first "
                                          "(the Status sheet's list).",
                formula=(f'IF(AND({r("Type")}="Dependency",{open_},N({r("Expected")})>0),'
                         f'IF({r("Gap (days)")}="",100000,{r("Gap (days)")})+(ROW()-ROW({t.head("Ref")}))/100000,"")'))]
           if v11() else []), n_rows)
-    extra = {"_OverdueKey": "log_OverdueKey"} if has("check") else {}
+    extra = {"_OverdueKey": "log_OverdueKey"} if has("check") and not m365() else {}
     if v11():
         extra.update({"Expected": "log_Expected", "Gap (days)": "log_DepGap", "_DepKey": "log_DepKey",
                       "Update": "log_Update"})
     for column, defined in {**NAMES, **extra}.items():
         name(wb, defined, f"Log[{column}]")
-    last_helper = "_DepKey" if v11() else "_OverdueKey" if has("check") else "_TopKey"
+    last_helper = "_DepKey" if v11() else "_OverdueKey" if has("check") and not m365() else "_TopKey"
     ws.column_dimensions.group(letters["_Open"], letters[last_helper], hidden=True, outline_level=1)
     first, last = 5, 4 + n_rows
     rng = lambda k: col_range(letters[k], first, last)

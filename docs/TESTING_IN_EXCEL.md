@@ -66,3 +66,24 @@ section. If Excel asks, click **Enable Editing**. Report a failure with the shee
 - [ ] Settings > TakeBaseline = Yes, then TakeSnapshot's two baseline links (copy, Paste Special > Values): the Gantt
       outlines follow the current dates. Set it back to No.
 - [ ] Tick each line of [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) marked manual.
+
+## 8. Microsoft 365 edition (`release-1.1-m365/`)
+
+Excel for Microsoft 365 (or Excel 2021 or later) only. The tests can't calculate this edition (LibreOffice has no
+LAMBDA or FILTER), so this section is its real test. The file opens without values: give Excel a moment to
+calculate. Every value should equal the 1.1 sample's (`release-1.1/Project_Planner.xlsx`).
+
+- [ ] Opens without a repair message; no `#NAME?` anywhere (Home > Find > `#`, Look in: Values).
+- [ ] Formulas > Name Manager lists `L_PARSE_DURATION`, `L_WORKING_DAYS` and `L_IS_WORKING_DAY`, each starting
+      `=LAMBDA(`.
+- [ ] Tasks: Hypercare support (UID 26, Duration `2w`) has `_Days` 10; Training (UID 23, `1w`) has 5. Type `3d` in a
+      Duration: its `_Days` is 3. Undo.
+- [ ] Settings: Project finish variance 2; Finish P50 Fri 08-Jan-2027; Finish P80 Tue 12-Jan-2027; forecast finish
+      Wed 06-Jan-2027.
+- [ ] Log: Dependency 13's Gap (days) is -2; Dependency 5's is 1.
+- [ ] Check: "9 to fix before you report"; counts 4 (Issues), 0, 0, 0, 3 (over-allocated), 1 (overdue), 0, 0, 1
+      (late dependency). The lists show tasks 13, 19, 23, 26 with issues; 13, 23, 26 over-allocated; Log item 3
+      overdue. The rows under each list that FILTER doesn't fill are blank, not `#N/A`.
+- [ ] Type a Saturday in an Actual Start: Issues says "Actual Start is not a working day". Undo.
+- [ ] Settings > Sandbox = Yes: the red banner on Status, Core API endpoints (UID 13) gets 7 days. Set No.
+- [ ] Save, then export it with docs/export.html (the converter reads the values Excel saved).

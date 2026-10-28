@@ -181,7 +181,9 @@ ACTIVE = set(MODULES)
 # Release 1.0 (the --release build, its own workbooks in release-1.0/): two more optional sheets, never in Simple
 RELEASE_MODULES = {"check": "Check", "snapshot": "TakeSnapshot"}
 RELEASE = {"on": False, "version": None}
-EDITIONS = ("1.0", "1.1")              # template versions of the release line; each later one adds to the one before
+# template versions of the release line; each later one adds to the one before. "m365" is template 1.1 rebuilt with
+# Microsoft 365 functions (LAMBDA, LET, FILTER): its own folder, so a problem there never touches 1.1 (F-1108)
+EDITIONS = ("1.0", "1.1", "m365")
 _MODULE_NAMES.update({"check": r"\bchk_", "snapshot": r"\bsnap_"})
 
 
@@ -208,8 +210,14 @@ def release():
 
 
 def v11():
-    """True for template 1.1 and later: the v1.1 features (docs/BACKLOG.md F-1101 - F-1105)."""
+    """True for template 1.1 and later: the v1.1 features (docs/BACKLOG.md F-1101 - F-1107)."""
     return release() and EDITIONS.index(RELEASE["version"]) >= EDITIONS.index("1.1")
+
+
+def m365():
+    """True for the Microsoft 365 edition (F-1108): named LAMBDA functions and FILTER lists. Excel 2019 can't open
+    it correctly, and LibreOffice 24.2 can't calculate it, so it is tested by structure and checked in Excel."""
+    return release() and RELEASE["version"] == "m365"
 
 
 def all_modules():

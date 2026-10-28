@@ -36,7 +36,8 @@ Template 1.1, in [`release-1.1/`](release-1.1/), is Release 1.0 plus: **RACI** o
 Informed; Responsible = the Resources) with counts per person; **external dependencies** with an Expected date and the
 gap to their task, the five latest on Status; a **Sandbox** (type what-if durations, Settings > Sandbox = Yes, and
 the whole plan shows the what-if, flagged on Status and Check); an **automatic summary** paragraph on Status; and
-**three-point estimates** (Optimistic / Pessimistic) giving a P50 and P80 finish. Build with `--release 1.1`; check
+**three-point estimates** (Optimistic / Pessimistic) giving a P50 and P80 finish; a **risk-exposure** trend on
+History (open RAID scores added up at each snapshot) and an available vs planned **capacity chart** on Agile. Build with `--release 1.1`; check
 with `python scripts/release_check.py --edition 1.1`; move a 1.0 workbook up with
 `python scripts/upgrade_planner.py Old.xlsx New.xlsx --release 1.1`. `release-1.0/` doesn't change.
 

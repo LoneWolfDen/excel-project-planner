@@ -10,9 +10,13 @@
     Review > Protect Sheet (no password) locks only the formulas. They are left unprotected because Excel can't add
     table rows on a protected sheet; build.RELEASE_VIEWS lists the sheets that ship protected.
 """
-from openpyxl.styles import Protection
+import re
 
-from .core import INPUT_FONT, NOTE_FONT, name
+from openpyxl.formatting.formatting import ConditionalFormattingList
+from openpyxl.styles import Protection
+from openpyxl.utils.cell import range_boundaries
+
+from .core import INPUT_FONT, NOTE_FONT, name, v11
 from .settings import START
 
 PRINTED = ("Status", "Roadmap", "Resource Report", "Check")
@@ -39,8 +43,40 @@ def _print_setup(ws, version):
     ws.page_margins.header = ws.page_margins.footer = 0.3
 
 
+# a cell reference whose column isn't fixed ($): a rule using one means something different on each range
+RELATIVE_COLUMN = re.compile(r"(?<![$A-Za-z0-9_\[\]])[A-Z]{1,3}\$?\d+\b")
+
+
+def merge_rules(ws):
+    """F-1109: one conditional-formatting rule where several are the same rule on different column ranges.
+
+    Two rules merge only when their type, formula, format and operator are the same, their formula fixes every
+    column ($X6), and their ranges start on the same row: Excel then reads the formula the same way on every range,
+    whichever range it takes as the anchor. Rules keep the order (priority) of their first range."""
+    merged, order = {}, []
+    for cf in ws.conditional_formatting:
+        for rule in cf.rules:
+            formula = tuple(rule.formula or ())
+            tops = {range_boundaries(r)[1] for r in str(cf.sqref).split()}
+            fixed = not any(RELATIVE_COLUMN.search(f) for f in formula)
+            key = (rule.type, formula, repr(rule.dxf), rule.operator, rule.stopIfTrue, min(tops)) if fixed and \
+                len(tops) == 1 else (id(rule), str(cf.sqref))
+            if key not in merged:
+                merged[key] = (rule, [])
+                order.append(key)
+            merged[key][1].append(str(cf.sqref))
+    rules = ConditionalFormattingList()
+    for key in order:
+        rule, ranges = merged[key]
+        rules.add(" ".join(dict.fromkeys(" ".join(ranges).split())), rule)
+    ws.conditional_formatting = rules
+
+
 def finish_release(wb, version):
     name(wb, "TemplateVersion", f'"{version}"')
+    if v11():
+        for ws in wb.worksheets:
+            merge_rules(ws)
     for sheet in PRINTED:
         if sheet in wb.sheetnames:
             _print_setup(wb[sheet], version)

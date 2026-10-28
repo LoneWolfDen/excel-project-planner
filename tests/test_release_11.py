@@ -193,6 +193,63 @@ class CommittedSampleTest(unittest.TestCase):
         self.assertNotIn("SANDBOX", text)
 
 
+class P2Test(unittest.TestCase):
+    """The v1.1 P2 items: risk exposure in History (F-1106), the capacity chart (F-1107), fewer conditional-formatting
+    rules with the same meaning (F-1109)."""
+
+    @classmethod
+    def tearDownClass(cls):
+        classic_again()
+
+    def test_risk_exposure(self):
+        wb = openpyxl.load_workbook(SAMPLE, data_only=True)
+        log = [r for r in table_rows(wb, "Log", "Log") if r["Title"]]
+        exposure = sum(r["Score"] for r in log if r["_Open"] == 1 and isinstance(r["Score"], (int, float)))
+        snap = table_rows(wb, "TakeSnapshot", "SnapshotRow")[0]
+        self.assertEqual(snap["Risk Exposure"], exposure)
+        self.assertEqual(table_rows(wb, "Status", "SnapshotNow")[0]["Risk Exposure"], exposure)
+        history = [r["Risk Exposure"] for r in table_rows(wb, "History", "StatusHistory") if r["Status Date"]]
+        self.assertEqual(history, [44, 50, 47, 52])
+        titles = [c.title.tx.rich.p[0].r[0].t for c in openpyxl.load_workbook(SAMPLE)["History"]._charts]
+        self.assertIn("Risk exposure (open RAID score)", titles)
+
+    def test_capacity_chart(self):
+        from planner.build import make_workbook
+        charts = lambda wb: [c.title.tx.rich.p[0].r[0].t for c in wb["Agile"]._charts]
+        self.assertIn("Available vs planned days per sprint", charts(make(sizes=small())))
+        self.assertNotIn("Available vs planned days per sprint",
+                         charts(make_workbook(sizes=small(), release_edition=True)))
+
+    def test_merged_rules_mean_the_same(self):
+        """Every cell gets the same rules, in the same order, with and without the merge."""
+        from unittest import mock
+        from openpyxl.utils.cell import range_boundaries
+        from planner import release
+
+        def per_cell(wb):
+            out = {}
+            for ws in wb.worksheets:
+                for cf in ws.conditional_formatting:
+                    for rule in cf.rules:
+                        for rng in str(cf.sqref).split():
+                            c1, r1, c2, r2 = range_boundaries(rng)
+                            for r in range(r1, min(r2, r1 + 3) + 1):        # the first rows: enough to compare
+                                for c in range(c1, c2 + 1):
+                                    out.setdefault((ws.title, r, c), []).append(
+                                        (rule.priority, rule.type, tuple(rule.formula or ()), repr(rule.dxf)))
+            return {k: [x[1:] for x in sorted(v)] for k, v in out.items()}
+        merged = make(sizes=small())
+        with mock.patch.object(release, "merge_rules", lambda ws: None):
+            plain = make(sizes=small())
+        count = lambda wb: sum(len(cf.rules) for ws in wb.worksheets for cf in ws.conditional_formatting)
+        self.assertLess(count(merged), count(plain))
+        self.assertEqual(per_cell(merged), per_cell(plain))
+
+    def test_committed_rule_count(self):
+        report = perf_check.static_report(SAMPLE)
+        self.assertLessEqual(sum(v["rules"] for v in report["cf"].values()), 106)
+
+
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")
 class SandboxTest(unittest.TestCase):
     """Settings > Sandbox = Yes: the Sandbox Durations drive the plan, and Status, Check and the summary say so."""

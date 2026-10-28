@@ -105,15 +105,15 @@ Template 1.1 is its own workbook too: `--release 1.1` builds `release-1.1/` (Tem
 | F-1103 | ✅ Sandbox what-if | P1 | Tasks: Sandbox Duration (3, 3d, 2w); Settings > Sandbox = Yes makes `_Days` use it, so the whole plan and every report show the what-if; Status (red banner), the summary and Check say so | `SandboxTest` | none (one IF in `_Days`) |
 | F-1104 | ✅ Automatic status narrative | P1 | Status > SUMMARY (`sts_Narrative`): RAG, finish against plan, progress, late tasks, next milestone, top risk, late dependencies, sandbox | `test_narrative` | 1 cell |
 | F-1105 | ✅ Three-point estimates with P50 / P80 | P1 | Tasks: Optimistic, Pessimistic, Expected = (O + 4 x Duration + P) / 6; Settings > PertP50 = forecast finish + the critical tasks' total shift, PertP80 = + 0.84 standard deviations (variances added); both on Status. Issues flags estimates that don't bracket the Duration | `test_pert` (recomputed in Python) | +800 formulas (Tasks, 4 per task) |
+| F-1106 | ✅ Risk-exposure burndown in History | P2 | A snapshot field, Risk Exposure = the open RAID items' scores added up (`SUMIFS(log_Score,log_Open,1)`), on Status > SnapshotNow, TakeSnapshot and History, with a trend chart on History | `test_release_11.P2Test.test_risk_exposure` | 2 formulas |
+| F-1107 | ✅ Capacity chart | P2 | Agile: available vs planned person-days per sprint (bar chart over SprintTable) | `test_capacity_chart` | none (a chart) |
+| F-1109 | ✅ Fewer conditional-formatting rules (part) | P2 | 119 -> 106 in the 1.1 sample: `release.merge_rules` makes one rule of identical rules whose formula fixes every column and whose ranges start on the same row (the Log's type grey-outs), and the Log's status words share a rule per colour. The Gantt, RAG and variance rules use relative column references, which Excel reads against a range's top-left cell, so merging them could change their meaning; they stay | `test_merged_rules_mean_the_same` (every cell gets the same rules in the same order), `test_committed_rule_count` | fewer rules |
 
 ### v1.1 Future (not built yet)
 
 | ID | Item | Pri | Notes |
 |---|---|---|---|
-| F-1106 | Risk-exposure burndown in History | P2 | A snapshot field (sum of open risk scores) and a chart |
-| F-1107 | Capacity chart | P2 | Available vs committed days per sprint on Agile |
 | F-1108 | Microsoft 365 edition | P2 | LET / LAMBDA named formulas (`L_PARSE_DURATION`, `L_WORKING_DAYS`, `L_IS_WORKING_DAY`), FILTER lists, a searchable pick list; needs a recalculation engine other than LibreOffice 24.2 in CI |
-| F-1109 | Fewer conditional-formatting rules | P2 | Merge the Gantt's rules where Excel's multi-range rules allow (relative references across ranges need checking in Excel) |
 
 ## Done in v1.7 (was "Next up after v1.6")
 

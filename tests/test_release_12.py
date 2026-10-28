@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(ROOT))
 import perf_check  # noqa: E402
-from test_planner import CommittedWorkbooksTest, errors_in, named_cell  # noqa: E402
+from test_planner import CommittedWorkbooksTest, errors_in, named_cell, table_rows  # noqa: E402
 from test_release import head, small, task_row, tasks_by_uid  # noqa: E402
 
 RELEASE = ROOT / "release-1.2"

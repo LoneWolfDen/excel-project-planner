@@ -122,6 +122,83 @@ class ReadTest(unittest.TestCase):
         self.assertEqual(periods, [1, 7, 30, 91])                       # v1.6 values the v1.4 list didn't have
 
 
+def _typed(data):
+    """{(table, header): {typed value}} of a workbook's tables, formulas left out (what a user typed)."""
+    out = {}
+    for name, (_, head, rows) in upgrade._tables(openpyxl.load_workbook(io.BytesIO(data))).items():
+        for i, h in enumerate(head):
+            values = {r[i] for r in rows if r[i] not in (None, "")}
+            if values:
+                out[(name, h)] = values
+    return out
+
+
+def _text(v):
+    return f"{v:g}" if isinstance(v, (int, float)) and not isinstance(v, bool) else str(v)
+
+
+# Typed columns that a version moved or turned into something else: (table, header) -> (new table, new header,
+# value -> what to find in that column). The value must appear in (or as) one of the new column's typed cells.
+PERCENT = lambda v: f"[{v:.0%}]"
+MOVED = {
+    **{("Tasks", f"Pred{k} {x}"): ("Tasks", "Predecessors", _text) for k in range(1, 5) for x in ("UID", "Lag")},
+    # FS is the default, so "12" in the text means 12FS
+    **{("Tasks", f"Pred{k} Type"): ("Tasks", "Predecessors", lambda v: "" if v == "FS" else v) for k in range(1, 5)},
+    ("Tasks", "Resource"): ("Tasks", "Resources", _text), ("Tasks", "Units"): ("Tasks", "Resources", PERCENT),
+    ("Tasks", "Actual Cost"): ("Tasks", "Notes", _text),          # calculated since v1.8; the typed value kept in Notes
+    ("Tasks", "% Complete"): ("Tasks", "Stage", lambda v: "Complete" if v >= 1 else ""),   # a Stage when it matches one
+    ("AssignmentTable", "Task UID"): ("Tasks", "UID", _text),
+    ("AssignmentTable", "Resource"): ("Tasks", "Resources", _text),
+    ("AssignmentTable", "Units"): ("Tasks", "Resources", PERCENT),
+    ("LeaveTable", "Resource"): ("ResourceTable", "Resource Name", _text),
+    ("ResourceTable", "Max Units"): ("ResourceTable", "Allocation %", _text),
+    ("ResourceTable", "Std Rate"): ("RateCard", "Day Rate", lambda v: _text(v * 8)),     # hourly x HoursPerDay 8
+    ("StatusHistory", "% Earned"): ("StatusHistory", "% Done", _text),
+    **{("StatusHistory", h): ("CostHistory", h, _text) for h in ("BAC", "PV", "EV", "AC", "CPI", "EAC")},
+}
+# the template's own text (row labels of report tables): rebuilt by the new template, never user input
+TEMPLATE = {("AgileKPIs", "Measure"), ("ChangeControl", "Measure"), ("ChangeControl", "Source"),
+            ("EarnedValue", "Measure"), ("EarnedValue", "Meaning"), ("KPIs", "Key indicator"),
+            ("StatusRAG", "Area"), ("StatusRAG", "Measure")}
+
+
+class TypedDataTest(unittest.TestCase):
+    """B-1012: every value typed into an old workbook reaches the upgraded one, under its own table and header, a
+    renamed one (upgrade.RENAMED, RENAMED_TABLES, LOGS) or a listed move (MOVED). A typed column nobody mapped
+    fails here, so a new version can't drop it silently."""
+
+    def check(self, fixture):
+        data = (FIXTURES / fixture).read_bytes()
+        old = _typed(data)
+        xlsx, _ = upgrade.convert(data)
+        new = _typed(xlsx)
+        lost = []
+        for (table, header), values in sorted(old.items()):
+            if (table, header) in TEMPLATE:
+                continue
+            if (table, header) in MOVED:
+                where, column, expect = MOVED[(table, header)]
+            elif table in upgrade.LOGS:
+                where, column, expect = "Log", upgrade.LOGS[table][1].get(header, header), _text
+            elif table == "LeaveTable":
+                where, column, expect = "ResourceTable", header, _text      # leave months moved onto Resources
+            else:
+                where, renamed = upgrade.RENAMED_TABLES.get(table, (table, {}))
+                column, expect = renamed.get(header, upgrade.RENAMED.get(table, {}).get(header, header)), _text
+            got = [_text(v) for v in new.get((where, column), ())]
+            for v in values:
+                want = expect(v)
+                if want and not any(want == g or want in g for g in got):
+                    lost.append(f"{table}[{header}] {v!r} -> {where}[{column}]")
+        self.assertEqual(lost, [])
+
+    def test_v1_4(self):
+        self.check("planner_v1.4.xlsx")
+
+    def test_v1_6(self):
+        self.check("planner_v1.6.xlsx")
+
+
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")
 class UpgradeRecalcTest(unittest.TestCase):
     """Upgrade, recalculate, compare with what the old workbook calculated."""

@@ -19,6 +19,8 @@ import zipfile
 from pathlib import Path
 
 import openpyxl
+from openpyxl.formatting.rule import FormulaRule
+from openpyxl.styles import PatternFill
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / "scripts" / "build_planner.py"
@@ -169,6 +171,19 @@ class StructureTest(Tmp):
         self.assertEqual(report["excel_limit_problems"], [])
         self.assertEqual(perf_check.excel_limit_problems('=IF(A,"(",B'), ["unbalanced parentheses, quotes or brackets"])
         self.assertEqual(perf_check.excel_limit_problems('=IF(Tasks[[#This Row],[x)]]=1,"a)",2)'), [])
+
+    def test_conditional_formatting_has_no_rule_per_row(self):
+        # B-1016: rules cover whole column ranges; a rule per task row is caught
+        report = perf_check.static_report(self.path)
+        self.assertEqual(perf_check.check(report, {"formulas_max": 10 ** 9, "volatile_allowed": {"Tasks": {"OFFSET": 10 ** 9}},
+                                                   "cf_rules_max": 200}), [])
+        self.assertTrue(all(v["single_row"] <= perf_check.SINGLE_ROW_RANGES_MAX for v in report["cf"].values()))
+        wb = openpyxl.Workbook()
+        for r in range(1, 31):
+            wb.active.conditional_formatting.add(f"A{r}:H{r}", FormulaRule(formula=[f"$B{r}>0"], fill=PatternFill("solid", "FF0000")))
+        problems = perf_check.check({**report, "cf": perf_check.cf_report(wb)}, {"formulas_max": 10 ** 9,
+                                     "volatile_allowed": {"Tasks": {"OFFSET": 10 ** 9}}})
+        self.assertTrue(any("30 conditional-formatting ranges cover one row each" in p for p in problems), problems)
 
     def test_a1_lint_catches_cell_references(self):
         names = {"ProjectStart"}
@@ -1508,6 +1523,105 @@ class RealRowEditTest(Tmp):
         self.assertEqual(t.get(18, "Name"), "Build complete")
         self.assertEqual(t.get(18, "Link"), "Pred 1: UID 14 not found.")
         self.assertEqual(t.get(18, "PS"), dt.date(2026, 10, 29))   # still follows its other predecessor
+
+
+def _plan_inputs(wb):
+    """The typed Tasks columns and the settings the spec schedules from (docs/SCHEDULING_SPEC.md)."""
+    rows = [{"Level": t["Level"], "Name": t["Task Name"], "Mode": t["Mode"], "Dur": t["Duration"],
+             "Pred": t["Predecessors"], "CType": t["Constraint"], "Cons": serial_or_none(t["Constraint Date"]),
+             "DL": serial_or_none(t["Deadline"]), "AS": serial_or_none(t["Actual Start"]),
+             "AF": serial_or_none(t["Actual Finish"]), "Pct": t["% Complete"], "Stage": t["Stage"], "UID": t["UID"],
+             "BS": serial_or_none(t["Baseline Start"]), "BF": serial_or_none(t["Baseline Finish"])}
+            for t in table_rows(wb, "Tasks", "Tasks")]
+    value = lambda n: named_cell(wb, n).value
+    settings = {"ProjectStart": serial(value("ProjectStart")), "StatusDate": serial(value("StatusDate")),
+                "WorkWeek": value("WorkWeek"), "RescheduleAfterStatus": value("RescheduleAfterStatus"),
+                "CriticalSlackDays": value("CriticalSlackDays"),
+                "Holidays": [serial(r["Date"]) for r in table_rows(wb, "Settings", "HolidayTable") if r["Date"]]}
+    stages = {r["Stage"]: r["% Complete"] for r in table_rows(wb, "Settings", "StageTable") if r["Stage"]}
+    return rows, settings, stages
+
+
+def serial_or_none(value):
+    return None if value in (None, "") else serial(value)
+
+
+def schedule_differences(wb):
+    """Where the workbook and the Python reference (tests/reference_schedule.py) disagree."""
+    import reference_schedule
+    got, finish = reference_schedule.schedule(*_plan_inputs(wb))
+    sheet = {t["UID"]: t for t in table_rows(wb, "Tasks", "Tasks") if t["Task Name"]}
+    out = []
+    for v in got:
+        t = sheet[v["UID"]]
+        for k, want in v.items():
+            if k in ("UID", "CS", "CF"):
+                continue
+            have = t[k] == "Yes" if k == "Critical" else serial_or_none(t[k]) if isinstance(want, dt.date) else t[k]
+            if have != want:
+                out.append((v["UID"], k, have, want))
+    if serial(named_cell(wb, "ProjectFinish").value) != finish:
+        out.append(("ProjectFinish", serial(named_cell(wb, "ProjectFinish").value), finish))
+    return out
+
+
+class ReferenceScheduleTest(Tmp):
+    """B-1010: the workbook schedules exactly as docs/SCHEDULING_SPEC.md says, checked task by task against an
+    independent Python implementation of the spec, on the committed sample and on edited plans that exercise each
+    section (constraints, As Late As Possible, link types and lags, ignored links, status date, calendar)."""
+
+    def test_committed_sample(self):
+        self.assertEqual(schedule_differences(openpyxl.load_workbook(ROOT / "Project_Planner.xlsx", data_only=True)), [])
+
+    @unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+    def test_constraints_and_late_as_possible(self):
+        def edit(wb):
+            set_input(wb, 23, "Constraint", "As Late As Possible")
+            set_input(wb, 24, "Constraint", "Must Finish On")              # no date: ignored
+            set_input(wb, 29, "Constraint", "Finish No Earlier Than")
+            set_input(wb, 29, "Constraint Date", dt.date(2027, 1, 15))
+            set_input(wb, 30, "Constraint", "Must Start On")
+            set_input(wb, 30, "Constraint Date", dt.date(2027, 1, 20))
+            set_input(wb, 14, "Constraint", "Finish No Later Than")        # earlier than links allow: negative slack
+            set_input(wb, 14, "Constraint Date", dt.date(2026, 11, 2))
+            set_input(wb, 26, "Constraint", "Start No Later Than")
+            set_input(wb, 26, "Constraint Date", dt.date(2026, 12, 21))
+            set_input(wb, 28, "Mode", "Manual")
+        self.assertEqual(schedule_differences(recalc(self.path, self.dir, edit)), [])
+
+    @unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+    def test_link_types_lags_and_ignored_links(self):
+        def edit(wb):
+            set_input(wb, 23, "P1", "21SF+3d, 22FF-1")                    # start-to-finish, a lead
+            set_input(wb, 26, "P1", "25SS+2d, 20, 30, abc, 24")           # a summary, a task below, unreadable
+            set_input(wb, 17, "P1", "16, 13SS-2d, 12FF+1, 14, 8")         # five: only four are used
+            set_input(wb, 19, "Deadline", dt.date(2026, 10, 30))              # a missed deadline drives slack
+        self.assertEqual(schedule_differences(recalc(self.path, self.dir, edit)), [])
+
+    @unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+    def test_status_date_and_calendar(self):
+        def edit(wb):
+            named_cell(wb, "RescheduleAfterStatus").value = "No"
+            named_cell(wb, "WorkingWeek").value = "Mon-Sat"
+            set_input(wb, 13, "AS", None)                                  # unstarted: would move without the flag
+            set_input(wb, 13, "Stage", None)
+            set_input(wb, 13, "Pct", None)
+            set_input(wb, 21, "AS", dt.date(2026, 10, 20))                 # started, part done
+            set_input(wb, 21, "Pct", 0.25)
+            ws = wb["Settings"]
+            holidays = ws.tables["HolidayTable"]
+            c1, r1, c2, r2 = openpyxl.utils.cell.range_boundaries(holidays.ref)
+            free = next(r for r in range(r1 + 1, r2 + 1) if ws.cell(r, c1).value in (None, ""))
+            ws.cell(free, c1).value = dt.date(2026, 11, 3)
+        self.assertEqual(schedule_differences(recalc(self.path, self.dir, edit)), [])
+
+    @unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+    def test_reschedule_after_status(self):
+        def edit(wb):
+            set_input(wb, 21, "AS", dt.date(2026, 10, 20))                 # started, behind: remaining from status
+            set_input(wb, 21, "Pct", 0.1)
+            set_input(wb, 13, "AF", dt.date(2026, 11, 4))                  # late finish ripples
+        self.assertEqual(schedule_differences(recalc(self.path, self.dir, edit)), [])
 
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")

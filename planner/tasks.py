@@ -626,7 +626,8 @@ def release_formulas(f):
     if v11():
         # F-1103 Sandbox: with Settings > Sandbox = Yes, a task's Sandbox Duration replaces its Duration everywhere
         sandbox = parse_days(R("SandDur"))
-        g["Days"] = f'IF(AND(Sandbox="Yes",{R("SandDur")}<>""),{sandbox},{g["Days"]})'
+        # (an unreadable Sandbox Duration is ignored, and Issues says so, rather than blanking the task)
+        g["Days"] = f'IF(AND(Sandbox="Yes",{sandbox}<>""),{sandbox},{g["Days"]})'
         # F-1105 three-point estimate (PERT): Expected = (O + 4M + P) / 6 with M = the Duration; its variance and
         # how far it moves the task feed Settings > PertP50 / PertP80 over the critical path
         opt, pess, days = R("Opt"), R("Pess"), f'N({R("Days")})'

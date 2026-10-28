@@ -59,6 +59,9 @@ python scripts/perf_check.py Project_Planner.xlsx --profile sample --timing
 python scripts/perf_check.py /tmp/stress.xlsx --profile stress --timing
 python scripts/perf_check.py release-1.0/Project_Planner.xlsx --profile sample --timing
 python scripts/perf_check.py release-1.1/Project_Planner.xlsx --profile sample --timing
+python scripts/build_planner.py /tmp/stress12.xlsx --release 1.2 --tasks 1000 --stress 33
+python scripts/perf_check.py release-1.2/Project_Planner.xlsx --profile template12 --timing
+python scripts/perf_check.py /tmp/stress12.xlsx --profile template12-stress --timing
 python scripts/release_check.py
 python scripts/release_check.py --edition 1.1
 python scripts/release_check.py --edition 1.2

@@ -177,6 +177,28 @@ class ToolsTest(unittest.TestCase):
         self.assertIn("Vendor contract signed", titles)
         self.assertEqual(new["Tasks"].cell(task_row(new, 17), head(new["Tasks"])["Pred2"]).value, 13)
 
+    def test_upgrade_keeps_engine_inputs(self):
+        """B-110 / B-202 / B-201 / B-302 inputs survive an upgrade: Tasks columns, the setting, the Cost tables."""
+        from planner import upgrade
+        from test_release import put
+        wb = make(baselined=True)
+        put(wb, 28, {"Active": "No"})
+        put(wb, 13, {"Remaining Duration": 7, "Lag1": "3ed"})
+        named_cell(wb, "CompareBaseline").value = 2
+        _put_in_table(wb["Cost"], "RateCard", 1, {"Per Use": 100})
+        _put_in_table(wb["Cost"], "FixedCosts", 1, {"UID": 14, "Amount": 1000, "Description": "Licence"})
+        buf = io.BytesIO()
+        wb.save(buf)
+        new = openpyxl.load_workbook(io.BytesIO(upgrade.convert(buf.getvalue())[0]))
+        col = head(new["Tasks"])
+        self.assertEqual(new["Tasks"].cell(task_row(new, 28), col["Active"]).value, "No")
+        self.assertEqual(new["Tasks"].cell(task_row(new, 13), col["Remaining Duration"]).value, 7)
+        self.assertEqual(new["Tasks"].cell(task_row(new, 13), col["Lag1"]).value, "3ed")
+        self.assertEqual(named_cell(new, "CompareBaseline").value, 2)
+        fixed = [r for r in table_rows(new, "Cost", "FixedCosts") if r["UID"]]
+        self.assertEqual([(r["UID"], r["Amount"]) for r in fixed], [(14, 1000)])
+        self.assertEqual(next(r for r in table_rows(new, "Cost", "RateCard") if r["Resource"])["Per Use"], 100)
+
 
 SAMPLES = RELEASE / "samples"
 

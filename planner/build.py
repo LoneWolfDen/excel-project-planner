@@ -36,9 +36,10 @@ from .tasks import build_tasks, configure, take_people, take_stage
 VIEWS = ("Status", "Roadmap", "Resource Report")    # protected without a password; inputs stay unlocked
 # Release 1.0 protects every sheet whose rows are fixed (formula cells locked, blue inputs open); Tasks, Resources,
 # Settings and History stay open because rows are added there (Excel can't add table rows on a protected sheet)
-RELEASE_VIEWS = ("Start", "Status", "Roadmap", "Resource Report", "Agile", "Log", "Cost", "Check", "TakeSnapshot")
-ORDER = ["Start", "Status", "Check", "Roadmap", "Resource Report", "Agile", "Log", "History", "TakeSnapshot",
-         "Settings", "Tasks", "Resources", "Cost", "MSP_Tasks", "MSP_Resources"]
+RELEASE_VIEWS = ("Start", "Status", "Roadmap", "Resource Report", "Agile", "Log", "Cost", "Check", "TakeSnapshot",
+                 "Board")
+ORDER = ["Start", "Status", "Check", "Roadmap", "Resource Report", "Agile", "Board", "Log", "History", "TakeSnapshot",
+         "Settings", "Tasks", "Backlog", "Resources", "Cost", "MSP_Tasks", "MSP_Resources"]
 TAB_COLOURS = {"Start": "1F4E78", "Status": "548235", "Tasks": "2F75B5", "Roadmap": "548235",
                "Resources": "7030A0", "Log": "C55A11", "Agile": "548235",
                "Resource Report": "548235", "History": "C55A11", "Settings": "BF8F00", "Cost": "806000",
@@ -135,6 +136,8 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
         rows = [sample.to_pickers(r) for r in rows]
         if release_edition != "1.0":                  # template 1.1 inputs (RACI, estimates, a sandbox duration)
             rows = [sample.with_v11(r) for r in rows]
+        if release_edition == "1.2":
+            rows = [sample.with_v12(r) for r in rows]
     tasks_ws, letters = build_tasks(wb, rows, n_tasks)
     build_timeline(wb, tasks_ws, letters, n_tasks, sizes.gantt_columns)
     charted = min(12, sizes.sprints)                 # sprints shown on the Status and Agile charts
@@ -158,6 +161,12 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
     if has("snapshot") and has("history"):            # the snapshot is pasted onto History
         from .snapshot import build_snapshot
         build_snapshot(wb)
+    if has("board"):                                   # template 1.2 (B-404)
+        from .board import build_board
+        build_board(wb)
+    if has("backlog"):                                 # template 1.2 (B-405)
+        from .backlog import build_backlog
+        build_backlog(wb, blank)
     build_instructions(wb, sizes, import_wizard)
     if release_edition == "m365":                     # F-1108: the named LAMBDA functions the formulas call
         from .m365 import define
@@ -174,8 +183,9 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
     for ws in wb.worksheets:
         ws.sheet_properties.tabColor = TAB_COLOURS.get(ws.title, "595959")
     if release_edition == "1.2":                      # the Fluent look: one pass after everything is built
-        from .theme import apply
-        apply(wb)
+        from . import locale_safe, theme
+        locale_safe.apply(wb)                          # B-010: date labels in every Excel language
+        theme.apply(wb)
     wb.active = wb.sheetnames.index("Tasks")
     wb.calculation.fullCalcOnLoad = True
     wb.calculation.calcMode = "auto"                   # B-1001: views follow every edit
@@ -267,13 +277,20 @@ def main(argv=None):
                         "print set-up), 1.1 (release-1.1/: adds RACI, dependencies on Status, Sandbox, the status "
                         "narrative and PERT estimates) or m365 (release-1.1-m365/: 1.1 with named LAMBDA functions and "
                         "FILTER lists; Microsoft 365 only, saved without --recalc)")
+    p.add_argument("--sample", choices=["construction", "event"],
+                   help="another sample project (B-804): a clinic extension or a partner summit, instead of the "
+                        "software sample")
     a = p.parse_args(argv)
     modules = () if a.simple else None if a.modules is None else [m.strip() for m in a.modules.split(",") if m.strip()]
     sizes = Sizes(a.tasks, a.resources, a.grid_resources, a.sprints, a.gantt_columns, a.weeks)
     if a.recalc and a.release == "m365":       # LibreOffice 24.2 has no LAMBDA / FILTER: its values would be errors
         print("note: the m365 workbook is saved without --recalc; Excel calculates it when it opens")
         a.recalc = False
-    save(make_workbook(a.blank, stress=a.stress, sizes=sizes, import_wizard=a.import_wizard_sheets,
+    data = None
+    if a.sample:
+        from .samples import project
+        data = project(a.sample)
+    save(make_workbook(a.blank, stress=a.stress, sizes=sizes, import_wizard=a.import_wizard_sheets, data=data,
                        baselined=a.baselined, project_type=a.project_type, modules=modules,
                        release_edition=a.release), a.out, a.recalc)
     print("saved", a.out)

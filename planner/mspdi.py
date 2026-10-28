@@ -39,6 +39,12 @@ EXCEL_EPOCH = dt.date(1899, 12, 30)
 LINK_TYPES = {"FF": 0, "FS": 1, "SF": 2, "SS": 3}          # MSPDI PredecessorLink/Type
 RESOURCE_TYPES = {"Material": 0, "Work": 1, "Cost": 2}     # MSPDI Resource/Type
 TEXT1, NUMBER1 = "188743731", "188743767"                  # MS Project field IDs of Text1 and Number1
+# template 1.2's custom fields (B-509): workbook column -> (MS Project field, its FieldID). Text1 / Number1 carry
+# Sprint and Story Points, so the custom ones start at Text2 / Number2.
+CUSTOM_FIELDS = {**{f"Text {k}": (f"Text{k + 1}", str(188743731 + 3 * k)) for k in range(1, 6)},
+                 **{f"Number {k}": (f"Number{k + 1}", str(188743767 + k)) for k in range(1, 5)},
+                 "Number 5": ("Number6", "188743982"),
+                 **{f"Flag {k}": (f"Flag{k}", str(188743751 + k)) for k in range(1, 4)}}
 DAY_NAMES = ["WorkSun", "WorkMon", "WorkTue", "WorkWed", "WorkThu", "WorkFri", "WorkSat"]   # MSPDI DayType 1..7
 
 # Child order of each element, as MS Project 2016-2019 writes it (taken from MSPDI files saved by MS Project), for
@@ -289,6 +295,13 @@ def to_mspdi(plan):
         _sub(a, "FieldID", field)
         _sub(a, "FieldName", "Text1" if field == TEXT1 else "Number1")
         _sub(a, "Alias", alias)
+    custom = [h for h in CUSTOM_FIELDS if any(t.get(h) not in (None, "") for t in plan["tasks"])]
+    for header in custom:                                 # only the custom fields the plan uses
+        field_name, field_id = CUSTOM_FIELDS[header]
+        a = _sub(attrs, "ExtendedAttribute")
+        _sub(a, "FieldID", field_id)
+        _sub(a, "FieldName", field_name)
+        _sub(a, "Alias", header)
 
     cal = _sub(_sub(p, "Calendars"), "Calendar")
     _sub(cal, "UID", 1)
@@ -386,7 +399,17 @@ def to_mspdi(plan):
         _sub(e, "Active", 1)
         _sub(e, "Manual", flag(manual))
         if not summary:
-            for field, value in ((TEXT1, _text(t.get("Sprint"))), (NUMBER1, _num(t.get("Story Points"), None))):
+            values = [(TEXT1, _text(t.get("Sprint"))), (NUMBER1, _num(t.get("Story Points"), None))]
+            for header in custom:
+                v = t.get(header)
+                if header.startswith("Flag"):
+                    v = None if v in (None, "") else int(str(v).lower() in ("yes", "1", "true"))
+                elif header.startswith("Number"):
+                    v = _num(v, None)
+                else:
+                    v = _text(v) or None
+                values.append((CUSTOM_FIELDS[header][1], v))
+            for field, value in values:
                 if value not in ("", None):
                     a = _sub(e, "ExtendedAttribute")
                     _sub(a, "FieldID", field)

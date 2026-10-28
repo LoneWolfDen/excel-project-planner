@@ -104,6 +104,10 @@ N = {
     "Acc": "Accountable", "Con": "Consulted", "Inf": "Informed", "SandDur": "Sandbox Duration",
     "Opt": "Optimistic", "Pess": "Pessimistic", "PertExp": "Expected", "PertVar": "_PertVariance",
     "PertShift": "_PertShift",
+    # template 1.2: MS Project's Status names (B-206), custom fields (B-509), the Board's key (B-404)
+    "MspStatus": "MSP Status", "BoardKey": "_BoardKey",
+    **{f"CText{k}": f"Text {k}" for k in range(1, 6)}, **{f"CNum{k}": f"Number {k}" for k in range(1, 6)},
+    **{f"CFlag{k}": f"Flag {k}" for k in range(1, 4)},
     **{f"Pick{k}": f"Pred{k}" for k in LINK_NUMBERS}, **{f"PickT{k}": f"Type{k}" for k in LINK_NUMBERS},
     **{f"PickL{k}": f"Lag{k}" for k in LINK_NUMBERS}, **{f"Who{k}": f"Res{k}" for k in range(1, PEOPLE + 1)},
     **{f"WhoU{k}": f"Units{k}" for k in range(1, PEOPLE + 1)},
@@ -143,7 +147,7 @@ RELEASE_ALIAS = {"Dur": "Days", "PredIn": "PredUse", "ResIn": "ResUse"}
 RELEASE_NAMES = {"DurIn": "tsk_DurationInput", "Pick": "tsk_PickList", "IssueKey": "tsk_IssueKey",
                  "OverKey": "tsk_OverAllocKey", "Acc": "tsk_Accountable", "Con": "tsk_Consulted",
                  "Inf": "tsk_Informed", "PertExp": "tsk_PertExpected", "PertVar": "tsk_PertVariance",
-                 "PertShift": "tsk_PertShift"}
+                 "PertShift": "tsk_PertShift", "MspStatus": "tsk_MspStatus", "BoardKey": "tsk_BoardKey"}
 
 
 def R(key):
@@ -581,7 +585,30 @@ def formulas():
                    + (release_issues() if release() else "") + "))")
     if release():
         f.update(release_formulas(f))
+    if v12():
+        f.update(v12_formulas())
     return f
+
+
+BOARD_STATUSES = ["Not Started", "Late Start", "In Progress", "Behind", "Complete"]
+
+
+def v12_formulas():
+    """Template 1.2 columns: MS Project's Status (B-206) and the Board's key (B-404)."""
+    leaf, prog = f'{R("IsLeaf")}=1', R("Prog")
+    g = {}
+    # MS Project: Complete; Future Task (starts after the status date); Late (less done than planned by now, or
+    # finishing after the planned finish); otherwise On Schedule
+    g["MspStatus"] = (f'IF({R("Name")}="","",IF({prog}>=1,"Complete",IF({R("FS")}>StatusDate,"Future Task",'
+                      f'IF(OR(N({R("Var")})>0,AND({leaf},{prog}<{R("PlanPct")})),"Late","On Schedule"))))')
+    if has("board"):
+        # unique, ordered by status (the Board's columns) then plan order; blank when the Board's sprint or person
+        # filter leaves the task out
+        statuses = "{" + ",".join(f'"{s}"' for s in BOARD_STATUSES) + "}"
+        g["BoardKey"] = (f'IF(AND({leaf},OR(BoardSprint="",{R("Sprint")}=BoardSprint),OR(BoardResource="",'
+                         f'ISNUMBER(SEARCH(BoardResource,{R("ResTxt")})))),'
+                         f'IFERROR(MATCH({R("Status")},{statuses},0)*100000+{R("Idx")},""),"")')
+    return g
 
 
 def release_issues():
@@ -800,6 +827,17 @@ V11_LAYOUT = [
     ("Inf", "in", 18, None, False, "RACI: who is kept informed (names, comma-separated)."),
     ("PertVar", "help", 8, None, False, None), ("PertShift", "help", 8, None, False, None),
 ]
+# template 1.2 columns
+CUSTOM = [f"CText{k}" for k in range(1, 6)] + [f"CNum{k}" for k in range(1, 6)] + [f"CFlag{k}" for k in range(1, 4)]
+V12_LAYOUT = [
+    ("MspStatus", "calc", 12, None, True, "MS Project's Status: Complete, On Schedule, Late (behind the progress "
+                                          "planned by the status date) or Future Task (starts after it)."),
+    *[(k, "in", 12, None, False, "Custom field: anything your team tracks (exported to MS Project as "
+                                 f"{'Text' if k.startswith('CText') else 'Number' if k.startswith('CNum') else 'Flag'}"
+                                 f"{int(k[-1]) + (0 if k.startswith('CFlag') else 1)}).") for k in CUSTOM],
+]
+BOARD_LAYOUT = [("BoardKey", "help", 8, None, False, None)]
+V12_SECTIONS = [("CUSTOM FIELDS", "CText1", CUSTOM[1:])]
 V11_SECTIONS = [("RACI", "Acc", ["Con", "Inf"]), ("ESTIMATES (PERT) and SANDBOX", "PertExp", ["Opt", "Pess", "SandDur"])]
 
 # The sheet's sections, left to right. The first holds what a plan needs and is always shown; each optional section is
@@ -841,7 +879,11 @@ def configure():
     if release():
         # the Microsoft 365 edition's Check lists FILTER the tasks directly: no key columns
         rows += _RELEASE_LAYOUT + (CHECK_LAYOUT if has("check") and not m365() else []) + (V11_LAYOUT if v11() else [])
-        sections = RELEASE_SECTIONS + (V11_SECTIONS if v11() else [])
+        rows += (V12_LAYOUT + (BOARD_LAYOUT if has("board") else [])) if v12() else []
+        sections = RELEASE_SECTIONS + (V11_SECTIONS if v11() else []) + (V12_SECTIONS if v12() else [])
+        if v12():                                      # MS Project's Status sits with the other status columns
+            sections = [(label, key, rest + ["MspStatus"] if label == "DETAIL" else rest)
+                        for label, key, rest in sections]
         ALIAS.update(RELEASE_ALIAS)
     by_key = {row[0]: row for row in rows}
     shown = [k for _, key, rest in sections for k in ([key] if key else []) + rest]
@@ -854,7 +896,7 @@ def configure():
 
 def input_keys():
     """Every Tasks input key of either edition (the upgrade reads a workbook by header before it knows which)."""
-    return [row[0] for row in _BASE_LAYOUT + _RELEASE_LAYOUT + V11_LAYOUT if row[1] == "in"]
+    return [row[0] for row in _BASE_LAYOUT + _RELEASE_LAYOUT + V11_LAYOUT + V12_LAYOUT if row[1] == "in"]
 
 
 configure()
@@ -872,6 +914,10 @@ def build_tasks(wb, rows, n_rows):
                 "inside the table, or paste rows under the last task: formulas fill in automatically.")
     ws["A2"].font = NOTE_FONT
     ws["A3"] = '="Next free UID for a new row: "&NextFreeUID'
+    if v12():                                          # B-111: the whole project in one line
+        ws["A3"] = ('="Project "&TEXT(MIN(tsk_CalcStart),"dd-mmm-yy")&" to "&TEXT(ProjectFinish,"dd-mmm-yy")&"  |  "'
+                    '&SUM(tsk_IsLeaf)&" tasks, "&TEXT(IFERROR(SUM(tsk_WtDone)/SUM(tsk_WtDur),0),"0%")&" done  |  "'
+                    '&COUNTIFS(tsk_Critical,"Yes",tsk_IsLeaf,1)&" critical  |  Next free UID: "&NextFreeUID')
     ws["A3"].font = LABEL_FONT
     f = formulas()
     for key, formula in f.items():                    # B-913: a column that reads a module left out stays blank
@@ -915,6 +961,10 @@ def build_tasks(wb, rows, n_rows):
     if not has("agile"):                               # no sprint calendar: Sprint would always be blank
         ws.column_dimensions[L["Sprint"]].hidden = True
     _validation_and_formatting(ws, L, n_rows)
+    if v12():                                          # B-508: the plan and its Gantt on A3 landscape
+        ws.page_setup.paperSize, ws.page_setup.orientation = ws.PAPERSIZE_A3, "landscape"
+        ws.print_title_rows, ws.print_title_cols = f"1:{HEADER_ROW}", f"A:{L['Name']}"
+        ws.page_setup.scale = 60
     ws.sheet_view.zoomScale = 90
     return ws, L
 
@@ -1075,6 +1125,10 @@ def _validation_and_formatting(ws, L, n_rows):
            *[f"Who{k}" for k in range(1, PEOPLE + 1)])
         dv(DataValidation(type="decimal", operator="between", formula1="0", formula2="1", showErrorMessage=True,
                           error="A share of their time: 0% - 100%."), *[f"WhoU{k}" for k in range(1, PEOPLE + 1)])
+    if v12():
+        dv(DataValidation(type="list", formula1="=L_YesNo"), *[k for k in CUSTOM if k.startswith("CFlag")])
+        dv(DataValidation(type="decimal", showErrorMessage=True, error="A number.", operator="between",
+                          formula1="-1E+15", formula2="1E+15"), *[k for k in CUSTOM if k.startswith("CNum")])
     if v11():
         dv(DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0", showErrorMessage=True,
                           error="Working days, e.g. 4."), "Opt", "Pess")

@@ -20,7 +20,7 @@ from .core import INPUT_FONT, NOTE_FONT, name, v11
 from .settings import START
 
 PRINTED = ("Status", "Roadmap", "Resource Report", "Check")
-OPEN_INPUTS = ("Tasks", "Resources", "Settings", "History")
+OPEN_INPUTS = ("Tasks", "Resources", "Settings", "History", "Backlog")
 
 
 def _unlock_inputs(ws):

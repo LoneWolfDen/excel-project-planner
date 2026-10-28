@@ -186,7 +186,10 @@ RELEASE = {"on": False, "version": None}
 EDITIONS = ("1.0", "1.1", "m365", "1.2")
 # each edition's feature level: 0 = Release 1.0, 1 = the v1.1 features, 2 = template 1.2 (design, UX, engine items)
 LEVELS = {"1.0": 0, "1.1": 1, "m365": 1, "1.2": 2}
-_MODULE_NAMES.update({"check": r"\bchk_", "snapshot": r"\bsnap_"})
+_MODULE_NAMES.update({"check": r"\bchk_", "snapshot": r"\bsnap_", "board": r"\b(Board[A-Z]|brd_)",
+                      "backlog": r"\bbkl_"})
+# template 1.2 (B-404, B-405): a task board and a product backlog, optional and never in Simple
+V12_MODULES = {"board": "Board", "backlog": "Backlog"}
 
 
 def edition_of(value):
@@ -229,7 +232,9 @@ def m365():
 
 def all_modules():
     """The optional sheets this edition can have: {module: sheet name}."""
-    return {**MODULES, **RELEASE_MODULES} if release() else dict(MODULES)
+    if not release():
+        return dict(MODULES)
+    return {**MODULES, **RELEASE_MODULES, **(V12_MODULES if v12() else {})}
 
 
 def set_modules(modules):

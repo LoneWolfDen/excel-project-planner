@@ -6,7 +6,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from .core import (BOX, CALC_FILL, CALC_FONT, DATE, INPUT_FONT, NOTE_FONT, Col, add_table, fill, font, has,
-                   header_cell, missing, name, release, title, v11, m365)
+                   header_cell, missing, name, release, title, v11, v12, m365)
 from .tasks import CONSTRAINTS
 
 # Working-week presets -> Mon..Sun mask for WORKDAY.INTL (1 = not working); "Custom" uses the seven day rows
@@ -155,7 +155,15 @@ def settings_rows(blank, max_sprints):
          "Defaults to the Monday of the View from week. Overwrite with any Monday to scroll the weekly grids alone."),
         ("NextFreeUID", "Next free task UID (calculated)", "=MAX(tsk_UID)+1", "0", False,
          "Give a newly inserted task row this UID (see Start > Inserting tasks)."),
-    ] + (RELEASE_ROWS if release() else []) + (V11_ROWS if v11() else [])
+    ] + (RELEASE_ROWS if release() else []) + (V11_ROWS if v11() else []) + (V12_ROWS if v12() else [])
+
+
+# template 1.2 (B-201): which of the three baselines Planned Start / Finish, variances and the Gantt compare against
+V12_ROWS = [
+    ("CompareBaseline", "Compare against baseline (1, 2 or 3)", 1, "0", True,
+     "Planned Start / Finish, the variances and the Gantt's plan bars use Baseline (1), Baseline 2 or Baseline 3 "
+     "(Tasks > BASELINE). Keep an old baseline in 2 or 3 before re-baselining to compare the two."),
+]
 
 
 # template 1.1 settings (F-1103 Sandbox, F-1105 PERT). P50 / P80: the forecast finish moved by the critical tasks'
@@ -213,6 +221,9 @@ def build_settings(wb, blank, max_sprints, values=None):
     for n, label, value, fmt, is_input, note in settings:
         if m365() and n == "FinishVarianceDays":       # the Microsoft 365 edition's named LAMBDA
             value = "=L_WORKING_DAYS(PlannedFinish,ProjectFinish)"
+        if v12() and n == "BaselineSet":             # B-201: the baseline being compared against
+            value = ("=CHOOSE(CompareBaseline,COUNT(tsk_BaseStart),COUNT(tsk_Base2Start),COUNT(tsk_Base3Start))"
+                     ">0")
         if values and n in values:
             value = values[n]
         if n in ESSENTIAL:
@@ -253,6 +264,10 @@ def build_settings(wb, blank, max_sprints, values=None):
     levels = DataValidation(type="whole", operator="between", formula1="1", formula2="9")
     st.add_data_validation(levels)
     levels.add(f"C{rows['OutlineShowLevel']}")
+    if "CompareBaseline" in rows:
+        which = DataValidation(type="whole", operator="between", formula1="1", formula2="3")
+        st.add_data_validation(which)
+        which.add(f"C{rows['CompareBaseline']}")
     if "SprintCount" in rows:
         sprints = DataValidation(type="whole", operator="between", formula1="1", formula2=str(max_sprints))
         st.add_data_validation(sprints)

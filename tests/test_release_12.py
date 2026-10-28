@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(ROOT))
 import perf_check  # noqa: E402
-from test_planner import CommittedWorkbooksTest, errors_in, named_cell  # noqa: E402
+from test_planner import CommittedWorkbooksTest, errors_in, named_cell, serial, table_rows  # noqa: E402
 from test_release import head, small, task_row, tasks_by_uid  # noqa: E402
 
 RELEASE = ROOT / "release-1.2"
@@ -300,3 +300,195 @@ class SampleBuildTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _plan_inputs_12(wb):
+    """test_release._plan_inputs plus template 1.2's Active and Remaining Duration."""
+    from test_release import _plan_inputs
+    rows, settings, stages = _plan_inputs(wb)
+    typed = [t for t in table_rows(wb, "Tasks", "Tasks")]
+    for r, t in zip(rows, typed):
+        r["Active"], r["RemDur"] = t["Active"], t["Remaining Duration"]
+    return rows, settings, stages
+
+
+def _put_in_table(ws, table, row, values):
+    """Type values (header -> value) into data row `row` (1 = first) of a table on ws."""
+    from openpyxl.utils.cell import range_boundaries
+    c1, r1, c2, _ = range_boundaries(ws.tables[table].ref)
+    col = {ws.cell(r1, c).value: c for c in range(c1, c2 + 1)}
+    for h, v in values.items():
+        ws.cell(r1 + row, col[h]).value = v
+
+
+ENGINE_EDITS = {
+    14: {"Lag1": "50%"},                                   # half of UID 13's 10 days
+    21: {"Lag1": "3ed"},                                   # FS, elapsed
+    23: {"Type1": "SS", "Lag1": "4ed"},
+    18: {"Lag1": "2ed"},                                   # FF, elapsed
+    25: {"Lag1": "2ed"},                                   # a milestone: on or after
+    26: {"Type1": "SF", "Lag1": "12ed"},
+    28: {"Active": "No"},                                  # inactive
+    29: {"Pred2": 28},                                     # a link to it is ignored
+    13: {"Remaining Duration": 7},                         # started: finishes 7 working days from the status date
+    17: {"Remaining Duration": 3, "Actual Work": 40},
+    16: {"Baseline 2 Start": None},
+}
+
+
+@unittest.skipUnless(__import__("test_planner").SOFFICE, "LibreOffice not installed")
+class EngineTest(unittest.TestCase):
+    """The v1.2 engine items, recalculated: % and elapsed lags (B-102), inactive tasks (B-110), Remaining Duration
+    and Actual Work (B-202), baselines 2 and 3 (B-201), cost per use and fixed costs (B-302). The schedule is
+    checked task by task against tests/reference_schedule.py (v12=True)."""
+
+    @classmethod
+    def setUpClass(cls):
+        from test_planner import recalc
+        from test_release import put
+        cls.tmp = tempfile.TemporaryDirectory()
+        path = Path(cls.tmp.name) / "engine.xlsx"
+        make(baselined=True).save(path)
+        cls.source = path
+
+        def edit(wb):
+            for uid, values in ENGINE_EDITS.items():
+                put(wb, uid, {h: v for h, v in values.items() if v is not None})
+            put(wb, 12, {"Baseline 2 Start": d(2026, 10, 1), "Baseline 2 Finish": d(2026, 10, 9)})
+            cost = wb["Cost"]
+            _put_in_table(cost, "RateCard", 1, {"Per Use": 100})
+            _put_in_table(cost, "FixedCosts", 1, {"UID": 14, "Amount": 1000, "Description": "Gateway licence"})
+            _put_in_table(cost, "FixedCosts", 2, {"UID": 14, "Amount": 500, "Description": "Sandbox account"})
+            _put_in_table(cost, "FixedCosts", 3, {"UID": 13, "Amount": 300, "Description": "Test devices"})
+        cls.wb = recalc(path, cls.tmp.name, edit)
+        cls.t = tasks_by_uid(cls.wb)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
+        classic_again()
+
+    def test_no_errors(self):
+        self.assertEqual(errors_in(self.wb), [])
+
+    def test_reference_schedule(self):
+        import datetime as dt
+        import reference_schedule
+        from test_planner import serial, serial_or_none
+        got, finish = reference_schedule.schedule(*_plan_inputs_12(self.wb), v12=True)
+        bad = []
+        for v in got:
+            t = self.t[v["UID"]]
+            for k, want in v.items():
+                if k in ("UID", "CS", "CF"):
+                    continue
+                have = (t[k] == "Yes" if k == "Critical" else serial_or_none(t[k]) if isinstance(want, dt.date)
+                        else t[k])
+                if have != want:
+                    bad.append((v["UID"], k, have, want))
+        self.assertEqual(bad, [])
+        self.assertEqual(serial(named_cell(self.wb, "ProjectFinish").value), finish)
+        self.assertNotIn(28, [v["UID"] for v in got])
+
+    def test_lags_as_typed(self):                                 # B-102
+        self.assertEqual(self.t[14]["_Pred1Lag"], 5)
+        self.assertEqual(self.t[21]["_Pred1Elapsed"], 3)
+        self.assertIn("+3ed", self.t[21]["Predecessors by ID"] or "")
+        self.assertEqual(self.t[21]["Issues"] or "", "")
+
+    def test_inactive(self):                                      # B-110
+        self.assertEqual(self.t[28]["Status"], "Inactive")
+        self.assertIn(self.t[28]["Start"], ("", None))
+        self.assertEqual(self.t[28]["_IsLeaf"], 0)
+        self.assertIn("inactive", self.t[29]["Link Check"])
+
+    def test_remaining_duration_and_actual_work(self):          # B-202
+        t13 = self.t[13]
+        self.assertEqual(serial(t13["Finish"]), serial(d(2026, 11, 3)))      # 7 working days from Mon 26-Oct
+        self.assertAlmostEqual(t13["Progress"], 7 / 14, places=6)          # 15-23 Oct done (7 days), 7 to go
+        t17 = self.t[17]
+        self.assertAlmostEqual(t17["% Work Done"], 40 / t17["_LeafTotalWork"], places=6)
+        self.assertEqual(self.t[17]["_LeafWorkDone"], 40 * (t17["_LeafWork"] / t17["_LeafTotalWork"]))
+
+    def test_baseline_2(self):                                    # B-201
+        self.assertEqual(serial(self.t[12]["Baseline 2 Start"]), serial(d(2026, 10, 1)))
+        self.assertEqual(serial(self.t[12]["Planned Start"]), serial(self.t[12]["Baseline Start"]))   # compares 1
+
+    def test_costs(self):                                         # B-302
+        card = [r for r in table_rows(self.wb, "Cost", "RateCard") if r["Resource"]]
+        first = card[0]["Resource"]
+        cost = {r["ID"]: r for r in table_rows(self.wb, "Cost", "TaskCost") if r["ID"] not in (None, "")}
+        for t in self.t.values():
+            if t["_IsLeaf"] != 1:
+                continue
+            row = cost[t["ID"]]
+            fixed = {14: 1500, 13: 300}.get(t["UID"], 0)
+            uses = 100 if first in (t["Resource Names"] or "").split(", ") or (t["Resource Names"] or "").startswith(
+                first + "[") or f", {first}[" in (t["Resource Names"] or "") else 0
+            self.assertAlmostEqual(row["_LeafExtra"], uses + fixed, places=6, msg=t["Task Name"])
+            started = t["_LeafProgress"] > 0
+            self.assertAlmostEqual(row["_ExtraDone"], (uses if started else 0) + fixed * t["_LeafProgress"],
+                                   places=6, msg=t["Task Name"])
+        fixed_tasks = {r["UID"]: r["Task"] for r in table_rows(self.wb, "Cost", "FixedCosts") if r["UID"]}
+        self.assertEqual(fixed_tasks[14], "Payment gateway integration")
+
+    def test_ms_project_export(self):                             # B-102, B-110 in MSPDI
+        import re
+        from planner import mspdi
+        path = Path(self.tmp.name) / "values.xlsx"
+        self.wb.save(path)
+        xml = mspdi.convert(path.read_bytes())
+        xml = xml.decode() if isinstance(xml, bytes) else xml
+        task = lambda uid: re.search(rf"<Task>\s*<UID>{uid}</UID>.*?</Task>", xml, re.S).group(0)
+        self.assertIn("<Active>0</Active>", task(28))
+        self.assertRegex(task(21), r"<LinkLag>43200</LinkLag>\s*<LagFormat>8</LagFormat>")      # 3 elapsed days
+        self.assertIn("<Active>1</Active>", task(21))
+
+
+@unittest.skipUnless(__import__("test_planner").SOFFICE, "LibreOffice not installed")
+class CompareBaselineTest(unittest.TestCase):
+    """B-201: Settings > CompareBaseline = 2 plans against Baseline 2 (and BaselineSet counts that baseline)."""
+
+    @classmethod
+    def tearDownClass(cls):
+        classic_again()
+
+    def test_compare_2(self):
+        from test_planner import recalc, serial
+        from test_release import put
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "b2.xlsx"
+            make(baselined=True).save(path)
+
+            def edit(wb):
+                named_cell(wb, "CompareBaseline").value = 2
+                put(wb, 12, {"Baseline 2 Start": d(2026, 10, 1), "Baseline 2 Finish": d(2026, 10, 9)})
+            wb = recalc(path, tmp, edit)
+        t = tasks_by_uid(wb)
+        self.assertEqual(serial(t[12]["Planned Start"]), serial(d(2026, 10, 1)))
+        self.assertEqual(serial(t[12]["Planned Finish"]), serial(d(2026, 10, 9)))
+        self.assertEqual(serial(t[13]["Planned Start"]), serial(t[13]["_CalcStart"]))   # no baseline 2: current
+        self.assertTrue(named_cell(wb, "BaselineSet").value)
+
+
+class EngineStructureTest(unittest.TestCase):
+    """Built, not recalculated: the MS Project export of the engine items and the TakeSnapshot links."""
+
+    @classmethod
+    def tearDownClass(cls):
+        classic_again()
+
+    def test_names_and_steps(self):
+        wb = make(baselined=True)
+        for n in ("tsk_BaseDates", "tsk_Baseline2", "tsk_Baseline3", "CompareBaseline", "cost_PerUse",
+                  "cost_FixedUID", "cost_FixedAmount", "tsk_Active", "tsk_RemainingDuration"):
+            self.assertIn(n, wb.defined_names, n)
+        ws = wb["TakeSnapshot"]
+        links = {c.hyperlink.location for row in ws.iter_rows() for c in row if c.hyperlink}
+        self.assertTrue({"tsk_BaseDates", "tsk_Baseline2", "CompareBaseline"} <= links, links)
+
+
+
+def d(y, m, day):
+    import datetime as dt
+    return dt.date(y, m, day)

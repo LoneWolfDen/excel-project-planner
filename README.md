@@ -12,7 +12,7 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 ## Files
 - `Project_Planner.xlsx` – the template, loaded with a 30-task sample project.
 - `Project_Planner_Blank.xlsx` – the same template with no sample data, for a new project.
-- `docs/` – [architecture and rules](docs/ARCHITECTURE.md), [MS Project gap analysis](docs/MSP_GAP_ANALYSIS.md), [backlog](docs/BACKLOG.md), [testing on iPhone](docs/TESTING_ON_IPHONE.md).
+- `docs/` – [architecture and rules](docs/ARCHITECTURE.md), [scheduling spec](docs/SCHEDULING_SPEC.md), [MS Project gap analysis](docs/MSP_GAP_ANALYSIS.md), [backlog](docs/BACKLOG.md), [testing on iPhone](docs/TESTING_ON_IPHONE.md).
 - `planner/` – the generator: one module per sheet (`tasks.py`, `gantt.py`, `agile.py`, `log.py`, `status.py`, ...) plus `core.py` helpers.
 - `scripts/perf_check.py` and `perf_budget.json` – performance and structure checks run on every PR.
 - `scripts/build_planner.py` – generates the workbooks (needs `openpyxl`; `--recalc` also needs LibreOffice):

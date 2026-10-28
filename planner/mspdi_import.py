@@ -206,7 +206,7 @@ def _task(t, uid, hours, assignments, warnings):
     row = {"UID": uid, "Level": max(1, _int(t, "OutlineLevel", 1)), "Name": _text(t, "Name"),
            "Mode": "Manual" if _text(t, "Manual") == "1" else "Auto",
            "Dur": 0 if _text(t, "Milestone") == "1" else _days(_hours(_text(t, "Duration")), hours),
-           "Notes": _text(t, "Notes")}
+           "Notes": _text(t, "Notes"), "Owner": _text(t, "Contact") or None}
     constraint, when = _int(t, "ConstraintType"), _date(_text(t, "ConstraintDate"))
     if row["Mode"] == "Manual":
         row["Cons"] = _date(_text(t, "Start"))           # manual tasks are pinned to the Constraint Date

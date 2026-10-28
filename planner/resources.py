@@ -3,7 +3,7 @@ End), how much of their sprint time is delivery (Focus %), and their leave by mo
 on the Cost sheet, which can be deleted before the plan is shared."""
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from .core import DATE, Col, Tab, add_table, col_range, has, name, release, title
+from .core import DATE, Col, Tab, add_table, col_range, has, name, release, title, v11
 from .leave import leave_columns, month_labels, name_leave
 from .tasks import people
 
@@ -34,6 +34,22 @@ def count_by_resource(resource, criteria=""):
     """Tasks this resource is on (any of a task's people), with extra COUNTIFS criteria such as ',tsk_IsLeaf,1'."""
     parts = [f"COUNTIFS({who},{resource}{criteria})" for who in people("Name")]
     return "(" + "+".join([parts[0]] + [f"IF(MaxPeople>={k},{p},0)" for k, p in enumerate(parts[1:], start=2)]) + ")"
+
+
+def named_in(column, person):
+    """Tasks whose RACI cell names this person, alone or in a comma-separated list (exact names, not parts)."""
+    return "+".join(f'COUNTIF({column},{pattern})' for pattern in
+                    (person, f'{person}&",*"', f'"*, "&{person}', f'"*, "&{person}&",*"'))
+
+
+def _raci_columns(nm):
+    """Template 1.1 (F-1101): how many tasks each person is accountable for, consulted on and informed of
+    (Responsible is the Tasks column and Resources' Tasks count)."""
+    return [Col(header, "calc", 11, "0", f'IF({nm}="","",{named_in(column, nm)})', note=note)
+            for header, column, note in (
+                ("Accountable For", "tsk_Accountable", "Tasks with this person as Accountable (RACI)."),
+                ("Consulted On", "tsk_Consulted", "Tasks that name this person in Consulted (RACI)."),
+                ("Informed Of", "tsk_Informed", "Tasks that name this person in Informed (RACI)."))]
 
 
 def build_resources(wb, blank, n_rows=50, resources=None, leave=None, months=None, n_sprints=26, n_grid=25):
@@ -70,6 +86,7 @@ def build_resources(wb, blank, n_rows=50, resources=None, leave=None, months=Non
         Col("Work", "calc", 13, "#,##0.0", f'IF({nm}="","",{by_resource("Work", nm)})',
             note="Assigned work (hours)."),
         Col("Notes", "in", 30),
+        *(_raci_columns(nm) if v11() else []),
         Col("_Focus", "help", 6, "0%", f'IF({t.row("Focus %")}="",FocusFactor,N({t.row("Focus %")}))',
             note="Focus % in use (the setting when blank)."),
     ] + leave_columns(data, blank, leave, months), n_rows)

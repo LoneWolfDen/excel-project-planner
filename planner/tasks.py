@@ -25,7 +25,7 @@ from openpyxl.worksheet.cell_range import MultiCellRange
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from .core import (DATE, LABEL_FONT, NOTE_FONT, Col, Tab, add_table, col_range, fill, has, missing, name, release,
-                   title)
+                   title, v11)
 
 TABLE = "Tasks"
 HEADER_ROW = 5
@@ -100,6 +100,10 @@ N = {
     "DurIn": "Duration", "Days": "_Days", "PredRaw": "Predecessors", "PredUse": "_Predecessors",
     "ResRaw": "Resources", "ResUse": "_Resources", "PickKey": "_PickKey", "Pick": "_PickList",
     "IssueKey": "_IssueKey", "OverKey": "_OverAllocKey", "Span": "_SpanDays",
+    # template 1.1 (F-1101, F-1103, F-1105): RACI, the sandbox duration and three-point estimates
+    "Acc": "Accountable", "Con": "Consulted", "Inf": "Informed", "SandDur": "Sandbox Duration",
+    "Opt": "Optimistic", "Pess": "Pessimistic", "PertExp": "Expected", "PertVar": "_PertVariance",
+    "PertShift": "_PertShift",
     **{f"Pick{k}": f"Pred{k}" for k in LINK_NUMBERS}, **{f"PickT{k}": f"Type{k}" for k in LINK_NUMBERS},
     **{f"PickL{k}": f"Lag{k}" for k in LINK_NUMBERS}, **{f"Who{k}": f"Res{k}" for k in range(1, PEOPLE + 1)},
     **{f"WhoU{k}": f"Units{k}" for k in range(1, PEOPLE + 1)},
@@ -137,7 +141,9 @@ NAMES = {
 ALIAS = {}
 RELEASE_ALIAS = {"Dur": "Days", "PredIn": "PredUse", "ResIn": "ResUse"}
 RELEASE_NAMES = {"DurIn": "tsk_DurationInput", "Pick": "tsk_PickList", "IssueKey": "tsk_IssueKey",
-                 "OverKey": "tsk_OverAllocKey"}
+                 "OverKey": "tsk_OverAllocKey", "Acc": "tsk_Accountable", "Con": "tsk_Consulted",
+                 "Inf": "tsk_Informed", "PertExp": "tsk_PertExpected", "PertVar": "tsk_PertVariance",
+                 "PertShift": "tsk_PertShift"}
 
 
 def R(key):
@@ -584,7 +590,28 @@ def release_issues():
     return (f'&IF(AND({R("PredRaw")}<>"",{picked(each("Pick"))}),"The Predecessors text is ignored: the Pred '
             f'pickers are used. ","")'
             f'&IF(AND({R("ResRaw")}<>"",{picked([f"Who{k}" for k in range(1, PEOPLE + 1)])}),"The Resources text is '
-            f'ignored: the Res pickers are used. ","")')
+            f'ignored: the Res pickers are used. ","")'
+            + (v11_issues() if v11() else ""))
+
+
+def v11_issues():
+    """Template 1.1: three-point estimates that don't bracket the duration, or only one of the two."""
+    opt, pess, days = R("Opt"), R("Pess"), f'N({R("Days")})'
+    return (f'&IF(AND({R("IsLeaf")}=1,OR(AND({opt}<>"",{pess}=""),AND({opt}="",{pess}<>""))),'
+            f'"Type both Optimistic and Pessimistic (or neither). ","")'
+            f'&IF(AND(ISNUMBER({opt}),ISNUMBER({pess}),OR({opt}>{days},{pess}<{days})),'
+            f'"Optimistic should be at most the Duration and Pessimistic at least it. ","")'
+            f'&IF(AND({R("SandDur")}<>"",{parse_days(R("SandDur"))}=""),"Sandbox Duration "&{R("SandDur")}&'
+            f'" can\'t be read: type 3, 3d or 2w. ","")')
+
+
+def parse_days(raw):
+    """Working days from a Duration-style cell: 3, "3d" or "2w" (5 working days a week); "" when it can't be read.
+    The named-formula idea (L_PARSE_DURATION) needs LAMBDA, which Excel 2019 lacks: the formula is written out."""
+    t = f'LOWER(TRIM({raw}))'
+    unit = f'IF(RIGHT({t},1)="w",5,IF(RIGHT({t},1)="d",1,NA()))'
+    return (f'IF({raw}="","",IF(ISNUMBER({raw}),{raw},IFERROR(VALUE({t}),'
+            f'IFERROR(VALUE(LEFT({t},LEN({t})-1))*{unit},""))))')
 
 
 def release_formulas(f):
@@ -595,11 +622,19 @@ def release_formulas(f):
     g = {}
     # Duration: 3, "3d" or "2w" (5 working days a week); "" when it can't be read (Issues says so). The named-formula
     # idea (L_PARSE_DURATION) needs LAMBDA, which Excel 2019 lacks: this one column is the parser.
-    raw = R("DurIn")
-    t = f'LOWER(TRIM({raw}))'
-    unit = f'IF(RIGHT({t},1)="w",5,IF(RIGHT({t},1)="d",1,NA()))'
-    g["Days"] = (f'IF({raw}="","",IF(ISNUMBER({raw}),{raw},IFERROR(VALUE({t}),'
-                 f'IFERROR(VALUE(LEFT({t},LEN({t})-1))*{unit},""))))')
+    g["Days"] = parse_days(R("DurIn"))
+    if v11():
+        # F-1103 Sandbox: with Settings > Sandbox = Yes, a task's Sandbox Duration replaces its Duration everywhere
+        sandbox = parse_days(R("SandDur"))
+        # (an unreadable Sandbox Duration is ignored, and Issues says so, rather than blanking the task)
+        g["Days"] = f'IF(AND(Sandbox="Yes",{sandbox}<>""),{sandbox},{g["Days"]})'
+        # F-1105 three-point estimate (PERT): Expected = (O + 4M + P) / 6 with M = the Duration; its variance and
+        # how far it moves the task feed Settings > PertP50 / PertP80 over the critical path
+        opt, pess, days = R("Opt"), R("Pess"), f'N({R("Days")})'
+        g["PertExp"] = (f'IF(AND({R("IsLeaf")}=1,ISNUMBER({opt}),ISNUMBER({pess})),'
+                        f'ROUND(({opt}+4*{days}+{pess})/6,1),"")')
+        g["PertVar"] = f'IF({R("PertExp")}="",0,(({pess}-{opt})/6)^2)'
+        g["PertShift"] = f'IF({R("PertExp")}="",0,{R("PertExp")}-{days})'
 
     # predecessor pickers: Pred k holds a UID or a pick-list entry "12 Requirements"; Type k and Lag k are optional
     def link(k):
@@ -740,6 +775,21 @@ _RELEASE_LAYOUT = (
     + [(k, "help", 11, None, False, None) for k in ("Days", "PredUse", "ResUse", "PickKey", "Pick", "Span")]
 )
 CHECK_LAYOUT = [(k, "help", 8, None, False, None) for k in ("IssueKey", "OverKey")]
+# template 1.1 columns
+V11_LAYOUT = [
+    ("PertExp", "calc", 9, "0.0", True, "Three-point estimate: (Optimistic + 4 x Duration + Pessimistic) / 6. Blank "
+                                        "until both are typed. Settings > PertP50 / PertP80 add them up."),
+    ("Opt", "in", 9, "0.#", True, "Optimistic: the fewest working days it could take (at most the Duration)."),
+    ("Pess", "in", 9, "0.#", True, "Pessimistic: the most working days it could take (at least the Duration)."),
+    ("SandDur", "in", 10, None, True, "What-if duration (3, 3d or 2w): used instead of Duration while Settings > "
+                                      "Sandbox = Yes. Status says when the sandbox is on."),
+    ("Acc", "in", 16, None, False, "RACI: who is accountable (one person, from Resources). Responsible = the "
+                                   "Resources on the task."),
+    ("Con", "in", 18, None, False, "RACI: who is consulted (names, comma-separated; anyone, not only Resources)."),
+    ("Inf", "in", 18, None, False, "RACI: who is kept informed (names, comma-separated)."),
+    ("PertVar", "help", 8, None, False, None), ("PertShift", "help", 8, None, False, None),
+]
+V11_SECTIONS = [("RACI", "Acc", ["Con", "Inf"]), ("ESTIMATES (PERT) and SANDBOX", "PertExp", ["Opt", "Pess", "SandDur"])]
 
 # The sheet's sections, left to right. The first holds what a plan needs and is always shown; each optional section is
 # an Excel column group, collapsed, whose +/- button sits on its first (key) column, which stays visible. (Excel would
@@ -778,8 +828,8 @@ def configure():
     sections = SECTIONS
     ALIAS.clear()
     if release():
-        rows += _RELEASE_LAYOUT + (CHECK_LAYOUT if has("check") else [])
-        sections = RELEASE_SECTIONS
+        rows += _RELEASE_LAYOUT + (CHECK_LAYOUT if has("check") else []) + (V11_LAYOUT if v11() else [])
+        sections = RELEASE_SECTIONS + (V11_SECTIONS if v11() else [])
         ALIAS.update(RELEASE_ALIAS)
     by_key = {row[0]: row for row in rows}
     shown = [k for _, key, rest in sections for k in ([key] if key else []) + rest]
@@ -792,7 +842,7 @@ def configure():
 
 def input_keys():
     """Every Tasks input key of either edition (the upgrade reads a workbook by header before it knows which)."""
-    return [row[0] for row in _BASE_LAYOUT + _RELEASE_LAYOUT if row[1] == "in"]
+    return [row[0] for row in _BASE_LAYOUT + _RELEASE_LAYOUT + V11_LAYOUT if row[1] == "in"]
 
 
 configure()
@@ -927,6 +977,18 @@ RELEASE_PROMPTS = {
 }
 
 
+V11_PROMPTS = {
+    "Opt": ("Optimistic (working days)", "The fewest days it could take if all goes well. With Pessimistic it gives "
+                                         "the Expected duration and the P50 / P80 finish on Status."),
+    "Pess": ("Pessimistic (working days)", "The most days it could take if things go wrong (not a disaster)."),
+    "SandDur": ("Sandbox Duration (what-if)", "Try another duration (3, 3d or 2w) without changing the plan: it is "
+                                              "used only while Settings > Sandbox = Yes."),
+    "Acc": ("Accountable (RACI)", "The one person who answers for the task. Responsible = its Resources."),
+    "Con": ("Consulted (RACI)", "People whose input is needed, comma-separated."),
+    "Inf": ("Informed (RACI)", "People kept up to date, comma-separated."),
+}
+
+
 def _validation_and_formatting(ws, L, n_rows):
     """Data validation and conditional formatting: Excel only accepts A1 ranges here (it shifts them on insert)."""
     first, last = HEADER_ROW + 1, HEADER_ROW + n_rows
@@ -938,7 +1000,7 @@ def _validation_and_formatting(ws, L, n_rows):
         for k in keys:
             r = copy.copy(rule)
             r.sqref = MultiCellRange()
-            prompts = {**PROMPTS, **RELEASE_PROMPTS} if release() else PROMPTS
+            prompts = {**PROMPTS, **RELEASE_PROMPTS, **(V11_PROMPTS if v11() else {})} if release() else PROMPTS
             if k in prompts:
                 r.showInputMessage, (r.promptTitle, r.prompt) = True, prompts[k]
             ws.add_data_validation(r)
@@ -993,12 +1055,24 @@ def _validation_and_formatting(ws, L, n_rows):
            *[f"Who{k}" for k in range(1, PEOPLE + 1)])
         dv(DataValidation(type="decimal", operator="between", formula1="0", formula2="1", showErrorMessage=True,
                           error="A share of their time: 0% - 100%."), *[f"WhoU{k}" for k in range(1, PEOPLE + 1)])
+    if v11():
+        dv(DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0", showErrorMessage=True,
+                          error="Working days, e.g. 4."), "Opt", "Pess")
+        x = at("SandDur").replace("$", "")
+        unit = f'OR(LOWER(RIGHT({x},1))="d",LOWER(RIGHT({x},1))="w")'
+        dv(DataValidation(type="custom", formula1=f"OR(AND(ISNUMBER({x}),{x}>=0),"
+                                                  f"IFERROR(AND({unit},VALUE(LEFT({x},LEN({x})-1))>=0),FALSE))",
+                          showErrorMessage=True, errorTitle="Sandbox Duration",
+                          error="Working days: 3, 3d or 2w (a week = 5 days)."), "SandDur")
+        dv(DataValidation(type="list", formula1="=res_Name", showErrorMessage=False), "Acc")
+        dv(DataValidation(allow_blank=True), "Con", "Inf")
 
     cf = ws.conditional_formatting
     cf.add(f"A{first}:{L['BW']}{last}", FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(bold=True), fill=fill("DDEBF7")))
     greyed = ("Dur", "PredIn", "CType", "Cons", "AS", "AF", "Stage", "Pct", "ResIn", "SprIn", "SP")
     if release():                     # one rule over every input a summary ignores (the formula's column is fixed)
-        greyed += tuple(k for k in L if k.startswith(("Pick", "Who")))
+        greyed += tuple(k for k in L if k.startswith(("Pick", "Who"))) + tuple(k for k in ("Opt", "Pess", "SandDur")
+                                                                                 if k in L)
         cf.add(" ".join(rng(k) for k in greyed),
                FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(color="A6A6A6", italic=True, bold=True)))
     else:

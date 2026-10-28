@@ -375,6 +375,24 @@ exactly as before; `test_release.ClassicUnchangedTest` builds both in one proces
   are never circular.
 - **Protection and printing** (`planner/release.py`): see BACKLOG R1-10 and R1-11.
 
+### Template 1.1 (`--release 1.1`, `release-1.1/`)
+
+`core.set_release("1.1")`; `core.v11()` gates everything below, so the 1.0 build is unchanged
+(`test_release_11.ModulesTest.test_editions_dont_leak`, `test_release.CommittedReleaseTest`).
+
+- **Sandbox** is one `IF` in `_Days`: `IF(AND(Sandbox="Yes",[@Sandbox Duration]<>""), parse(Sandbox Duration),
+  parse(Duration))` (`tasks.parse_days`). Everything reads `_Days`, so the scheduler, the reports and the MS Project
+  export follow without a second engine; Status B3, the summary and Check flag it.
+- **PERT**: `Expected`, `_PertVariance` and `_PertShift` per detail task; `PertP50` / `PertP80` on Settings are a
+  `WORKDAY.INTL` from `ProjectFinish` by `SUMIFS` over the critical detail tasks (the shift, plus 0.84 x the square
+  root of the summed variances). An approximation: the critical path can change when the estimates do.
+- **Dependencies**: Log columns Expected, Task Start, Gap (days) (`NETWORKDAYS.INTL` from Expected to the task's
+  start) and `_DepKey`; Status' TopDependencies is a ranked table over it.
+- **Narrative** (`status.narrative`): one concatenation of names; the parts that read a module this build leaves out
+  are dropped (`core.missing`).
+- **RACI counts** (`resources.named_in`): four `COUNTIF` patterns per role (the name alone, first, last or in the
+  middle of a comma list), so "Sam" never counts "Samantha".
+
 ## Guardrails
 
 Run on every PR by `.github/workflows/ci.yml`:

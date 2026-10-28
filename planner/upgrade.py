@@ -88,7 +88,7 @@ def read_planner(data):
     input tables, {table: (headers, rows)}, for copy_inputs."""
     from .build import ProjectData, Sizes
     from .settings import settings_rows, week_preset
-    from .settings import RELEASE_ROWS
+    from .settings import RELEASE_ROWS, V11_ROWS
     from .tasks import N, input_keys, take_links
     try:
         wb = openpyxl.load_workbook(io.BytesIO(data))
@@ -101,7 +101,7 @@ def read_planner(data):
     version = _named_value(wb, "PlannerVersion") or "1.6 or earlier"
 
     settings = {}
-    for n, _label, _default, _fmt, is_input, _note in settings_rows(True, 26) + RELEASE_ROWS:
+    for n, _label, _default, _fmt, is_input, _note in settings_rows(True, 26) + RELEASE_ROWS + V11_ROWS:
         v = _named_value(wb, n)
         if is_input and v is not None:
             settings[n] = v
@@ -183,8 +183,9 @@ def read_planner(data):
                   sprints=max(default.sprints, len(tables.get("SprintTable", (None, None, []))[2])))
     project = ProjectData(settings=settings, tasks=tasks, resources=resources, holidays=holidays, leave=leave,
                           leave_months=months, assignments=assignments)
-    from .build import RELEASE_VERSION
-    project.release = str(version) == RELEASE_VERSION    # a Release 1.0 workbook stays one
+    from .build import PLANNER_VERSIONS
+    by_planner = {v: t for t, v in PLANNER_VERSIONS.items()}
+    project.release = by_planner.get(str(version), False)    # a release-line workbook stays in its edition
     modules = _named_value(wb, "PlannerModules")          # since v1.8: a Simple workbook upgrades to a Simple one
     if modules is not None:
         project.modules = [m for m in str(modules).split(",") if m]
@@ -256,7 +257,8 @@ def copy_inputs(wb, copies, warnings):
 
 def rebuild(data, release=None):
     """(the latest template's workbook holding the old workbook's inputs, warnings, the old version). release: True
-    moves a classic workbook into the Release 1.0 one, False the other way; None keeps the workbook's own edition."""
+    moves a classic workbook into the Release 1.0 one, "1.1" into template 1.1, False back to classic; None keeps the
+    workbook's own edition."""
     from .build import make_workbook
     from .core import MODULES
     project, copies, sizes, warnings, version = read_planner(data)

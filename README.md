@@ -31,6 +31,15 @@ Build: `python scripts/build_planner.py release-1.0/Project_Planner.xlsx --relea
 `python scripts/upgrade_planner.py Old.xlsx New.xlsx --release`. What was decided and what waits for v1.1:
 [docs/BACKLOG.md](docs/BACKLOG.md#release-10-final-freeze--done).
 
+## Release 1.1
+Template 1.1, in [`release-1.1/`](release-1.1/), is Release 1.0 plus: **RACI** on Tasks (Accountable, Consulted,
+Informed; Responsible = the Resources) with counts per person; **external dependencies** with an Expected date and the
+gap to their task, the five latest on Status; a **Sandbox** (type what-if durations, Settings > Sandbox = Yes, and
+the whole plan shows the what-if, flagged on Status and Check); an **automatic summary** paragraph on Status; and
+**three-point estimates** (Optimistic / Pessimistic) giving a P50 and P80 finish. Build with `--release 1.1`; check
+with `python scripts/release_check.py --edition 1.1`; move a 1.0 workbook up with
+`python scripts/upgrade_planner.py Old.xlsx New.xlsx --release 1.1`. `release-1.0/` doesn't change.
+
 ## Files
 - `Project_Planner.xlsx` – the template, loaded with a 30-task sample project.
 - `Project_Planner_Blank.xlsx` – the same template with no sample data, for a new project.
@@ -38,7 +47,7 @@ Build: `python scripts/build_planner.py release-1.0/Project_Planner.xlsx --relea
   Resources and Settings, without the Agile, Log, History, Resource Report and Cost sheets. Build any mix with
   `--modules agile,log,history,resources,cost` (`--simple` = none of them); nothing in it points at a sheet that
   isn't there, and an upgrade keeps the same set.
-- `release-1.0/` – the Release 1.0 workbooks (above).
+- `release-1.0/`, `release-1.1/` – the release workbooks (above).
 - `docs/` – [architecture and rules](docs/ARCHITECTURE.md), [scheduling spec](docs/SCHEDULING_SPEC.md), [MS Project gap analysis](docs/MSP_GAP_ANALYSIS.md), [backlog](docs/BACKLOG.md), [testing in Excel desktop](docs/TESTING_IN_EXCEL.md), [testing on iPhone](docs/TESTING_ON_IPHONE.md).
 - `planner/` – the generator: one module per sheet (`tasks.py`, `gantt.py`, `agile.py`, `log.py`, `status.py`, ...) plus `core.py` helpers.
 - `scripts/perf_check.py` and `perf_budget.json` – performance and structure checks run on every PR.

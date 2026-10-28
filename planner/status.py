@@ -17,7 +17,7 @@ from openpyxl.worksheet.hyperlink import Hyperlink
 
 from . import rag
 from .core import (DATE, HEADER_FILLS, HEADER_FONT, NOTE_FONT, TITLE_FONT, Col, Show, Tab, add_table, fill, font, has,
-                   missing, name, ranked_table)
+                   missing, name, ranked_table, v11)
 from .history import fields
 from .settings import STATUS as SHEET, STATUS_ROW
 from .tasks import STATUS_COLOURS
@@ -71,6 +71,9 @@ KPIS = [
     ("Open risks / issues",
      'COUNTIFS(log_Type,"Risk",log_Open,1)&" / "&COUNTIFS(log_Type,"Issue",log_Open,1)', "@", "Log"),
 ]
+# template 1.1 (F-1105): the finish dates the three-point estimates give
+V11_KPIS = [("Finish P50 (three-point estimates)", "PertP50", DATE, "Tasks > ESTIMATES"),
+            ("Finish P80 (three-point estimates)", "PertP80", DATE, "Tasks > ESTIMATES")]
 ALERT_IF_POSITIVE = {"Tasks with issues (see Tasks > Issues)", "Tasks with an over-allocated resource"}
 
 
@@ -133,13 +136,21 @@ def build_status(wb, agile_ws=None, sprint_letters=None, n_chart_sprints=12):
     ws["B3"] = ('=IF(LiveGrids="No","Resource grids are OFF (Settings > Live resource grids): the Resource Report '
                 'and Tasks > Over-allocated are not up to date.","")')
     ws["B3"].font = font(bold=True, color="C00000")
+    if v11():                                       # F-1103: the what-if must never be mistaken for the plan
+        ws["B3"] = ('=IF(Sandbox="Yes","SANDBOX ON (Settings > Sandbox): every date and figure here is a what-if, '
+                    'not the plan.",IF(LiveGrids="No","Resource grids are OFF (Settings > Live resource grids): the '
+                    'Resource Report and Tasks > Over-allocated are not up to date.",""))')
     for col, width in WIDTHS.items():
         ws.column_dimensions[col].width = width
     top = _this_week(ws)
     top = _rag(wb, ws, top)
+    if v11():
+        top = _narrative(wb, ws, top)
     top = _key_figures(wb, ws, top)
     if has("log"):
         top = _top_raid(ws, top)
+        if v11():
+            top = _top_dependencies(ws, top)
     top = _schedule_watch(ws, top)
     chart_at = top
     if has("log"):
@@ -216,7 +227,7 @@ KPI_NAMES = {"Overall progress (duration-weighted)": "sch_Progress", "Planned pr
 
 
 def _key_figures(wb, ws, top):
-    kpis = [k for k in _live(KPIS, 1) if not missing(k[3])]      # its source sheet left out: nothing to count
+    kpis = [k for k in _live(KPIS + (V11_KPIS if v11() else []), 1) if not missing(k[3])]   # its sheet left out: skip
     """Key figures (B:D) with detail tasks by status beside them (E:F) and its chart below that, then the next
     milestones."""
     _heading(ws, top - 1, "KEY FIGURES")
@@ -267,6 +278,58 @@ def _key_figures(wb, ws, top):
     for r in range(top + 1, top + 6):
         ws.cell(r, 3).alignment = Alignment(horizontal="left")
     return top + 5 + 3
+
+
+def narrative():
+    """F-1104: the status in one paragraph, from the figures on this sheet: RAG, finish against plan, progress,
+    late tasks, the next milestone, the top risk and late dependencies (the parts for a module left out drop out)."""
+    milestone = "MATCH(SMALL(tsk_MilestoneKey,1),tsk_MilestoneKey,0)"
+    parts = [
+        '"Overall "&UPPER(INDEX(ProjectRAG,1))&". Forecast finish "&TEXT(ProjectFinish,"dd-mmm-yyyy")',
+        'IF(FinishVarianceDays>0,", "&FinishVarianceDays&" working days later than planned",IF(FinishVarianceDays<0,'
+        '", "&-FinishVarianceDays&" working days ahead of plan",", on plan"))&". "',
+        '"Progress "&TEXT(sch_Progress,"0%")&" against "&TEXT(sch_Planned,"0%")&" planned. "',
+        'IF(COUNT(tsk_LateKey)=0,"No tasks late. ",COUNT(tsk_LateKey)&IF(COUNT(tsk_LateKey)=1," task"," tasks")'
+        '&" late. ")',
+        f'IFERROR("Next milestone: "&INDEX(tsk_Name,{milestone})&" on "&TEXT(INDEX(tsk_FcFinish,{milestone}),'
+        '"dd-mmm")&". ","")',
+        'IFERROR("Top risk: "&INDEX(log_Label,MATCH(LARGE(log_TopKey,1),log_TopKey,0))&". ","")',
+        'IF(COUNTIF(log_DepGap,"<0")=0,"",COUNTIF(log_DepGap,"<0")&IF(COUNTIF(log_DepGap,"<0")=1," external '
+        'dependency arrives"," external dependencies arrive")&" after their task should start. ")',
+        'IF(Sandbox="Yes","(SANDBOX: what-if dates.)","")',
+    ]
+    return "&".join(p for p in parts if not missing(p))
+
+
+def _narrative(wb, ws, top):
+    """F-1104: the automatic summary under the RAG, to paste into the commentary and edit."""
+    _heading(ws, top - 1, "SUMMARY (automatic: copy it into the commentary below and add the why)")
+    ws.merge_cells(start_row=top, start_column=2, end_row=top, end_column=8)
+    cell = ws.cell(top, 2, f"={narrative()}")
+    cell.alignment = Alignment(wrap_text=True, vertical="top")
+    cell.font = font()
+    ws.row_dimensions[top].height = 48
+    name(wb, "sts_Narrative", f"{SHEET}!$B${top}")
+    return top + 3
+
+
+DEPENDENCY_ROWS = 5
+
+
+def _top_dependencies(ws, top):
+    """F-1102: the open external dependencies with an Expected date, latest against their task first."""
+    ranked_table(ws, "TopDependencies", top, 1, "log_DepKey", DEPENDENCY_ROWS, [
+        Show("Dependency", "log_Label", width=WIDTHS["B"]), Show("Task", "log_Task", width=WIDTHS["C"]),
+        Show("Owner", "log_Owner", width=WIDTHS["D"]),
+        Show("Expected", "log_Expected", "date", WIDTHS["E"], "dd-mmm-yy"),
+        Show("Gap (days)", "log_DepGap", "num", WIDTHS["F"], "+0;-0;0"),
+        Show("Status", "log_Status", width=WIDTHS["G"]), Show("Update", "log_Update", width=WIDTHS["H"]),
+    ], label='"EXTERNAL DEPENDENCIES (latest against their task first; negative gap = too late)"')
+    ws.column_dimensions["A"].width = WIDTHS["A"]
+    gap = f"F{top + 1}"
+    ws.conditional_formatting.add(f"F{top + 1}:F{top + DEPENDENCY_ROWS}", FormulaRule(
+        formula=[f"AND(ISNUMBER({gap}),{gap}<0)"], font=Font(color="C00000", bold=True), fill=fill("FFC7CE")))
+    return top + DEPENDENCY_ROWS + 3
 
 
 def _top_raid(ws, top):

@@ -6,7 +6,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from .core import (BOX, CALC_FILL, CALC_FONT, DATE, INPUT_FONT, NOTE_FONT, Col, add_table, fill, font, has,
-                   header_cell, missing, name, release, title)
+                   header_cell, missing, name, release, title, v11)
 from .tasks import CONSTRAINTS
 
 # Working-week presets -> Mon..Sun mask for WORKDAY.INTL (1 = not working); "Custom" uses the seven day rows
@@ -155,8 +155,26 @@ def settings_rows(blank, max_sprints):
          "Defaults to the Monday of the View from week. Overwrite with any Monday to scroll the weekly grids alone."),
         ("NextFreeUID", "Next free task UID (calculated)", "=MAX(tsk_UID)+1", "0", False,
          "Give a newly inserted task row this UID (see Start > Inserting tasks)."),
-    ] + (RELEASE_ROWS if release() else [])
+    ] + (RELEASE_ROWS if release() else []) + (V11_ROWS if v11() else [])
 
+
+# template 1.1 settings (F-1103 Sandbox, F-1105 PERT). P50 / P80: the forecast finish moved by the critical tasks'
+# three-point estimates: their total shift (Expected - Duration), plus 0.84 standard deviations for P80 (the normal
+# distribution's 80th percentile; variances add along the critical path). An approximation: the critical path can
+# change when estimates do.
+_CRIT = 'tsk_Critical,"Yes",tsk_IsLeaf,1'
+V11_ROWS = [
+    ("Sandbox", "Sandbox: use the Sandbox Durations (what-if)", "No", "@", True,
+     "Yes = every task with a Sandbox Duration (Tasks > ESTIMATES and SANDBOX) uses it instead of its Duration, and "
+     "the whole plan, Status and the reports show the what-if. Status and Check say so. Set No to go back."),
+    ("PertP50", "Finish P50, from the estimates (calculated)",
+     f"=WORKDAY.INTL(ProjectFinish,ROUND(SUMIFS(tsk_PertShift,{_CRIT}),0),WorkWeek,Holidays)", DATE, False,
+     "Forecast finish moved by the critical tasks' Expected - Duration: a 50% chance of finishing by then."),
+    ("PertP80", "Finish P80, from the estimates (calculated)",
+     f"=WORKDAY.INTL(ProjectFinish,ROUND(SUMIFS(tsk_PertShift,{_CRIT})+0.84*SQRT(SUMIFS(tsk_PertVariance,{_CRIT})),0),"
+     "WorkWeek,Holidays)", DATE, False,
+     "Adds 0.84 standard deviations (the critical tasks' variances added up): an 80% chance of finishing by then."),
+]
 
 # Release 1.0 settings
 RELEASE_ROWS = [
@@ -225,7 +243,7 @@ def build_settings(wb, blank, max_sprints, values=None):
     yes_no = DataValidation(type="list", formula1="=L_YesNo", allow_blank=False)
     st.add_data_validation(yes_no)
     for n in ("RescheduleAfterStatus", "LiveGrids", "WorkMon", "WorkTue", "WorkWed", "WorkThu", "WorkFri", "WorkSat",
-              "WorkSun") + (("TakeBaseline",) if "TakeBaseline" in rows else ()):
+              "WorkSun") + tuple(n for n in ("TakeBaseline", "Sandbox") if n in rows):
         yes_no.add(f"C{rows[n]}")
     period = DataValidation(type="list", formula1="=L_Period")
     st.add_data_validation(period)

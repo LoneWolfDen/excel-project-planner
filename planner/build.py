@@ -29,7 +29,7 @@ from .log import build_log
 from .report_resources import build_resource_report
 from .roadmap import build_roadmap
 from .resources import RESOURCES, build_resources
-from .settings import build_holidays, build_lists, build_settings, build_stages
+from .settings import PRESETS, build_holidays, build_lists, build_settings, build_stages, stages_of
 from .status import build_status
 from .tasks import build_tasks, take_people, take_stage
 
@@ -78,10 +78,12 @@ class ProjectData:
 VERSION = "1.7"          # PlannerVersion in every workbook: planner/upgrade.py reads it to know what to convert
 
 
-def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, import_wizard=False, baselined=False):
+def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, import_wizard=False, baselined=False,
+                  project_type=None):
     """import_wizard: also build MSP_Tasks / MSP_Resources, formula copies of Tasks and Resources under MS Project's
     field names for its Import Wizard. Off by default: the XML converter (docs/export.html) carries more."""
-    """The planner workbook: the sample project, a blank template (blank=True), or a given project (data)."""
+    """The planner workbook: the sample project, a blank template (blank=True), or a given project (data).
+    project_type: one of settings.PRESETS (B-1018) for the stages, sprint length and RAG thresholds."""
     sizes = sizes or Sizes(tasks=n_tasks)
     sizes.check()
     n_tasks = sizes.tasks
@@ -92,7 +94,10 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
     rows = data.tasks if data is not None else sample.tasks(blank, stress, baselined)
     if len(rows) > n_tasks:
         raise SystemExit(f"{len(rows)} tasks do not fit in {n_tasks} rows; raise --tasks")
-    build_settings(wb, blank, sizes.sprints, data.settings if data else None)
+    values = dict(data.settings) if data and data.settings else {}
+    if project_type:
+        values["ProjectType"] = project_type
+    build_settings(wb, blank, sizes.sprints, values or None)
     build_lists(wb)
     build_stages(wb, data.stages if data else None)
     build_holidays(wb, blank, holidays=data.holidays if data else None)
@@ -102,8 +107,10 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
     more = {}                                          # people beyond the first: into each task's Resources text
     for uid, resource, units in (data.assignments if data is not None else sample.assignments(blank, stress)):
         more.setdefault(uid, []).append((resource, units))
-    rows = [take_stage(take_people(dict(r), more.get(r.get("UID"), [])), data.stages if data else None)
-            for r in rows]
+    # a typed % becomes the nearest Stage of the plan's own stages, or of its Project type's (B-1018)
+    stages = (data.stages if data and data.stages else
+              stages_of(values.get("ProjectType")))
+    rows = [take_stage(take_people(dict(r), more.get(r.get("UID"), [])), stages) for r in rows]
     tasks_ws, letters = build_tasks(wb, rows, n_tasks)
     build_timeline(wb, tasks_ws, letters, n_tasks, sizes.gantt_columns)
     charted = min(12, sizes.sprints)                 # sprints shown on the Status and Agile charts
@@ -198,13 +205,15 @@ def main(argv=None):
     p.add_argument("--baselined", action="store_true",
                    help="the sample with its baseline set (the committed Project_Planner.xlsx), so the Gantt shows "
                         "planned against current")
+    p.add_argument("--project-type", choices=list(PRESETS),
+                   help="Start > Project type for a --blank template: its stages, sprint length and RAG thresholds")
     p.add_argument("--import-wizard-sheets", action="store_true",
                    help="also build MSP_Tasks / MSP_Resources for MS Project's Import Wizard (the XML converter "
                         "is the better route)")
     a = p.parse_args(argv)
     sizes = Sizes(a.tasks, a.resources, a.grid_resources, a.sprints, a.gantt_columns, a.weeks)
     save(make_workbook(a.blank, stress=a.stress, sizes=sizes, import_wizard=a.import_wizard_sheets,
-                       baselined=a.baselined), a.out, a.recalc)
+                       baselined=a.baselined, project_type=a.project_type), a.out, a.recalc)
     print("saved", a.out)
 
 

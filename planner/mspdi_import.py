@@ -266,10 +266,13 @@ def _leave_months(start, leave):
     return sorted(labels, key=key)
 
 
-def convert(data):
-    """MSPDI XML in, (planner workbook .xlsx bytes, warnings) out: the one call the CLI and the browser page make."""
+def convert(data, project_type=None):
+    """MSPDI XML in, (planner workbook .xlsx bytes, warnings) out: the one call the CLI and the browser page make.
+    project_type: Start > Project type (B-1018): the stages a typed % is matched to, sprint length, RAG thresholds."""
     from .build import Sizes, make_workbook
     project, warnings = read_project(data)
+    if project_type:
+        project.settings["ProjectType"] = project_type
     n = len(project.tasks)
     people = len(project.resources)
     sizes = Sizes(tasks=max(200, n + 50), resources=max(50, people + 10), grid_resources=max(25, min(people, 500)))

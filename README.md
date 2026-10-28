@@ -26,7 +26,7 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 ## Sheets
 | Sheet | Purpose |
 |---|---|
-| Start | The five settings a plan needs (name, manager, start date, working week, hours/day), a 5-step quick start, then the full reference |
+| Start | The six settings a plan needs (name, manager, start date, working week, hours/day, project type: Software / Agile, Construction or IT infrastructure, which sets the stages, sprint length and RAG thresholds, each still editable), a 5-step quick start, then the full reference |
 | Status | The weekly page, printable on one page: the status date and this week's steps (with links), overall RAG and RAG by area (calculated, with PM override and comment), key figures (including the duration-weighted SPI), tasks by status, next milestones, top open RAID items, the first five late tasks, tasks due and starting in the look-ahead and open critical tasks, change control, commentary for the period, sprint load chart, and the snapshot row for History |
 | Resource Report | Per-resource work, progress, late / critical tasks; hours and utilisation grids by week and by sprint (over-allocation in red); leave by week; team hours vs capacity chart |
 | Agile | Sprint calendar (dates you can override, goal, available person-days, capacity in points after focus %, advisory / overhead days, planned days, committed / done story points, velocity, release burndown), release forecast, a "Sprint to show" picker with that sprint's backlog (tasks, stage, points) and daily burndown, charts |
@@ -59,6 +59,11 @@ the planner can't hold (a fifth predecessor, a lag in % ...) is listed and noted
 "Move it to the latest template" (or run `python scripts/upgrade_planner.py Old.xlsx New.xlsx`). Everything you
 typed (tasks, people, assignments, leave, holidays, settings, the Log, status history, sprint
 goals, PM RAG and notes) is carried over by column name; the formulas, sheets and reports are the latest.
+
+**Reordering tasks.** Link Check says "UID n is below this task: move it above"? On the same page choose "Reorder its
+tasks" (or run `python scripts/reorder_planner.py Planner.xlsx Reordered.xlsx`): tasks move only inside their phase,
+as whole groups, so every predecessor is above its successor; UIDs and links don't change. If the phases themselves
+depend on each other both ways it says which links to change and writes nothing.
 
 **MS Project's Import Wizard** needs the `MSP_Tasks` / `MSP_Resources` sheets, which are no longer built by default
 (the XML file carries more). Build them with `python scripts/build_planner.py Planner.xlsx --import-wizard-sheets`.

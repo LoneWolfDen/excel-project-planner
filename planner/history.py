@@ -12,7 +12,7 @@ import datetime as dt
 from openpyxl.chart import LineChart, Reference
 from openpyxl.utils import get_column_letter
 
-from .core import DATE, Col, add_table, font, missing, title
+from .core import DATE, Col, add_table, font, missing, title, v11
 
 D = dt.date
 # header, formula (names only), number format
@@ -32,12 +32,17 @@ FIELDS = [
     ("RAG", "ProjectRAG", "@"),
 ]
 HISTORY_ROWS = 60
+# template 1.1 (F-1106): risk exposure = the open RAID items' scores added up (probability x impact), so its trend is
+# a burndown of how much risk the project carries
+V11_FIELDS = [("Risk Exposure", "SUMIFS(log_Score,log_Open,1)", "0")]
+EXPOSURE = [44, 50, 47, 52]                       # the sample's four snapshots
 
 
 def fields():
     """(position in FIELDS, field) for the fields this build can calculate (B-913: no points without Agile, no
-    RAID counts without the Log)."""
-    return [(i, f) for i, f in enumerate(FIELDS) if not missing(f[1])]
+    RAID counts without the Log; template 1.1 adds V11_FIELDS after them)."""
+    every = FIELDS + (V11_FIELDS if v11() else [])
+    return [(i, f) for i, f in enumerate(every) if not missing(f[1])]
 
 
 def sample_history():
@@ -50,6 +55,8 @@ def sample_history():
             (D(2026, 10, 18), D(2027, 1, 4), 5, 0.44, 0.54, 33, 82, 4, 1, 0, "Amber")):
         rows.append([when, finish, D(2026, 12, 28), slip, done_pct, planned, round(done_pct / planned, 2), done, total,
                      risks, issues, pending, rag])
+    if v11():
+        rows = [row + [exposure] for row, exposure in zip(rows, EXPOSURE)]
     return rows
 
 
@@ -99,3 +106,4 @@ def _charts(ws, top):
     chart("Progress: done vs planned", ["% Done", "% Planned"], at(19), "0%")
     chart("SPI (schedule)", ["SPI"], at(34), "0.00")
     chart("Story-point burn-up (done vs scope)", ["Points Done", "Total Points"], at(49))
+    chart("Risk exposure (open RAID score)", ["Risk Exposure"], at(64), "0")

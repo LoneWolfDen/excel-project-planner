@@ -210,9 +210,15 @@ def build_log(wb, blank, n_rows=ROWS):
         cf.add(rng("Rating"), FormulaRule(formula=[f'{rating}{first}="{word}"'], fill=fill(bg), font=Font(color=fg, bold=True)))
     cf.add(rng("Overdue"), FormulaRule(formula=[f'{letters["Overdue"]}{first}="Overdue"'], font=Font(color="C00000", bold=True)))
     st = letters["Status"]
-    for word, colour in (("Proposed", "C55A11"), ("Submitted", "C55A11"), ("Under Review", "C55A11"),
-                         ("Approved", "548235"), ("Implemented", "548235")):
-        cf.add(rng("Status"), FormulaRule(formula=[f'{st}{first}="{word}"'], font=Font(color=colour, bold=True)))
+    if v11():                                        # F-1109: one rule per colour, not one per word
+        for words, colour in ((("Proposed", "Submitted", "Under Review"), "C55A11"), (("Approved", "Implemented"),
+                                                                                     "548235")):
+            match = ",".join(f'{st}{first}="{w}"' for w in words)
+            cf.add(rng("Status"), FormulaRule(formula=[f"OR({match})"], font=Font(color=colour, bold=True)))
+    else:
+        for word, colour in (("Proposed", "C55A11"), ("Submitted", "C55A11"), ("Under Review", "C55A11"),
+                             ("Approved", "548235"), ("Implemented", "548235")):
+            cf.add(rng("Status"), FormulaRule(formula=[f'{st}{first}="{word}"'], font=Font(color=colour, bold=True)))
     cf.add(f"B{first}:{letters['Update']}{last}", FormulaRule(
         formula=[f'AND(${letters["Title"]}{first}<>"",${letters["_Open"]}{first}=0)'], font=Font(color="A6A6A6")))
     ws.freeze_panes = f"E{first}"

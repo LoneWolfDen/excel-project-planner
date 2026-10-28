@@ -16,7 +16,7 @@ from openpyxl.styles import Alignment, Font
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from .core import (BOX, DATE, INPUT_FONT, NOTE_FONT, TITLE_FONT, Col, Show, Tab, add_table, fill, font, name,
-                   ranked_table)
+                   ranked_table, v11)
 from .leave import month_column, month_start
 from .workload import work_between
 
@@ -294,3 +294,11 @@ def _charts(ws, L, n, kpi_top, burndown_top):
         for s in chart.series:
             s.smooth = False
     ws.add_chart(sprint, f"J{burndown_top}")
+    if v11():                                               # F-1107: capacity against the work planned in each sprint
+        capacity = BarChart()
+        capacity.title, capacity.y_axis.title = "Available vs planned days per sprint", "Person-days"
+        for key in ("Available Days", "Planned Days"):
+            capacity.add_data(Reference(ws, min_col=col(key), min_row=first, max_row=last), titles_from_data=True)
+        capacity.set_categories(cats)
+        capacity.height, capacity.width = 8, 16
+        ws.add_chart(capacity, f"T{kpi_top - 1}")

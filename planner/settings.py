@@ -94,6 +94,9 @@ def settings_rows(blank, max_sprints):
         ("OutlineShowLevel", "Show tasks down to outline level", 9, "0", True,
          "Tasks > Show (DETAIL section) is Yes for rows at this level or above: filter Show = Yes to see only phases (1), "
          "phases and tasks (2) ... Reapply the filter (Data > Reapply) after changing it."),
+        ("LiveGrids", "Live resource grids", "Yes", "@", True,
+         "No = the Resource Report's weekly and sprint grids per person (and Tasks > Over-allocated) stop "
+         "calculating, for fast bulk entry on a big plan; Status says so while they are off. Set Yes afterwards."),
         ("RoadmapStart", "Roadmap first month", "=DATE(YEAR(ProjectStart),MONTH(ProjectStart),1)", "mmm-yy", True,
          "The Roadmap sheet's first month. Overwrite with the first of any month to scroll it."),
         ("Sprint1Start", "Sprint 1 start date", "=ProjectStart", DATE, True,
@@ -199,7 +202,7 @@ def build_settings(wb, blank, max_sprints, values=None):
 
     yes_no = DataValidation(type="list", formula1="=L_YesNo", allow_blank=False)
     st.add_data_validation(yes_no)
-    for n in ("RescheduleAfterStatus", "WorkMon", "WorkTue", "WorkWed", "WorkThu", "WorkFri", "WorkSat", "WorkSun"):
+    for n in ("RescheduleAfterStatus", "LiveGrids", "WorkMon", "WorkTue", "WorkWed", "WorkThu", "WorkFri", "WorkSat", "WorkSun"):
         yes_no.add(f"C{rows[n]}")
     period = DataValidation(type="list", formula1="=L_Period")
     st.add_data_validation(period)

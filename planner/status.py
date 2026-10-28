@@ -130,6 +130,9 @@ def build_status(wb, agile_ws=None, sprint_letters=None, n_chart_sprints=12):
     ws["B2"] = ('="Project manager: "&ProjectManager&"   Forecast finish "&TEXT(ProjectFinish,"ddd dd-mmm-yyyy")&'
                 '" ("&TEXT(FinishVarianceDays,"+0;-0;0")&" working days vs plan)"')
     ws["B2"].font = NOTE_FONT
+    ws["B3"] = ('=IF(LiveGrids="No","Resource grids are OFF (Settings > Live resource grids): the Resource Report '
+                'and Tasks > Over-allocated are not up to date.","")')
+    ws["B3"].font = font(bold=True, color="C00000")
     for col, width in WIDTHS.items():
         ws.column_dimensions[col].width = width
     top = _this_week(ws)

@@ -9,7 +9,7 @@ not accept structured references there; Excel shifts those ranges itself when ro
 from dataclasses import dataclass, field
 
 from openpyxl.comments import Comment
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Protection, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.workbook.defined_name import DefinedName
 from openpyxl.worksheet.filters import AutoFilter
@@ -154,6 +154,22 @@ def add_table(ws, table_name, header_row, first_col, cols, n_rows, style="TableS
     ]
     ws.add_table(table)
     return letters
+
+
+def protect_view(ws):
+    """B-1019: protect a view sheet without a password, so a stray keystroke can't overwrite a formula. Input cells
+    (the blue INPUT_FONT: PM RAG, comments, notes, the status date) stay unlocked; selecting, copying, filtering,
+    sorting and resizing or unhiding rows and columns still work. Review > Unprotect Sheet lifts it (no password).
+    Tasks is never protected: Excel can't add table rows on a protected sheet."""
+    blue = INPUT_FONT.color.rgb
+    for row in ws.iter_rows():
+        for cell in row:
+            if cell.font is not None and cell.font.color is not None and cell.font.color.rgb == blue:
+                cell.protection = Protection(locked=False)
+    p = ws.protection
+    p.sheet = True
+    p.formatColumns = p.formatRows = p.autoFilter = p.sort = False      # False = allowed
+    p.selectLockedCells = p.selectUnlockedCells = False
 
 
 def col_range(letter, first_row, last_row):

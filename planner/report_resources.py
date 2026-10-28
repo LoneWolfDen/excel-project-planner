@@ -31,6 +31,9 @@ def build_resource_report(wb, n_resources, n_weeks=DEFAULT_WEEKS, n_sprints=26):
     ws["A2"] = ('="Weeks from "&TEXT(ResourceWeekStart,"ddd dd-mmm-yyyy")&" (Settings > ResourceWeekStart). Hours are '
                 'each task\'s work spread over its forecast working days; red = more than Allocation % x HoursPerDay x '
                 'working days in the week, less leave (Resources sheet, leave months)."')
+    ws["A3"] = ('=IF(LiveGrids="No","The grids below are OFF (Settings > Live resource grids = No): set it to Yes to '
+                'see hours and utilisation.","")')
+    ws["A3"].font = font(bold=True, color="C00000")
     ws.column_dimensions["A"].width = 3
 
     summary_top = 5
@@ -243,7 +246,9 @@ def _cumulative(wb, ws, top, n_resources, n_weeks):
     resource = f"INDEX(res_Name,{i})"
     total = by_resource("Work", resource)
     upto = work_upto(f"INDEX(rw_CumWD,{b}+1)", resource)
-    formula = (f'=IFERROR(IF({resource}="","",IF({day}<ProjectStart,0,IF({day}>=ProjectFinish,{total},{upto}))),"")')
+    # Settings > LiveGrids = No skips every SUMIFS here (IF evaluates only the branch it takes): fast bulk entry
+    formula = (f'=IFERROR(IF(OR({resource}="",LiveGrids="No"),"",'
+               f'IF({day}<ProjectStart,0,IF({day}>=ProjectFinish,{total},{upto}))),"")')
     first_col, last_col = 4, 4 + n_weeks
     L = get_column_letter
     # each boundary's working-day number, once per column instead of in every cell's SUMIFS
@@ -288,7 +293,7 @@ def _sprint_grid(wb, ws, kind, top, n_sprints, n_resources, heading, util_offset
         for c in range(first_col, last_col + 1):
             if kind == "load":
                 hours = work_between(f"INDEX(spr_FirstWD,{j})", f"INDEX(spr_LastWD,{j})", resource)
-                v = f'=IFERROR(IF(OR({resource}="",{sprint_name}=""),"",{hours}),"")'
+                v = f'=IFERROR(IF(OR({resource}="",{sprint_name}="",LiveGrids="No"),"",{hours}),"")'
                 fmt = "#,##0;;-"
             else:
                 load = f"INDEX(load_Grid,{i},{j})"

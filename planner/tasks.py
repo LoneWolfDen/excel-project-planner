@@ -76,6 +76,7 @@ N = {
     "PctUse": "_Pct", "LProg": "_LeafProgress", "LWork": "_LeafWork", "LTW": "_LeafTotalWork",
     "ResTxt": "Resource Names", "NPeople": "_People",
     **{f"Ri{k}": f"_Res{k}Text" for k in range(1, PEOPLE + 1)},
+    **{f"Rx{k}": f"_Res{k}Row" for k in range(1, PEOPLE + 1)},
     **{f"{x}{k}": f"_Res{k}{label}" for k in MORE_PEOPLE for x, label in (
         ("Rs", ""), ("Ru", "Units"), ("Rw", "Work"), ("Rp", "WorkPerWD"), ("Rb", "WorkBefore"), ("Rd", "WorkDone"))},
     "SuccLF": "_SuccessorFinishLimit", "LastSucc": "_LastSuccessorRow",
@@ -274,17 +275,33 @@ def progress_issues(R, leaf):
             f'"Actual Start is set: move the Stage on from "&{stage}&". ",""))')
 
 
+def did_you_mean(name):
+    """ " Did you mean Alex Chen?" when someone on Resources has the same first word as an unknown name (B-1013)."""
+    first = f'LEFT({name},FIND(" ",{name}&" ")-1)'
+    return f'IFERROR(" Did you mean "&INDEX(res_Name,MATCH({first}&" *",res_Name,0))&"?","")'
+
+
+def input_issues(R, leaf):
+    """Issues text for inputs that aren't numbers or dates (B-1013): pasting skips the cells' validation, so text such
+    as "2d" or a date from another locale would otherwise count silently as 0 / no date."""
+    checks = [("Dur", "Duration", "a number", "type working days, e.g. 3."),
+              ("AS", "Actual Start", "a date", "type it as a date."), ("AF", "Actual Finish", "a date", "type it as a date."),
+              ("Cons", "Constraint Date", "a date", "type it as a date."), ("DL", "Deadline", "a date", "type it as a date.")]
+    return "".join(f"&IF(AND({R(key)}<>\"\",NOT(ISNUMBER({R(key)}))),\"{label} isn't {kind}: {fix} \",\"\")"
+                   for key, label, kind, fix in checks)
+
+
 def each_link(template):
     """template(k) for every link, comma-separated: the arguments of a MAX over all links."""
     return ",".join(template(k) for k in LINK_NUMBERS)
 
 
-def over_allocated(resource, start, finish):
-    """True when resource is over 100% (Resource Report utilisation, after leave) in a week from start to finish.
-    Only the weeks in the Resource Report window and the resources in its grid are known; others count as not over."""
+def over_allocated(row, start, finish):
+    """True when the resource on Resources row `row` (the grids follow Resources' order) is over 100% (Resource
+    Report utilisation, after leave) in a week from start to finish. Only the weeks in the Resource Report window and
+    the resources in its grid are known; others count as not over."""
     week_of = lambda d: f"(INT(({d}-ResourceWeekStart)/7)+1)"
     first, last = f"MAX(1,{week_of(start)})", f"MIN(COLUMNS(rw_Util),{week_of(finish)})"
-    row = f"MATCH({resource},res_Name,0)"
     return (f"IFERROR(IF({first}>{last},FALSE(),"
             f"COUNTIF(INDEX(rw_Util,{row},{first}):INDEX(rw_Util,{row},{last}),\">1\")>0),FALSE())")
 
@@ -386,13 +403,16 @@ def formulas():
         before = f'OR({blank},{R("ResIn")}="")' if k == 1 else f'{R(f"Ri{k - 1}")}=""'
         f[f"Ri{k}"] = f'IF({before},"",{item(k)})'
         who = f'TRIM(LEFT({text},FIND("[",{text}&"[")-1))'
-        f[nm_k] = (f'IF({text}="","",IFERROR(INDEX(res_Name,MATCH({who},res_Name,0)),'
-                   f'IFERROR(INDEX(res_Name,MATCH({who},res_Initials,0)),{who})))')
+        # B-1017: the person's row on Resources, found once (by name, then initials; 0 = not there); the name,
+        # work, Issues and over-allocation all reuse it instead of matching again
+        pos = R(f"Rx{k}")
+        f[f"Rx{k}"] = (f'IF({text}="",0,IFERROR(MATCH({who},res_Name,0),IFERROR(MATCH({who},res_Initials,0),0)))')
+        f[nm_k] = f'IF({text}="","",IF({pos}>0,INDEX(res_Name,{pos}),{who}))'
         share = (f'IFERROR(VALUE(SUBSTITUTE(MID({text},FIND("[",{text})+1,FIND("]",{text}&"]")-FIND("[",{text})-1),'
                  f'" ","")),"")')
         f[u_k] = f'IF(ISERROR(FIND("[",{text})),"",IF(N({share})>10,{share}/100,{share}))'
-        f[w_k] = (f'IF(OR(NOT({leaf}),{R(nm_k)}=""),0,IF(ISNA(MATCH({R(nm_k)},res_Name,0)),0,'   # unknown: Issues
-                  f'N({R("Dur")})*HoursPerDay*IF({R(u_k)}="",DefaultUnits,{R(u_k)})))')
+        f[w_k] = (f'IF(OR(NOT({leaf}),{pos}=0),0,'                   # nobody, or not on Resources (Issues says so)
+                  f'N({R("Dur")})*HoursPerDay*IF({R(u_k)}="",DefaultUnits,{R(u_k)}))')
     # the task's totals add everyone; the per-resource totals (Resources, reports, Agile) sum each person's columns
     f["NPeople"] = f'IF(NOT({leaf}),0,' + "+".join(f'({R(person[k][0])}<>"")' for k in person) + ")"
     f["LTW"] = "+".join(R(person[k][2]) for k in person)
@@ -511,7 +531,7 @@ def formulas():
     # over-allocation (Resource Report weekly utilisation, after leave): Yes when any of the task's people is over
     # 100% in a week the task runs. Only weeks in the Resource Report window and its first resources are known.
     # (a sum of IFs, not OR / AND: those would evaluate every person's look-up, including the empty slots)
-    over = "+".join(f'IF({R(person[k][0])}="",0,IF({over_allocated(R(person[k][0]), R("XFS"), R("XFF"))},1,0))'
+    over = "+".join(f'IF({R(f"Rx{k}")}=0,0,IF({over_allocated(R(f"Rx{k}"), R("XFS"), R("XFF"))},1,0))'
                     for k in person)
     f["OverAlloc"] = f'IF(OR(NOT({leaf}),{R("LProg")}>=1),"",IF({over}>0,"Yes",""))'
     f["CurKey"] = f'IF(AND({leaf},ShownSprint<>"",{R("Sprint")}=ShownSprint),{R("Idx")},"")'
@@ -521,8 +541,10 @@ def formulas():
                    f'&IF(N({uid})=0,"No UID: give the row Settings > NextFreeUID. ",'
                    f'IF(COUNTIF({C("UID")},{uid})>1,"UID "&{uid}&" is used twice. ",""))'
                    f'&IF({R("WBS")}="?","Level is more than 1 below the row above. ","")'
-                   + "".join(f'&IF({R(person[k][0])}="","",IF(ISNA(MATCH({R(person[k][0])},res_Name,0)),'
-                             f'{R(person[k][0])}&" is not on Resources. ",""))' for k in person)
+                   + "".join(f'&IF(OR({R(person[k][0])}="",{R(f"Rx{k}")}>0),"",'
+                             f'{R(person[k][0])}&" is not on Resources."&{did_you_mean(R(person[k][0]))}&" ")'
+                             for k in person)
+                   + input_issues(R, leaf)
                    + f'&IF({R(f"Ri{PEOPLE}")}="","",IF({item(PEOPLE + 1)}<>"",'
                      f'"Only the first {PEOPLE} people in Resources are used. ",""))'
                    f'&IF({R("OverAlloc")}="Yes","Over-allocated: see the Resource Report. ","")'
@@ -610,7 +632,8 @@ LAYOUT = [
 ] + [(k, "help", 11, DATE if k in HELPER_DATES else None, False, None)
      for k in ("Lvl", "Idx", "Parent", "NextLvl", "IsSum", "Desc", "IsLeaf", *each("R"), "CT", "CStart", "CLow",
                "CHigh", "LCS", "LCF", "LFS", "LFF",
-               *[f"{x}{k}" for k in LINK_NUMBERS for x in "IPTL"], *[f"Ri{k}" for k in range(1, PEOPLE + 1)], "Res", "Units", "NPeople",
+               *[f"{x}{k}" for k in LINK_NUMBERS for x in "IPTL"], *[f"Ri{k}" for k in range(1, PEOPLE + 1)],
+               *[f"Rx{k}" for k in range(1, PEOPLE + 1)], "Res", "Units", "NPeople",
                *[f"{x}{k}" for k in MORE_PEOPLE for x in ("Rs", "Ru", "Rw", "Rp", "Rb", "Rd")],
                "PctUse", "LProg", "LWork", "LTW", *each("F"), *each("K"), "LastSucc", "SuccLF", "LLF", "LLS",
                "LTS", "LCrit", "Shift", "XCS", "XCF", "XFS", "XFF", "CPS", "CPF", *each("M"), *each("D"), *each("E"),

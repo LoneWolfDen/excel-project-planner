@@ -50,6 +50,8 @@ TASKS = [
 STORY_POINTS = {2: 3, 3: 2, 6: 8, 7: 5, 8: 5, 12: 5, 13: 8, 14: 5, 16: 5, 17: 8, 18: 3, 21: 8, 22: 5, 23: 3, 24: 1,
                 26: 5, 28: 1, 29: 2}
 
+# Who answers for each phase (by task number), shown on the Roadmap.
+OWNERS = {1: "Priya Sharma", 5: "Morgan Patel", 10: "Jordan Lee", 20: "Taylor Morgan", 27: "Priya Sharma"}
 # Other inputs (by task number): constraint types and a third predecessor.
 EXTRA = {22: {"CType": "Start No Earlier Than"}, 24: {"P3": 21, "T3": "FS"}}
 # More people on a task (beyond the first, in its Resources cell): (task number, resource, units). Task number = UID.
@@ -102,7 +104,7 @@ def assignments(blank=False, stress=0):
 
 
 def _row(i, t):
-    return dict(zip(COLUMNS, t), SP=STORY_POINTS.get(i + 1), **EXTRA.get(i + 1, {}))
+    return dict(zip(COLUMNS, t), SP=STORY_POINTS.get(i + 1), Owner=OWNERS.get(i + 1), **EXTRA.get(i + 1, {}))
 
 
 def tasks(blank=False, stress=0, baselined=False):

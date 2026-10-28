@@ -131,7 +131,7 @@ def settings_rows(blank, max_sprints):
          "1-NETWORKDAYS.INTL(ProjectFinish,PlannedFinish,WorkWeek,Holidays))", "+0;-0;0", False,
          "Forecast finish minus planned finish. Positive = late."),
         ("LookaheadDays", "Look-ahead window (working days)", 10, "0", True,
-         "Schedule Report lists tasks starting or due within this many working days of the status date."),
+         "Status lists tasks starting or due within this many working days of the status date."),
         ("LookaheadEnd", "Look-ahead window ends (calculated)", "=WORKDAY.INTL(StatusDate-1,LookaheadDays,WorkWeek,Holidays)",
          DATE, False, ""),
         ("RAGAmberSlipDays", "RAG: amber when the finish slips by (working days)", 3, "0", True,

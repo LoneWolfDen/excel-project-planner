@@ -27,17 +27,16 @@ from .cost import build_cost
 from .history import build_history
 from .log import build_log
 from .report_resources import build_resource_report
-from .report_schedule import build_schedule_report
 from .roadmap import build_roadmap
 from .resources import RESOURCES, build_resources
 from .settings import build_holidays, build_lists, build_settings, build_stages
 from .status import build_status
 from .tasks import build_tasks, take_people, take_stage
 
-ORDER = ["Start", "Status", "Roadmap", "Schedule Report", "Resource Report", "Agile", "Log", "History", "Settings",
+ORDER = ["Start", "Status", "Roadmap", "Resource Report", "Agile", "Log", "History", "Settings",
          "Tasks", "Resources", "Cost", "MSP_Tasks", "MSP_Resources"]
 TAB_COLOURS = {"Start": "1F4E78", "Status": "548235", "Tasks": "2F75B5", "Roadmap": "548235",
-               "Resources": "7030A0", "Log": "C55A11", "Agile": "548235", "Schedule Report": "548235",
+               "Resources": "7030A0", "Log": "C55A11", "Agile": "548235",
                "Resource Report": "548235", "History": "C55A11", "Settings": "BF8F00", "Cost": "806000",
                "MSP_Tasks": "595959", "MSP_Resources": "595959"}
 @dataclass(frozen=True)
@@ -115,7 +114,6 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
     build_log(wb, blank)
     build_history(wb, blank)
     build_status(wb, agile_ws, sprint_letters, charted)
-    build_schedule_report(wb)
     build_roadmap(wb)
     build_resource_report(wb, sizes.grid_resources, sizes.weeks, sizes.sprints)
     build_cost(wb, blank, n_tasks, people, sizes.resources)

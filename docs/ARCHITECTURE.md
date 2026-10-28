@@ -40,9 +40,8 @@ How the workbook is put together, and the rules every change follows. These rule
 | Resources | `ResourceTable`, `cap_Days`, `cap_Points` | Allocation, dates and focus per person, assigned tasks and work, then one leave column per month (`leave_Grid` / `leave_Months` name only the month columns, so the leave look-ups never depend on the calculated columns) |
 | Settings (below the settings) | `HolidayTable` | Non-working dates (`Holidays` = `HolidayTable[Date]`) |
 | MSP_Tasks / MSP_Resources | `MSPTasks`, `MSPResources` | MS Project field names, for the Import Wizard; only with `--import-wizard-sheets` |
-| Status | `OverallStatus`, `StatusRAG`, `KPIs`, `StatusSummary`, `NextMilestones`, `TopRAID`, `ChangeControl`, `StatusNotes`, `SnapshotNow` | The weekly page: status date (`StatusDateInput`), RAG by area, key figures (`sch_Progress`, `sch_Planned`, `sch_SPI`), the snapshot row |
+| Status | `OverallStatus`, `StatusRAG`, `KPIs`, `StatusSummary`, `NextMilestones`, `TopRAID`, `LateTasks`, `DueSoon`, `StartingSoon`, `CriticalTasks`, `ChangeControl`, `StatusNotes`, `SnapshotNow` | The weekly page: status date (`StatusDateInput`), RAG by area, key figures (`sch_Progress`, `sch_Planned`, `sch_SPI`), the snapshot row |
 | Cost | `RateCard`, `CostSummary`, `CostSnapshot`, `CostHistory`, `TaskCost` | Optional: day rates (`cost_Rate`), cost per task, earned value (`evm_*`), cost RAG; no other sheet reads it |
-| Schedule Report | `PhaseSummary`, `MilestoneReport`, `LateTasks`, `StartingSoon`, `DueSoon`, `CriticalTasks` | Ranked lists |
 | Resource Report | `ResourceSummary` + week and sprint grids | Hours (`rw_Load`, `load_Grid`) and utilisation (`rw_Util`) per resource by week and by sprint, leave by week (`rw_Leave`) and by sprint (`spr_LeaveGrid`, hidden) |
 | Agile | `SprintTable`, `AgileKPIs`, `SprintBacklog`, `SprintBurndown` | Sprint calendar, capacity, points and velocity (`spr_*`), release forecast (`agl_*`), current sprint |
 | Log | `Log` | RAID items, decisions and change requests: score, rating, overdue, waiting, linked task (`log_*` names; `log_Open` = 1 while open) |
@@ -140,7 +139,10 @@ The plan moves by the same number of days as the forecast, so an ALAP task adds 
 - **Timeline scales.** Each Gantt column's date is a formula of its position (`column_start` in `planner/gantt.py`:
   `GanttStart + k x days`, or `EDATE` of the month / quarter start for GanttPeriod 30 / 91), and the bar rules use
   `period_end(date)`, so months keep their real lengths and the timeline cells still hold no formulas.
-- **Roadmap.** Two ranked lists (phases, milestones) and an 18-month timeline drawn by conditional formatting only;
+- **Roadmap.** Two ranked lists (phases, milestones) and an 18-month timeline drawn by conditional formatting only.
+  A phase row adds its owner (Tasks > Owner), tasks done (two COUNTIFS on `tsk_Phase`), a RAG from its finish slip
+  (`rag.slip`), its next milestone (`MINIFS` of `tsk_MilestoneKey` in the phase, then one MATCH) and a `HYPERLINK`
+  to its row (`ADDRESS` from the Tasks header, so it follows inserted rows);
   the month header is its only formula. It prints on one landscape page.
 - Bar labels and colours from a Settings table are not built: conditional formatting can't show per-row text or take
   a colour from a cell, so both would need a formula in every timeline cell (30,000 on the sample Gantt).
@@ -215,7 +217,7 @@ phone, and are tested in CI. They follow three rules:
   calculated RAG overrides it.
 
 Schedule performance without money: SPI = progress / planned progress, both weighted by duration (`sch_SPI`), so
-the Status and Schedule Report RAGs work with the Cost sheet deleted.
+the Status RAGs work with the Cost sheet deleted.
 
 **Leave is text, read by formulas.** Each Leave cell holds days like `16, 17(0.5)` under a month header (`Nov-26`).
 `planner/leave.py` reads it with one `SUMPRODUCT` per calendar month over the constant `{1..31}` (`leave_Days`): every

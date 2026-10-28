@@ -62,7 +62,7 @@ N = {
     "DLChk": "Deadline Check", "LinkChk": "Link Check", "Issues": "Issues", "Stage": "Stage", "Pct": "% Complete", "Prog": "Progress", "Status": "Status",
     "ResIn": "Resources", "Res": "_Resource1", "Units": "_Units1", "OverAlloc": "Over-allocated", "Work": "Work", "SprIn": "Planned Sprint",
     "Sprint": "Sprint", "SP": "Story Points",
-    "PredTxt": "Predecessors by ID", "Notes": "Notes",
+    "PredTxt": "Predecessors by ID", "Notes": "Notes", "Owner": "Owner",
     "SrcS": "BL Source Start", "SrcF": "BL Source Finish", "SrcD": "BL Source Duration", "SrcW": "BL Source Work",
     "BS": "Baseline Start", "BF": "Baseline Finish", "BD": "Baseline Duration",
     "BW": "Baseline Work", "DVar": "Duration Var", "WVar": "Work Var",
@@ -105,7 +105,7 @@ NAMES = {
     "TS": "tsk_TotalSlack", "FSl": "tsk_FreeSlack", "Crit": "tsk_Critical", "DLChk": "tsk_DeadlineCheck", "LinkChk": "tsk_LinkCheck", "Issues": "tsk_Issues",
     "Pct": "tsk_PctInput", "Stage": "tsk_Stage", "Prog": "tsk_Progress", "Status": "tsk_Status", "Res": "tsk_Resource",
     "Units": "tsk_Units", "Work": "tsk_Work", "Sprint": "tsk_Sprint", "Desc": "tsk_Descendants",
-    "PredTxt": "tsk_Predecessors", "PredIn": "tsk_PredecessorsInput", "Notes": "tsk_Notes", "BS": "tsk_BaseStart", "BF": "tsk_BaseFinish",
+    "PredTxt": "tsk_Predecessors", "PredIn": "tsk_PredecessorsInput", "Notes": "tsk_Notes", "Owner": "tsk_Owner", "BS": "tsk_BaseStart", "BF": "tsk_BaseFinish",
     "BD": "tsk_BaseDuration", "BW": "tsk_BaseWork", "SrcD": "tsk_SourceDuration",
     "DVar": "tsk_DurationVariance", "WVar": "tsk_WorkVariance",
     "IsSum": "tsk_IsSummary", "IsLeaf": "tsk_IsLeaf", "CPS": "tsk_CalcStart", "CPF": "tsk_CalcFinish",
@@ -488,7 +488,7 @@ def formulas():
     ps, pf = R("PS"), R("PF")
     f["PlanPct"] = (f'IF(NOT({leaf}),0,IF({pf}<StatusDate,1,IF({ps}>=StatusDate,0,'
                     f'IFERROR(MIN(1,NETWORKDAYS.INTL({ps},StatusDate-1,{WD})/NETWORKDAYS.INTL({ps},{pf},{WD})),0))))')
-    # report lists (Schedule Report): each key is unique (the row position breaks ties) and blank when the task
+    # report lists (Status, Roadmap): each key is unique (the row position breaks ties) and blank when the task
     # doesn't belong on the list, so the report finds the n-th task with SMALL / LARGE and MATCH
     tie = f'{R("Idx")}/100000'
     f["Phase"] = f'IF({blank},"",LEFT({R("WBS")},FIND(".",{R("WBS")}&".")-1))'
@@ -596,6 +596,7 @@ LAYOUT = [
     ("SP", "in", 8, "0.#", True, "Story points (optional estimate for agile reporting). Detail tasks only."),
     ("PredTxt", "calc", 14, None, False, "Predecessors in MS Project notation, by ID."),
     ("Notes", "in", 40, None, False, None),
+    ("Owner", "in", 16, None, False, "Who answers for this phase: shown on the Roadmap. Phase (Level 1) rows."),
     ("SrcS", "calc", 15, DATE, False, "Copy the 4 BL Source columns, then Paste Special > Values onto the 4 Baseline columns."),
     ("SrcF", "calc", 15, DATE, False, None),
     ("SrcD", "calc", 9, None, True, None),
@@ -627,7 +628,7 @@ SECTIONS = [
     ("SCHEDULING", "DL", ["Mode", "CType", "Cons"]),
     ("DETAIL", "Var", ["Status", "Crit", "PS", "PF", "SVar", "LS", "LF", "TS", "FSl", "DLChk", "LinkChk", "Pct", "Prog",
                        "PredTxt", "WBS", "Show"]),
-    ("WORK", "Work", ["ResTxt", "OverAlloc"]),             # cost: the Cost sheet
+    ("WORK", "Work", ["Owner", "ResTxt", "OverAlloc"]),             # cost: the Cost sheet
     ("AGILE", "SP", ["SprIn"]),
     ("BASELINE", "DVar",
      ["WVar", "SrcS", "SrcF", "SrcD", "SrcW", "BS", "BF", "BD", "BW"]),
@@ -714,6 +715,7 @@ def group_outline(ws, levels, first_row):
 # What to type, shown when a cell in the column is selected (Excel's input message: desktop, web and iPhone).
 # Excel limits the title to 32 characters and the text to 255.
 PROMPTS = {
+    "Owner": ("Owner (phases)", "Optional: who answers for this phase. The Roadmap shows it on the phase's row."),
     "UID": ("UID", "Pre-filled: a permanent number that other tasks' predecessors refer to. A new row: "
                    "Settings > NextFreeUID."),
     "Level": ("Outline level", "1 = phase, 2 = task, 3 = sub-task. At most 1 more than the row above. A row with deeper "
@@ -766,7 +768,7 @@ def _validation_and_formatting(ws, L, n_rows):
     dv(DataValidation(type="list", formula1="=res_Name", showErrorMessage=False), "ResIn")   # pick one, or type several
     dv(DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0"), "SP")
     dv(DataValidation(type="list", formula1="=spr_Name"), "SprIn")
-    dv(DataValidation(allow_blank=True), "Name", "Notes", "PredIn")          # prompts only: any text
+    dv(DataValidation(allow_blank=True), "Name", "Notes", "PredIn", "Owner")  # prompts only: any text
 
     cf = ws.conditional_formatting
     cf.add(f"A{first}:{L['BW']}{last}", FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(bold=True), fill=fill("DDEBF7")))

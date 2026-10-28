@@ -1,7 +1,9 @@
 """Sample project, and a generator that repeats it to make large stress-test workbooks."""
 import datetime as dt
 
-from .tasks import take_links
+import re
+
+from .tasks import LINKS, PEOPLE, take_links
 
 D = dt.date
 
@@ -131,4 +133,63 @@ def tasks(blank=False, stress=0, baselined=False):
             row["Name"] = f"{row['Name']} ({copy + 1})"
             row["UID"] = copy * n + i + 1
             rows.append(take_links(row))
+    return rows
+
+
+# Release 1.0: the sample types two durations in weeks (the 3 / 3d / 2w input) and picks every link and person
+RELEASE_DURATIONS = {23: "1w", 26: "2w"}
+
+
+def to_pickers(row):
+    """A sample row with its Predecessors / Resources text moved into the Pred1-4 / Type / Lag and Res1-4 / Units
+    pickers (Release 1.0), so the sample shows the pickers; the typed text cells stay blank."""
+    row = dict(row)
+    if row.get("UID") in RELEASE_DURATIONS:
+        row["Dur"] = RELEASE_DURATIONS[row["UID"]]
+    links = [p.strip() for p in re.split(r"[,;]", row.pop("PredIn", None) or "") if p.strip()]
+    for k, text in enumerate(links[:LINKS], start=1):
+        m = re.match(r"^(\d+)(FS|SS|FF|SF)?([+-]\d+)?d?$", text, re.I)
+        row[f"Pick{k}"] = int(m.group(1))
+        if m.group(2) and m.group(2).upper() != "FS":
+            row[f"PickT{k}"] = m.group(2).upper()
+        if m.group(3):
+            row[f"PickL{k}"] = int(m.group(3))
+    people = [p.strip() for p in (row.pop("ResIn", None) or "").split(",") if p.strip()]
+    for k, text in enumerate(people[:PEOPLE], start=1):
+        who, _, units = text.partition("[")
+        row[f"Who{k}"] = who.strip()
+        if units:
+            row[f"WhoU{k}"] = float(units.rstrip("]%")) / 100
+    return row
+
+
+# The Release 1.0 Simple sample: 12 tasks of the full one (UIDs kept), linked among themselves (a value replaces a
+# link to a task left out)
+SIMPLE = {1: None, 2: None, 3: None, 4: None, 5: None, 6: None, 8: "6", 9: "8", 20: None, 21: "9", 24: "21", 25: "24"}
+# its baseline, as its BL Source columns calculate it before any actuals
+SIMPLE_BASELINE = {
+    1: (D(2026, 9, 7), D(2026, 9, 11), 5, 40), 2: (D(2026, 9, 7), D(2026, 9, 9), 3, 24),
+    3: (D(2026, 9, 10), D(2026, 9, 11), 2, 16), 4: (D(2026, 9, 11), D(2026, 9, 11), 0, 0),
+    5: (D(2026, 9, 14), D(2026, 10, 1), 14, 112), 6: (D(2026, 9, 14), D(2026, 9, 23), 8, 64),
+    8: (D(2026, 9, 24), D(2026, 10, 1), 6, 48), 9: (D(2026, 10, 1), D(2026, 10, 1), 0, 0),
+    20: (D(2026, 10, 2), D(2026, 10, 23), 16, 128), 21: (D(2026, 10, 2), D(2026, 10, 22), 15, 120),
+    24: (D(2026, 10, 23), D(2026, 10, 23), 1, 8), 25: (D(2026, 10, 23), D(2026, 10, 23), 0, 0),
+}
+
+
+def simple_tasks(baselined=False):
+    """The 12-task sample of the Release 1.0 Simple workbook."""
+    rows = []
+    for r in tasks(baselined=False):
+        if r["UID"] not in SIMPLE:
+            continue
+        r = dict(r)
+        if SIMPLE[r["UID"]]:                                  # a link to a task the short plan leaves out
+            r["PredIn"] = SIMPLE[r["UID"]]
+        r.pop("SP", None)
+        if r["UID"] == 21:                                   # in the short plan, testing follows design sign-off
+            r.update(Dur=15, AS=D(2026, 10, 7), Stage="In Testing", Notes="Started a few days late; on track.")
+        if baselined:
+            r.update(zip(("BS", "BF", "BD", "BW"), SIMPLE_BASELINE[r["UID"]]))
+        rows.append(r)
     return rows

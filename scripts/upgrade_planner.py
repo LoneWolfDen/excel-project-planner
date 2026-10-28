@@ -20,14 +20,13 @@ def main(argv=None):
     p.add_argument("old", help="the older planner workbook (.xlsx)")
     p.add_argument("out", help="the new workbook to write")
     p.add_argument("--recalc", action="store_true", help="recalculate with LibreOffice so the file carries values")
+    p.add_argument("--release", action="store_true",
+                   help="move it into the Release 1.0 workbook (a Release 1.0 workbook stays one without this)")
     a = p.parse_args(argv)
     try:
-        project, copies, sizes, warnings, version = upgrade.read_planner(Path(a.old).read_bytes())
+        wb, warnings, version = upgrade.rebuild(Path(a.old).read_bytes(), True if a.release else None)
     except upgrade.UpgradeError as e:
         raise SystemExit(str(e))
-    from planner.build import make_workbook
-    wb = make_workbook(sizes=sizes, data=project)
-    upgrade.copy_inputs(wb, copies, warnings)
     save(wb, a.out, a.recalc)
     print(f"read version {version}")
     for w in warnings:

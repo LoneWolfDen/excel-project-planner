@@ -6,7 +6,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from .core import (BOX, CALC_FILL, CALC_FONT, DATE, INPUT_FONT, NOTE_FONT, Col, add_table, fill, font, has,
-                   header_cell, missing, name, title)
+                   header_cell, missing, name, release, title)
 from .tasks import CONSTRAINTS
 
 # Working-week presets -> Mon..Sun mask for WORKDAY.INTL (1 = not working); "Custom" uses the seven day rows
@@ -155,7 +155,20 @@ def settings_rows(blank, max_sprints):
          "Defaults to the Monday of the View from week. Overwrite with any Monday to scroll the weekly grids alone."),
         ("NextFreeUID", "Next free task UID (calculated)", "=MAX(tsk_UID)+1", "0", False,
          "Give a newly inserted task row this UID (see Start > Inserting tasks)."),
-    ]
+    ] + (RELEASE_ROWS if release() else [])
+
+
+# Release 1.0 settings
+RELEASE_ROWS = [
+    ("TakeBaseline", "Re-baseline every task (BL Source)", "No", "@", True,
+     "No = the BL Source columns keep each task's pasted baseline and give the current dates only to tasks without "
+     "one: copy BL Source and Paste Values onto Baseline to baseline new tasks. Yes = BL Source is the current "
+     "schedule for every task: the same copy and paste re-baselines the whole plan. Set it back to No afterwards."),
+    ("DuplicateUIDs", "Tasks sharing a UID (calculated)", '=COUNTIF(tsk_Issues,"*is used twice*")', "0", False,
+     "Should be 0. Each such task says so in Tasks > Issues; give one of them Settings > NextFreeUID."),
+    ("MissingUIDs", "Named tasks without a UID (calculated)", '=COUNTIF(tsk_Issues,"No UID*")', "0", False,
+     "Should be 0: links can't point at a task without a UID."),
+]
 
 
 def build_settings(wb, blank, max_sprints, values=None):
@@ -211,7 +224,8 @@ def build_settings(wb, blank, max_sprints, values=None):
 
     yes_no = DataValidation(type="list", formula1="=L_YesNo", allow_blank=False)
     st.add_data_validation(yes_no)
-    for n in ("RescheduleAfterStatus", "LiveGrids", "WorkMon", "WorkTue", "WorkWed", "WorkThu", "WorkFri", "WorkSat", "WorkSun"):
+    for n in ("RescheduleAfterStatus", "LiveGrids", "WorkMon", "WorkTue", "WorkWed", "WorkThu", "WorkFri", "WorkSat",
+              "WorkSun") + (("TakeBaseline",) if "TakeBaseline" in rows else ()):
         yes_no.add(f"C{rows[n]}")
     period = DataValidation(type="list", formula1="=L_Period")
     st.add_data_validation(period)

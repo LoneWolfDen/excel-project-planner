@@ -337,8 +337,43 @@ lists, so no `INDIRECT` is needed.
 ## Excel version
 
 **Excel 2019 or Microsoft 365** (Windows or Mac). The only post-2010 functions are `MINIFS` and `MAXIFS`, stored with
-the `_xlfn.` prefix Excel uses. Microsoft 365-only functions (`XLOOKUP`, `FILTER`, `LET`, `LAMBDA`, ...) are not used: a
-unit test enforces this, and LibreOffice, which runs the tests, couldn't check them.
+the `_xlfn.` prefix Excel uses, and in Release 1.0 `TEXTJOIN` (also Excel 2019). Microsoft 365-only functions
+(`XLOOKUP`, `FILTER`, `LET`, `LAMBDA`, ...) are not used: a unit test enforces this, and LibreOffice, which runs the
+tests, couldn't check them.
+
+## Release 1.0 (`--release`, `release-1.0/`)
+
+A second edition of the same code: `core.set_release` is set once per build (by `build.make_workbook`), and
+`tasks.configure` then adds the Release 1.0 columns and sections to the Tasks layout. The classic workbook is built
+exactly as before; `test_release.ClassicUnchangedTest` builds both in one process. What changes:
+
+- **Inputs read through a cleaned column.** In Release 1.0 `R("Dur")`, `R("PredIn")` and `R("ResIn")` read
+  `_Days`, `_Predecessors` and `_Resources` (`tasks.ALIAS`), so every scheduling formula is the same text in both
+  editions and the scheduler (docs/SCHEDULING_SPEC.md) doesn't change. `tsk_Duration` points at `_Days`;
+  `tsk_DurationInput` at the typed cell.
+- **"Named formulas" without LAMBDA.** The brief asked for `L_PARSE_DURATION`, `L_PARSE_PRED`, `L_PARSE_RES`,
+  `L_WORKING_DAYS` and `L_IS_WORKING_DAY` in Name Manager. A named formula with parameters needs `LAMBDA`
+  (Microsoft 365 only, and LibreOffice 24.2, which recalculates every test, has none), so each is one helper column
+  instead, which Excel calculates once per row:
+
+  | Asked for | Is | Formula |
+  |---|---|---|
+  | `L_PARSE_DURATION` | `_Days` | `3`, `3d` or `2w` → working days (`VALUE` / `LEFT` / `RIGHT`); "" when unreadable |
+  | `L_PARSE_PRED` | `_Predecessors` | `TEXTJOIN` of Pred1-4 / Type / Lag as `12, 14SS+2d`, else the typed text; then the v1.7 split (`_Pred{k}UID` ...) |
+  | `L_PARSE_RES` | `_Resources` | `TEXTJOIN` of Res1-4 / Units as `Alex Chen, JL[50%]`, else the typed text; then the v1.7 split |
+  | `L_WORKING_DAYS`, `L_IS_WORKING_DAY` | `WORKDAY.INTL` / `NETWORKDAYS.INTL` with `WorkWeek, Holidays` (`tasks.WD`) | built-in and already fast |
+
+- **The pick list.** `_PickKey` = the row position of each detail task; `_PickList` row k = `SMALL(_PickKey, k)`'s
+  UID and name, so the Pred dropdown (`=tsk_PickList`) lists the detail tasks in plan order with no gaps.
+- **Leave by day.** `LeaveDays` (under the Resources table): person, month, days 1-31; `Days` is the `TEXTJOIN` of the
+  ticked days as leave text. `leave.leave_days` appends it to the person's month cell (one `MATCH` on person|month
+  per look-up), so the leave grids, capacity and over-allocation read both.
+- **Check and TakeSnapshot** are optional modules (`core.RELEASE_MODULES`; never in Simple). Check's lists are ranked
+  tables over `_IssueKey`, `_OverAllocKey` (Tasks) and `_OverdueKey` (Log); TakeSnapshot's links go to the
+  defined names `snap_Row`, `tsk_BLSource` and `tsk_Baseline`.
+- **TakeBaseline** steers the BL Source columns: they read Start / Finish and the typed Baseline columns, so they
+  are never circular.
+- **Protection and printing** (`planner/release.py`): see BACKLOG R1-10 and R1-11.
 
 ## Guardrails
 

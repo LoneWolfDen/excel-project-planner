@@ -55,3 +55,14 @@ section. If Excel asks, click **Enable Editing**. Report a failure with the shee
       won't see); paste an outline ("Design / two indented tasks; 3d; after 2") and download a workbook; Reorder
       tasks on a workbook where Link Check says a predecessor is below.
 - [ ] Optional, for timings: the "Timing in Microsoft 365" steps in [TESTING_ON_IPHONE.md](TESTING_ON_IPHONE.md).
+
+## 7. Release 1.0 (`release-1.0/`)
+
+- [ ] The "Release 1.0" steps in [TESTING_ON_IPHONE.md](TESTING_ON_IPHONE.md), on the desktop.
+- [ ] Review > Protect Sheet on Tasks (no password): typing in Finish is refused, Duration and Pred1 still take
+      typing. Unprotect, then insert a table row: formulas fill in.
+- [ ] File > Print preview on Status, Roadmap and Resource Report: one page each, footer "Project Planner template
+      1.0" and page numbers.
+- [ ] Settings > TakeBaseline = Yes, then TakeSnapshot's two baseline links (copy, Paste Special > Values): the Gantt
+      outlines follow the current dates. Set it back to No.
+- [ ] Tick each line of [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) marked manual.

@@ -33,6 +33,13 @@ def predecessors(text):
     return out
 
 
+def task_links(t):
+    """The UIDs a task's links name: its Pred1-4 pickers when any is filled (Release 1.0, "12" or "12 Name"),
+    otherwise its Predecessors text, as the workbook reads them."""
+    picks = [t.get(f"Pick{k}") for k in range(1, 10) if t.get(f"Pick{k}") not in (None, "")]
+    return predecessors(", ".join(str(p) for p in picks) if picks else t.get("PredIn"))
+
+
 def order(tasks):
     """(tasks reordered, [names of the tasks that moved]). tasks: dicts with UID, Level, Name and PredIn, in sheet
     order. Raises ReorderError when the outline makes it impossible."""
@@ -61,7 +68,7 @@ def order(tasks):
     for s, t in enumerate(tasks):
         if s in is_summary:
             continue                                    # links on a summary are ignored by the schedule
-        for uid in predecessors(t.get("PredIn")):
+        for uid in task_links(t):
             p = by_uid.get(uid)
             if p is None or p == s or p in is_summary:
                 continue                                # Link Check explains these; moving can't fix them
@@ -153,7 +160,7 @@ def convert(data):
     from .build import make_workbook
     project, copies, sizes, warnings, _version = upgrade.read_planner(data)
     project.tasks, moved = order(project.tasks)
-    wb = make_workbook(sizes=sizes, data=project)
+    wb = make_workbook(sizes=sizes, data=project, release_edition=project.release)
     upgrade.copy_inputs(wb, copies, warnings)
     out = io.BytesIO()
     wb.save(out)

@@ -22,7 +22,7 @@ from .agile import build_agile
 from .gantt import build_timeline
 from .instructions import build_instructions
 from .msp import build_msp_resources, build_msp_tasks
-from .core import MODULES, has, name, protect_view, set_modules
+from .core import MODULES, all_modules, has, name, protect_view, release, set_modules, set_release
 from .cost import build_cost
 from .history import build_history
 from .log import build_log
@@ -31,15 +31,18 @@ from .roadmap import build_roadmap
 from .resources import RESOURCES, build_resources
 from .settings import PRESETS, build_holidays, build_lists, build_settings, build_stages, stages_of
 from .status import build_status
-from .tasks import build_tasks, take_people, take_stage
+from .tasks import build_tasks, configure, take_people, take_stage
 
 VIEWS = ("Status", "Roadmap", "Resource Report")    # protected without a password; inputs stay unlocked
-ORDER = ["Start", "Status", "Roadmap", "Resource Report", "Agile", "Log", "History", "Settings",
-         "Tasks", "Resources", "Cost", "MSP_Tasks", "MSP_Resources"]
+# Release 1.0 protects every sheet whose rows are fixed (formula cells locked, blue inputs open); Tasks, Resources,
+# Settings and History stay open because rows are added there (Excel can't add table rows on a protected sheet)
+RELEASE_VIEWS = ("Start", "Status", "Roadmap", "Resource Report", "Agile", "Log", "Cost", "Check", "TakeSnapshot")
+ORDER = ["Start", "Status", "Check", "Roadmap", "Resource Report", "Agile", "Log", "History", "TakeSnapshot",
+         "Settings", "Tasks", "Resources", "Cost", "MSP_Tasks", "MSP_Resources"]
 TAB_COLOURS = {"Start": "1F4E78", "Status": "548235", "Tasks": "2F75B5", "Roadmap": "548235",
                "Resources": "7030A0", "Log": "C55A11", "Agile": "548235",
                "Resource Report": "548235", "History": "C55A11", "Settings": "BF8F00", "Cost": "806000",
-               "MSP_Tasks": "595959", "MSP_Resources": "595959"}
+               "MSP_Tasks": "595959", "MSP_Resources": "595959", "Check": "C00000", "TakeSnapshot": "C55A11"}
 @dataclass(frozen=True)
 class Sizes:
     """How many rows / columns each table and grid starts with. Tables grow when users add rows; the fixed grids
@@ -75,19 +78,26 @@ class ProjectData:
     assignments: list = field(default_factory=list)    # (task UID, resource, units): people beyond the first
     stages: list = None                                # (stage, %) rows of the Stages table; None = the default
     modules: list = None                               # optional sheets (core.MODULES); None = all (B-913)
+    release: bool = False                              # a Release 1.0 workbook (upgrade / reorder keep the edition)
 
 
 VERSION = "1.8"          # PlannerVersion in every workbook: planner/upgrade.py reads it to know what to convert
+RELEASE_VERSION = "2.0"  # PlannerVersion of the Release 1.0 workbooks (the planner code that builds them)
+TEMPLATE_VERSION = "1.0"  # TemplateVersion: the release users see (Start, every printed footer)
 
 
 def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, import_wizard=False, baselined=False,
-                  project_type=None, modules=None):
+                  project_type=None, modules=None, release_edition=False):
     """import_wizard: also build MSP_Tasks / MSP_Resources, formula copies of Tasks and Resources under MS Project's
     field names for its Import Wizard. Off by default: the XML converter (docs/export.html) carries more."""
     """The planner workbook: the sample project, a blank template (blank=True), or a given project (data).
     project_type: one of settings.PRESETS (B-1018) for the stages, sprint length and RAG thresholds.
-    modules: the optional sheets to include (core.MODULES; None = all, () = the Simple workbook, B-913)."""
+    modules: the optional sheets to include (core.MODULES; None = all, () = the Simple workbook, B-913).
+    release_edition: the Release 1.0 workbook (pickers, the leave day grid, Check, TakeSnapshot ...); the classic
+    workbook is unchanged by it."""
+    set_release(release_edition)
     set_modules(modules if modules is not None else data.modules if data is not None else None)
+    configure()
     sizes = sizes or Sizes(tasks=n_tasks)
     sizes.check()
     n_tasks = sizes.tasks
@@ -95,7 +105,9 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
         blank = True                                   # no sample RAID, decisions, history ...
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
-    rows = data.tasks if data is not None else sample.tasks(blank, stress, baselined)
+    simple = release_edition and data is None and not blank and not stress and modules is not None and not modules
+    rows = data.tasks if data is not None else sample.simple_tasks(baselined) if simple else \
+        sample.tasks(blank, stress, baselined)
     if len(rows) > n_tasks:
         raise SystemExit(f"{len(rows)} tasks do not fit in {n_tasks} rows; raise --tasks")
     values = dict(data.settings) if data and data.settings else {}
@@ -115,6 +127,8 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
     stages = (data.stages if data and data.stages else
               stages_of(values.get("ProjectType")))
     rows = [take_stage(take_people(dict(r), more.get(r.get("UID"), [])), stages) for r in rows]
+    if release_edition and data is None:              # the sample shows the pickers (imports keep the text cells)
+        rows = [sample.to_pickers(r) for r in rows]
     tasks_ws, letters = build_tasks(wb, rows, n_tasks)
     build_timeline(wb, tasks_ws, letters, n_tasks, sizes.gantt_columns)
     charted = min(12, sizes.sprints)                 # sprints shown on the Status and Agile charts
@@ -132,12 +146,21 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
         build_resource_report(wb, sizes.grid_resources, sizes.weeks, sizes.sprints)
     if has("cost"):
         build_cost(wb, blank, n_tasks, people, sizes.resources)
+    if has("check"):
+        from .check import build_check
+        build_check(wb)
+    if has("snapshot") and has("history"):            # the snapshot is pasted onto History
+        from .snapshot import build_snapshot
+        build_snapshot(wb)
     build_instructions(wb, sizes, import_wizard)
-    for view in VIEWS:                                 # B-1019: formulas can't be typed over by accident
+    if release_edition:
+        from .release import finish_release
+        finish_release(wb, TEMPLATE_VERSION)
+    for view in RELEASE_VIEWS if release_edition else VIEWS:     # B-1019: formulas can't be typed over by accident
         if view in wb.sheetnames:
             protect_view(wb[view])
-    name(wb, "PlannerVersion", f'"{VERSION}"')
-    name(wb, "PlannerModules", '"' + ",".join(m for m in MODULES if has(m)) + '"')   # an upgrade keeps the same set
+    name(wb, "PlannerVersion", f'"{RELEASE_VERSION if release_edition else VERSION}"')
+    name(wb, "PlannerModules", '"' + ",".join(m for m in all_modules() if has(m)) + '"')   # an upgrade keeps the same set
     wb._sheets = [wb[n] for n in ORDER if n in wb.sheetnames]
     for ws in wb.worksheets:
         ws.sheet_properties.tabColor = TAB_COLOURS[ws.title]
@@ -226,11 +249,15 @@ def main(argv=None):
                    + " (default: all; '' = none)")
     p.add_argument("--simple", action="store_true",
                    help="the Simple workbook: Start, Status, Roadmap, Tasks (with its Gantt), Resources, Settings")
+    p.add_argument("--release", action="store_true",
+                   help="the Release 1.0 workbook (release-1.0/): predecessor and resource pickers, a leave day grid, "
+                        "Duration as 3 / 3d / 2w, the Check and TakeSnapshot sheets, more protection, print set-up")
     a = p.parse_args(argv)
     modules = () if a.simple else None if a.modules is None else [m.strip() for m in a.modules.split(",") if m.strip()]
     sizes = Sizes(a.tasks, a.resources, a.grid_resources, a.sprints, a.gantt_columns, a.weeks)
     save(make_workbook(a.blank, stress=a.stress, sizes=sizes, import_wizard=a.import_wizard_sheets,
-                       baselined=a.baselined, project_type=a.project_type, modules=modules), a.out, a.recalc)
+                       baselined=a.baselined, project_type=a.project_type, modules=modules,
+                       release_edition=a.release), a.out, a.recalc)
     print("saved", a.out)
 
 

@@ -167,6 +167,8 @@ class StructureTest(unittest.TestCase):
     def test_protection(self):
         from planner.build import RELEASE_VIEWS
         for sheet in RELEASE_VIEWS:
+            if sheet == "Board" and sheet not in self.wb.sheetnames:       # template 1.2 only
+                continue
             p = self.wb[sheet].protection
             self.assertTrue(p.sheet and p.password is None, sheet)
         for sheet in ("Tasks", "Resources", "Settings", "History"):     # rows are added there

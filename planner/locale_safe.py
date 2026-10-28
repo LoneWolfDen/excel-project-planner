@@ -40,17 +40,21 @@ def date_text(x, fmt):
 def _text_calls(formula):
     """(start, end, argument, format) for each TEXT(arg,"format") with a literal format."""
     for m in re.finditer(r"(?<![A-Za-z_.])TEXT\(", formula):
-        i, depth, in_str, comma = m.end(), 1, False, None
+        i, depth, brackets, in_str, comma = m.end(), 1, 0, False, None
         while i < len(formula) and depth:
             ch = formula[i]
             if ch == '"':
                 in_str = not in_str
             elif not in_str:
-                if ch == "(":
+                if ch == "[":                            # a structured reference: Table[[#This Row],[Day]]
+                    brackets += 1
+                elif ch == "]":
+                    brackets -= 1
+                elif ch == "(":
                     depth += 1
                 elif ch == ")":
                     depth -= 1
-                elif ch == "," and depth == 1 and comma is None:
+                elif ch == "," and depth == 1 and not brackets and comma is None:
                     comma = i
             i += 1
         if depth or comma is None:

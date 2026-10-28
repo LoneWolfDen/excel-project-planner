@@ -255,8 +255,8 @@ def _task_costs(wb, ws, top, n_rows):
         return f'IF({blank},"",IF({task("tsk_IsSummary")},SUM({below}),{t.row(helper)}))'
 
     work, base = task("tsk_LeafTotalWork"), task("tsk_BaseWork")
-    labour = f"{t.row('_LeafCost')}-{t.row('_LeafExtra')}" if v12() else t.row("_LeafCost")
-    budget = f"IF(N({base})>0,IF({work}>0,{base}*({labour})/{work},{labour}),{labour})"
+    labour = f"({t.row('_LeafCost')}-{t.row('_LeafExtra')})" if v12() else t.row("_LeafCost")
+    budget = f"IF(N({base})>0,IF({work}>0,{base}*{labour}/{work},{labour}),{labour})"
     extra, extra_done = [], []
     if v12():
         # B-302: each person's cost per use (accrued at the task's start, as MS Project does) and the task's fixed

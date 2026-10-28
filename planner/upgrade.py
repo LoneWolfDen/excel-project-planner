@@ -89,7 +89,7 @@ def read_planner(data):
     input tables, {table: (headers, rows)}, for copy_inputs."""
     from .build import ProjectData, Sizes
     from .settings import settings_rows, week_preset
-    from .settings import RELEASE_ROWS, V11_ROWS
+    from .settings import RELEASE_ROWS, V11_ROWS, V12_ROWS
     from .tasks import N, input_keys, take_links
     try:
         wb = openpyxl.load_workbook(io.BytesIO(data))
@@ -102,7 +102,7 @@ def read_planner(data):
     version = _named_value(wb, "PlannerVersion") or "1.6 or earlier"
 
     settings = {}
-    for n, _label, _default, _fmt, is_input, _note in settings_rows(True, 26) + RELEASE_ROWS + V11_ROWS:
+    for n, _label, _default, _fmt, is_input, _note in settings_rows(True, 26) + RELEASE_ROWS + V11_ROWS + V12_ROWS:
         v = _named_value(wb, n)
         if is_input and v is not None:
             settings[n] = v

@@ -41,6 +41,14 @@ History (open RAID scores added up at each snapshot) and an available vs planned
 with `python scripts/release_check.py --edition 1.1`; move a 1.0 workbook up with
 `python scripts/upgrade_planner.py Old.xlsx New.xlsx --release 1.1`. `release-1.0/` doesn't change.
 
+## Release 1.2
+Template 1.2, in [`release-1.2/`](release-1.2/), is 1.1 with a refreshed **Fluent design** (Microsoft 365 blues
+and greys, Segoe UI, clearer red / amber / green, report pages without gridlines, tab colours by role, a landing-page
+Start sheet) and a predecessor dropdown that lists only the tasks above the row. The rest of the backlog lands here
+too (see [docs/BACKLOG.md](docs/BACKLOG.md)). Build with `--release 1.2`; check with
+`python scripts/release_check.py --edition 1.2`; move a workbook up with
+`python scripts/upgrade_planner.py Old.xlsx New.xlsx --release 1.2`.
+
 ## Release 1.1 M365
 The Microsoft 365 edition, in [`release-1.1-m365/`](release-1.1-m365/): template 1.1 with the newer Excel functions,
 for teams that all have Excel for Microsoft 365 (or Excel 2021+). Named **LAMBDA** functions in Name Manager

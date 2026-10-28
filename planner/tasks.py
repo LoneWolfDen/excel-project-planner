@@ -25,7 +25,7 @@ from openpyxl.worksheet.cell_range import MultiCellRange
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from .core import (DATE, LABEL_FONT, NOTE_FONT, Col, Tab, add_table, col_range, fill, has, missing, name, release,
-                   title, v11, m365)
+                   title, v11, v12, m365)
 
 TABLE = "Tasks"
 HEADER_ROW = 5
@@ -1059,7 +1059,15 @@ def _validation_and_formatting(ws, L, n_rows):
     dv(DataValidation(allow_blank=True), "Name", "Notes", "PredIn", "Owner")  # prompts only: any text
     if release():
         # the pickers: a list to pick from (typing a UID or a name not on the list is allowed; Issues checks it)
-        dv(DataValidation(type="list", formula1="=tsk_PickList", showErrorMessage=False), *each("Pick"))
+        if v12():
+            # only the detail tasks listed above this row (the ones a link may point at): the first n entries of the
+            # pick list, n counted from the header down to the row above. Validation may use A1 and OFFSET; Excel
+            # evaluates it when the dropdown opens, so it costs nothing on recalculation.
+            pick, leaf = L["Pick"], L["IsLeaf"]
+            above = f"OFFSET(${pick}${first},0,0,MAX(1,COUNTIF(${leaf}${first - 1}:${leaf}{first - 1},1)))"
+            dv(DataValidation(type="list", formula1=f"={above}", showErrorMessage=False), *each("Pick"))
+        else:
+            dv(DataValidation(type="list", formula1="=tsk_PickList", showErrorMessage=False), *each("Pick"))
         dv(DataValidation(type="list", formula1="=L_DepType"), *each("PickT"))
         dv(DataValidation(type="decimal", operator="between", formula1="-999", formula2="999", showErrorMessage=True,
                           error="Lag in working days, e.g. 2 or -1."), *each("PickL"))

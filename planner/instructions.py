@@ -3,7 +3,7 @@ the full reference below them."""
 from openpyxl.styles import Alignment
 from openpyxl.worksheet.hyperlink import Hyperlink
 
-from .core import CALC_FILL, HEADER_FILLS, HEADER_FONT, INPUT_FONT, NOTE_FONT, font, has, missing, release
+from .core import CALC_FILL, HEADER_FILLS, HEADER_FONT, INPUT_FONT, NOTE_FONT, font, has, missing, release, v11
 from .settings import ESSENTIAL, START, START_ROW
 
 # (label, text, sheet to link to)
@@ -80,6 +80,23 @@ RELEASE_EXTRA = [
     ("Limits", "See README > Limits: the predecessor rule (above its successor), 4 links and 4 people per task, "
                "the fixed grid sizes, and what needs a rebuild."),
 ]
+# template 1.1 reference entries (after the Release 1.0 ones)
+V11_EXTRA = [
+    ("RACI", "Tasks > RACI (+): Accountable (one person, from Resources), Consulted and Informed (names, "
+             "comma-separated). Responsible is the task's Resources. Resources counts each person's tasks in each "
+             "role."),
+    ("Dependencies", "On the Log, a Dependency row with an Expected date and a Task UID shows the task's start and "
+                     "the gap in working days (negative = it arrives too late). Status lists the five latest against "
+                     "their task; Check counts the late ones."),
+    ("Sandbox", "Try a what-if without touching the plan: type a Sandbox Duration on the tasks (Tasks > ESTIMATES "
+                "and SANDBOX), then Settings > Sandbox = Yes. Every date and report follows; Status and Check say the "
+                "sandbox is on. Set No to go back; the Sandbox Durations stay for next time."),
+    ("Three-point estimates", "Optimistic and Pessimistic beside a task's Duration give its Expected duration "
+                              "((O + 4 x Duration + P) / 6). Status shows the finish with a 50% (P50) and 80% (P80) "
+                              "chance, from the critical tasks' estimates."),
+    ("Summary", "Status > SUMMARY writes the status in one paragraph (RAG, finish, progress, late tasks, next "
+                "milestone, top risk, late dependencies): copy it into the commentary and add the why."),
+]
 WEEKLY = [
     ("Status sheet", "The weekly update starts on the Status sheet: type the status date at its top, then follow "
                      "the steps under it (progress on Tasks, the Log, the RAG, the commentary, the History "
@@ -92,7 +109,7 @@ def text(sizes, wizard=False):
     if release():
         entries = [(RELEASE_TEXT[e[0]] if e[0] in RELEASE_TEXT else e) for e in entries]
         at = next(i for i, e in enumerate(entries) if e[0] == "RULES (same as MS Project)")
-        entries[at:at] = RELEASE_EXTRA
+        entries[at:at] = RELEASE_EXTRA + (V11_EXTRA if v11() else [])
     return entries
 
 

@@ -10,7 +10,7 @@ from openpyxl.formatting.rule import FormulaRule
 from openpyxl.styles import Font
 
 from .core import (BOX, CALC_FILL, CALC_FONT, LABEL_FONT, NOTE_FONT, TITLE_FONT, Show, fill, font, has, header_cell,
-                   name, ranked_table)
+                   name, ranked_table, v11)
 
 SHEET = "Check"
 ROWS = 20                     # rows per list; drag a table's corner down for more
@@ -25,6 +25,11 @@ COUNTS = [
     ("Overdue Log items", "COUNT(log_OverdueKey)", "Log: update the item, its Due date or close it"),
     ("No status date typed", "IF(N(StatusDateInput)=0,1,0)", "Status: type the status date at the top"),
 ]
+# template 1.1
+V11_COUNTS = [
+    ("Sandbox is on (what-if dates)", 'IF(Sandbox="Yes",1,0)', "Settings > Sandbox: set No before reporting"),
+    ("External dependencies arriving too late", 'COUNTIF(log_DepGap,"<0")', "Log: Expected date, or move the task"),
+]
 
 
 def build_check(wb):
@@ -36,7 +41,7 @@ def build_check(wb):
     ws["B2"].font = NOTE_FONT
     for col, width in {"A": 3, "B": 34, "C": 10, "D": 46, "E": 14, "F": 14, "G": 60}.items():
         ws.column_dimensions[col].width = width
-    counts = [c for c in COUNTS if has("log") or "log_" not in c[1]]
+    counts = [c for c in COUNTS + (V11_COUNTS if v11() else []) if has("log") or "log_" not in c[1]]
     top = 4
     for c, text in enumerate(("Check", "Count", "Where to fix it"), start=2):
         header_cell(ws.cell(top, c), text)

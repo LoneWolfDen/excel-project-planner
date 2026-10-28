@@ -193,3 +193,21 @@ def simple_tasks(baselined=False):
             r.update(zip(("BS", "BF", "BD", "BW"), SIMPLE_BASELINE[r["UID"]]))
         rows.append(r)
     return rows
+
+
+# template 1.1: RACI (Accountable, Consulted, Informed), three-point estimates (Optimistic, Pessimistic) and one
+# what-if Sandbox Duration (a second developer on the core API), by UID. Settings > Sandbox starts at No, so the plan
+# schedules as in Release 1.0.
+V11_TASKS = {
+    2: {"Acc": "Priya Sharma", "Con": "Morgan Patel", "Inf": "Steering committee"},
+    13: {"Acc": "Jordan Lee", "Con": "Alex Chen", "Inf": "Priya Sharma", "Opt": 8, "Pess": 16, "SandDur": 7},
+    17: {"Acc": "Sam Rivera", "Con": "Casey Kim", "Inf": "Priya Sharma", "Opt": 10, "Pess": 18},
+    21: {"Acc": "Taylor Morgan", "Con": "Jordan Lee, Sam Rivera", "Inf": "Morgan Patel", "Opt": 6, "Pess": 13},
+    22: {"Opt": 5, "Pess": 10},
+    25: {"Acc": "Priya Sharma", "Con": "Steering committee", "Inf": "All staff"},
+}
+
+
+def with_v11(row):
+    """A sample row with its template 1.1 inputs."""
+    return {**row, **V11_TASKS.get(row.get("UID"), {})}

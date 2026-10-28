@@ -91,15 +91,25 @@ Decisions taken with the owner before coding (the brief asked for some things th
 | R1-15 | ✅ Docs | | | README (Release 1.0, Limits), ARCHITECTURE (named formulas, why no LAMBDA), TESTING_ON_IPHONE (Release 1.0 steps), this backlog, RELEASE_CHECKLIST | | | |
 | R1-16 | ✅ Release checklist | | | [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md), each item checked by `scripts/release_check.py` or a named test | | `python scripts/release_check.py` | |
 
-### P1 / P2: v1.1 Future (not built: the freeze)
+### P1 / P2: v1.1
+
+Template 1.1 is its own workbook too: `--release 1.1` builds `release-1.1/` (TemplateVersion 1.1, PlannerVersion
+2.1) from the Release 1.0 code plus the items below, so `release-1.0/` stays frozen. With Settings > Sandbox = No the
+1.1 sample schedules exactly as the 1.0 sample (`test_release_11.CommittedSampleTest`). Upgrade a 1.0 workbook with
+`python scripts/upgrade_planner.py Old.xlsx New.xlsx --release 1.1`.
+
+| ID | Item | Pri | Done as | Acceptance | Perf |
+|---|---|---|---|---|---|
+| F-1101 | ✅ RACI per task | P1 | Tasks > RACI (+): Accountable (dropdown of Resources), Consulted, Informed; Responsible = the task's Resources. Resources: Accountable For / Consulted On / Informed Of counts (exact names in comma lists) | `test_release_11.CommittedSampleTest.test_raci_counts` | +150 formulas (3 per person) |
+| F-1102 | ✅ External dependencies, top 5 on Status | P1 | Log: Expected (input), Task Start, Gap (days: negative = arrives after the task should start), `_DepKey`; Status: EXTERNAL DEPENDENCIES, the five latest against their task; Check counts the late ones | `test_dependencies` | +600 formulas (Log, 150 rows x 4) |
+| F-1103 | ✅ Sandbox what-if | P1 | Tasks: Sandbox Duration (3, 3d, 2w); Settings > Sandbox = Yes makes `_Days` use it, so the whole plan and every report show the what-if; Status (red banner), the summary and Check say so | `SandboxTest` | none (one IF in `_Days`) |
+| F-1104 | ✅ Automatic status narrative | P1 | Status > SUMMARY (`sts_Narrative`): RAG, finish against plan, progress, late tasks, next milestone, top risk, late dependencies, sandbox | `test_narrative` | 1 cell |
+| F-1105 | ✅ Three-point estimates with P50 / P80 | P1 | Tasks: Optimistic, Pessimistic, Expected = (O + 4 x Duration + P) / 6; Settings > PertP50 = forecast finish + the critical tasks' total shift, PertP80 = + 0.84 standard deviations (variances added); both on Status. Issues flags estimates that don't bracket the Duration | `test_pert` (recomputed in Python) | +800 formulas (Tasks, 4 per task) |
+
+### v1.1 Future (not built yet)
 
 | ID | Item | Pri | Notes |
 |---|---|---|---|
-| F-1101 | RACI per task (Responsible, Accountable, Consulted, Informed) | P1 | Inputs on Tasks (WORK section), a RACI matrix on the Roadmap or Resources; the upgrade carries them by header |
-| F-1102 | External dependencies in the Log, top 5 on Status | P1 | A Dependency type exists; add an expected date and the linked task's slack, and a ranked list on Status |
-| F-1103 | Sandbox what-if | P1 | A "Sandbox Duration" column that overrides Duration when Settings > Sandbox = Yes, and Status showing the what-if finish |
-| F-1104 | Automatic status narrative | P1 | One text cell on Status from the RAG, slip, next milestone and top risk |
-| F-1105 | 3-point estimates (PERT) with P50 / P80 | P1 | Optimistic / Pessimistic inputs; expected = (O + 4M + P) / 6; P80 on the project finish by sum of variances on the critical path |
 | F-1106 | Risk-exposure burndown in History | P2 | A snapshot field (sum of open risk scores) and a chart |
 | F-1107 | Capacity chart | P2 | Available vs committed days per sprint on Agile |
 | F-1108 | Microsoft 365 edition | P2 | LET / LAMBDA named formulas (`L_PARSE_DURATION`, `L_WORKING_DAYS`, `L_IS_WORKING_DAY`), FILTER lists, a searchable pick list; needs a recalculation engine other than LibreOffice 24.2 in CI |

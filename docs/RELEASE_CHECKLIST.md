@@ -5,7 +5,9 @@ marked **script** and prints PASS / FAIL; `--recalc` also recalculates the sampl
 Items marked **test** are covered by `python -m unittest discover -s tests -v` (the test named). **Manual** items
 are done in Excel with [TESTING_IN_EXCEL.md](TESTING_IN_EXCEL.md) and [TESTING_ON_IPHONE.md](TESTING_ON_IPHONE.md).
 
-Last run: 28-Oct-2026, on the commit that added Release 1.0 (results in the PR).
+Last run: 28-Oct-2026, on the commit that added Release 1.0 (results in the PR). Template 1.1 (`release-1.1/`): the
+same list with `python scripts/release_check.py --edition 1.1` and `tests/test_release_11.py`, plus a manual Sandbox
+check in Excel (Settings > Sandbox = Yes: Status shows the red banner; set it back to No).
 
 ## Builds
 

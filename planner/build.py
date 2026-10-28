@@ -22,7 +22,7 @@ from .agile import build_agile
 from .gantt import build_timeline
 from .instructions import build_instructions
 from .msp import build_msp_resources, build_msp_tasks
-from .core import MODULES, all_modules, has, name, protect_view, release, set_modules, set_release
+from .core import MODULES, all_modules, edition_of, has, name, protect_view, release, set_modules, set_release
 from .cost import build_cost
 from .history import build_history
 from .log import build_log
@@ -82,8 +82,10 @@ class ProjectData:
 
 
 VERSION = "1.8"          # PlannerVersion in every workbook: planner/upgrade.py reads it to know what to convert
-RELEASE_VERSION = "2.0"  # PlannerVersion of the Release 1.0 workbooks (the planner code that builds them)
-TEMPLATE_VERSION = "1.0"  # TemplateVersion: the release users see (Start, every printed footer)
+# PlannerVersion of each release-line edition (the code that builds it; planner/upgrade.py reads it), by its
+# TemplateVersion (the release users see: Start, every printed footer)
+PLANNER_VERSIONS = {"1.0": "2.0", "1.1": "2.1"}
+RELEASE_VERSION, TEMPLATE_VERSION = PLANNER_VERSIONS["1.0"], "1.0"
 
 
 def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, import_wizard=False, baselined=False,
@@ -94,7 +96,8 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
     project_type: one of settings.PRESETS (B-1018) for the stages, sprint length and RAG thresholds.
     modules: the optional sheets to include (core.MODULES; None = all, () = the Simple workbook, B-913).
     release_edition: the Release 1.0 workbook (pickers, the leave day grid, Check, TakeSnapshot ...); the classic
-    workbook is unchanged by it."""
+    workbook is unchanged by it. True or "1.0" = Release 1.0; "1.1" = template 1.1."""
+    release_edition = edition_of(release_edition)
     set_release(release_edition)
     set_modules(modules if modules is not None else data.modules if data is not None else None)
     configure()
@@ -129,6 +132,8 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
     rows = [take_stage(take_people(dict(r), more.get(r.get("UID"), [])), stages) for r in rows]
     if release_edition and data is None:              # the sample shows the pickers (imports keep the text cells)
         rows = [sample.to_pickers(r) for r in rows]
+        if release_edition != "1.0":                  # template 1.1 inputs (RACI, estimates, a sandbox duration)
+            rows = [sample.with_v11(r) for r in rows]
     tasks_ws, letters = build_tasks(wb, rows, n_tasks)
     build_timeline(wb, tasks_ws, letters, n_tasks, sizes.gantt_columns)
     charted = min(12, sizes.sprints)                 # sprints shown on the Status and Agile charts
@@ -155,11 +160,11 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
     build_instructions(wb, sizes, import_wizard)
     if release_edition:
         from .release import finish_release
-        finish_release(wb, TEMPLATE_VERSION)
+        finish_release(wb, release_edition)
     for view in RELEASE_VIEWS if release_edition else VIEWS:     # B-1019: formulas can't be typed over by accident
         if view in wb.sheetnames:
             protect_view(wb[view])
-    name(wb, "PlannerVersion", f'"{RELEASE_VERSION if release_edition else VERSION}"')
+    name(wb, "PlannerVersion", f'"{PLANNER_VERSIONS[release_edition] if release_edition else VERSION}"')
     name(wb, "PlannerModules", '"' + ",".join(m for m in all_modules() if has(m)) + '"')   # an upgrade keeps the same set
     wb._sheets = [wb[n] for n in ORDER if n in wb.sheetnames]
     for ws in wb.worksheets:
@@ -249,9 +254,11 @@ def main(argv=None):
                    + " (default: all; '' = none)")
     p.add_argument("--simple", action="store_true",
                    help="the Simple workbook: Start, Status, Roadmap, Tasks (with its Gantt), Resources, Settings")
-    p.add_argument("--release", action="store_true",
-                   help="the Release 1.0 workbook (release-1.0/): predecessor and resource pickers, a leave day grid, "
-                        "Duration as 3 / 3d / 2w, the Check and TakeSnapshot sheets, more protection, print set-up")
+    p.add_argument("--release", nargs="?", const="1.0", default=None, choices=list(PLANNER_VERSIONS),
+                   help="a release-line workbook: 1.0 (the default; release-1.0/: predecessor and resource pickers, a "
+                        "leave day grid, Duration as 3 / 3d / 2w, the Check and TakeSnapshot sheets, more protection, "
+                        "print set-up) or 1.1 (release-1.1/: adds RACI, dependencies on Status, Sandbox, the status "
+                        "narrative and PERT estimates)")
     a = p.parse_args(argv)
     modules = () if a.simple else None if a.modules is None else [m.strip() for m in a.modules.split(",") if m.strip()]
     sizes = Sizes(a.tasks, a.resources, a.grid_resources, a.sprints, a.gantt_columns, a.weeks)

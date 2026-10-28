@@ -20,11 +20,12 @@ def main(argv=None):
     p.add_argument("old", help="the older planner workbook (.xlsx)")
     p.add_argument("out", help="the new workbook to write")
     p.add_argument("--recalc", action="store_true", help="recalculate with LibreOffice so the file carries values")
-    p.add_argument("--release", action="store_true",
-                   help="move it into the Release 1.0 workbook (a Release 1.0 workbook stays one without this)")
+    p.add_argument("--release", nargs="?", const="1.0", default=None, choices=["1.0", "1.1"],
+                   help="move it into a release-line workbook: 1.0 (the default) or 1.1 (one stays in its edition "
+                        "without this)")
     a = p.parse_args(argv)
     try:
-        wb, warnings, version = upgrade.rebuild(Path(a.old).read_bytes(), True if a.release else None)
+        wb, warnings, version = upgrade.rebuild(Path(a.old).read_bytes(), a.release)
     except upgrade.UpgradeError as e:
         raise SystemExit(str(e))
     save(wb, a.out, a.recalc)

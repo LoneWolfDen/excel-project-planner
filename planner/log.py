@@ -13,7 +13,7 @@ from openpyxl.formatting.rule import FormulaRule
 from openpyxl.styles import Font
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from .core import DATE, Col, Tab, add_table, col_range, fill, has, linked_task, name, title
+from .core import DATE, Col, Tab, add_table, col_range, fill, has, linked_task, name, title, v11
 
 SHEET = "Log"
 D = dt.date
@@ -56,6 +56,11 @@ SAMPLE = [
     (12, "Change", "Live chat on every page", "Sales", D(2026, 10, 12), None, "Rejected", None, None, None,
      "Nice to have; not needed for go-live.", "Steering committee", D(2026, 10, 16), 8, 9600, None, None, None),
 ]
+# template 1.1 (F-1102): an external dependency the sample adds, and when each is expected (Ref -> date)
+V11_SAMPLE = [(13, "Dependency", "Payment provider sandbox credentials from the vendor", "Jordan Lee",
+               D(2026, 10, 12), D(2026, 10, 27), "Open", 14, 3, 4, None, None, None, None, None, None,
+               "Chase the vendor's account manager daily.", "Promised for early November.")]
+EXPECTED = {5: D(2026, 11, 9), 13: D(2026, 11, 4)}
 NAMES = {"Ref": "log_Ref", "Type": "log_Type", "Title": "log_Title", "Owner": "log_Owner", "Due": "log_Due",
          "Status": "log_Status", "Score": "log_Score", "Rating": "log_Rating", "Overdue": "log_Overdue",
          "Task": "log_Task", "Response": "log_Response", "Schedule Impact": "log_Days", "Cost Impact": "log_Cost",
@@ -74,6 +79,24 @@ def is_type(type_cell, types):
 ROWS = 150
 
 
+def _dependency_columns(r, blank_row, data):
+    """Template 1.1 (F-1102): when an external dependency is expected, the linked task's forecast start, and the
+    working days between them (negative = it arrives after the task should start)."""
+    task_start = f'IFERROR(INDEX(tsk_FcStart,MATCH({r("Task UID")},tsk_UID,0)),"")'
+    expected = r("Expected")
+    return [
+        Col("Expected", "in", 12, DATE, values=[EXPECTED.get(row[0]) for row in data],
+            note="Dependency: the date the other party delivers it."),
+        Col("Task Start", width=12, fmt=DATE, formula=f'IF(N({r("Task UID")})=0,"",{task_start})',
+            note="The linked task's forecast start."),
+        Col("Gap (days)", width=9, fmt="+0;-0;0", center=True,
+            note="Dependency: working days from Expected to the task's start; negative = it arrives too late.",
+            formula=(f'IF(OR({blank_row},N({expected})=0,N({r("Task Start")})=0),"",'
+                     f'IF({r("Task Start")}>={expected},NETWORKDAYS.INTL({expected},{r("Task Start")},WorkWeek,Holidays)'
+                     f'-1,1-NETWORKDAYS.INTL({r("Task Start")},{expected},WorkWeek,Holidays)))')),
+    ]
+
+
 def build_log(wb, blank, n_rows=ROWS):
     ws = wb.create_sheet(SHEET)
     title(ws, "Log: Risks, Assumptions, Issues, Dependencies, Decisions and Changes",
@@ -81,7 +104,7 @@ def build_log(wb, blank, n_rows=ROWS):
           "Impact (1-5 each; an issue counts as probability 5), rated by Settings > RAIDHighScore / RAIDMediumScore. "
           "Link a task by its UID, and another log item by its Ref.")
     ws.column_dimensions["A"].width = 3
-    data = [] if blank else SAMPLE
+    data = [] if blank else SAMPLE + (V11_SAMPLE if v11() else [])
     t = Tab("Log")
     r = t.row
     blank_row = f'{r("Title")}=""'
@@ -107,6 +130,7 @@ def build_log(wb, blank, n_rows=ROWS):
             note="The linked task's forecast finish."),
         Col("Overdue", width=9, center=True, note="Still open and the due date is before the status date.",
             formula=f'IF(OR({blank_row},N({r("Due")})=0),"",IF(AND({open_},{r("Due")}<StatusDate),"Overdue",""))'),
+        *(_dependency_columns(r, blank_row, data) if v11() else []),
         # RAID
         Col("Probability", "in", 9, center=True, values=values(8), note="RAID: 1 (rare) to 5 (almost certain). "
                                                                        "Ignored for issues."),
@@ -141,11 +165,20 @@ def build_log(wb, blank, n_rows=ROWS):
                      f'{r("Score")}+1-(ROW()-ROW({t.head("Ref")}))/100000,"")')),
     ] + ([Col("_OverdueKey", "help", 8, note="Overdue items by due date (the Check sheet's list).",
               formula=(f'IF({r("Overdue")}="Overdue",{r("Due")}+(ROW()-ROW({t.head("Ref")}))/100000,"")'))]
-         if has("check") else []), n_rows)
-    for column, defined in {**NAMES, **({"_OverdueKey": "log_OverdueKey"} if has("check") else {})}.items():
+         if has("check") else [])
+       + ([Col("_DepKey", "help", 8, note="Open dependencies with an Expected date, latest against the task first "
+                                         "(the Status sheet's list).",
+               formula=(f'IF(AND({r("Type")}="Dependency",{open_},N({r("Expected")})>0),'
+                        f'IF({r("Gap (days)")}="",100000,{r("Gap (days)")})+(ROW()-ROW({t.head("Ref")}))/100000,"")'))]
+          if v11() else []), n_rows)
+    extra = {"_OverdueKey": "log_OverdueKey"} if has("check") else {}
+    if v11():
+        extra.update({"Expected": "log_Expected", "Gap (days)": "log_DepGap", "_DepKey": "log_DepKey",
+                      "Update": "log_Update"})
+    for column, defined in {**NAMES, **extra}.items():
         name(wb, defined, f"Log[{column}]")
-    ws.column_dimensions.group(letters["_Open"], letters["_OverdueKey" if has("check") else "_TopKey"], hidden=True,
-                               outline_level=1)
+    last_helper = "_DepKey" if v11() else "_OverdueKey" if has("check") else "_TopKey"
+    ws.column_dimensions.group(letters["_Open"], letters[last_helper], hidden=True, outline_level=1)
     first, last = 5, 4 + n_rows
     rng = lambda k: col_range(letters[k], first, last)
     type_cell = f'${letters["Type"]}{first}'
@@ -159,7 +192,15 @@ def build_log(wb, blank, n_rows=ROWS):
         for k in keys:
             rule.add(rng(k))
     cf = ws.conditional_formatting
-    for keys, types in ONLY.items():                 # not this type's column: grey, like a calculated cell
+    only = {**ONLY, ("Expected", "Task Start", "Gap (days)"): ["Dependency"]} if v11() else ONLY
+    if v11():
+        expected = DataValidation(type="date", operator="greaterThan", formula1="1")
+        ws.add_data_validation(expected)
+        expected.add(rng("Expected"))
+        gap = letters["Gap (days)"]
+        cf.add(rng("Gap (days)"), FormulaRule(formula=[f'AND(ISNUMBER({gap}{first}),{gap}{first}<0)'],
+                                              font=Font(color="C00000", bold=True)))
+    for keys, types in only.items():                 # not this type's column: grey, like a calculated cell
         rule = FormulaRule(formula=[f'AND({type_cell}<>"",NOT({is_type(type_cell, types)}))'], fill=fill("EDEDED"),
                            font=Font(color="A6A6A6"))
         for k in keys:

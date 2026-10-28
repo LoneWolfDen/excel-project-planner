@@ -1,6 +1,7 @@
 """Check the Release 1.0 workbooks against docs/RELEASE_CHECKLIST.md: the items a script can check.
 
     python scripts/release_check.py                 # the committed workbooks in release-1.0/
+    python scripts/release_check.py --edition 1.1   # ... in release-1.1/
     python scripts/release_check.py --recalc        # also recalculate the sample in LibreOffice at 25-Oct-2026
 
 Prints one line per item (PASS / FAIL / MANUAL) and exits 1 if anything failed. The tests, the three builds and
@@ -21,9 +22,13 @@ import openpyxl  # noqa: E402
 
 import perf_check  # noqa: E402
 
-RELEASE = ROOT / "release-1.0"
-FILES = {"sample": RELEASE / "Project_Planner.xlsx", "blank": RELEASE / "Project_Planner_Blank.xlsx",
-         "simple": RELEASE / "Project_Planner_Simple.xlsx"}
+def files(edition):
+    folder = ROOT / f"release-{edition}"
+    return {k: folder / n for k, n in (("sample", "Project_Planner.xlsx"), ("blank", "Project_Planner_Blank.xlsx"),
+                                       ("simple", "Project_Planner_Simple.xlsx"))}
+
+
+FILES = files("1.0")
 STATUS_DATE = dt.date(2026, 10, 25)
 ERRORS = ("#NAME?", "#VALUE!", "#REF!", "#DIV/0!", "#N/A", "#NUM!", "#NULL!", "Err:")
 CF_MAX = 120                       # Release 1.0's budget: fewer rules than v1.8's 121
@@ -63,8 +68,11 @@ def validation_problems(wb):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--recalc", action="store_true", help="recalculate the sample at 25-Oct-2026 with LibreOffice")
+    p.add_argument("--edition", default="1.0", choices=["1.0", "1.1"], help="which release folder to check")
     a = p.parse_args(argv)
     from planner.build import RELEASE_VIEWS
+    global FILES
+    FILES = files(a.edition)
     results = []
 
     def item(label, ok, detail=""):
@@ -121,10 +129,11 @@ def main(argv=None):
          and sum(1 for r in values["simple"]["Tasks"].iter_rows(min_row=6, min_col=head["Task Name"],
                                                                  max_col=head["Task Name"], values_only=True)
                  if r[0]) == 12)
-    item("TemplateVersion is 1.0 in every workbook",
-         all(b.defined_names["TemplateVersion"].attr_text == '"1.0"' for b in books.values()))
+    item(f"TemplateVersion is {a.edition} in every workbook",
+         all(b.defined_names["TemplateVersion"].attr_text == f'"{a.edition}"' for b in books.values()))
     readme = (ROOT / "README.md").read_text()
-    item("README has the Release 1.0 and Limits sections", "## Release 1.0" in readme and "## Limits" in readme)
+    item(f"README has the Release {a.edition} and Limits sections",
+         f"## Release {a.edition}" in readme and "## Limits" in readme)
     page = (ROOT / "docs" / "export.html").read_text()
     loads = sorted(set(re.findall(r"https?://[^\"' )]+", page)))
     item("export.html loads nothing but Pyodide (the workbook never leaves the device)",

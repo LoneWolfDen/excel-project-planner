@@ -180,18 +180,36 @@ _MODULE_NAMES = {"agile": r"\b(spr_|agl_|cap_|ShownSprint|ShowSprintInput|Curren
 ACTIVE = set(MODULES)
 # Release 1.0 (the --release build, its own workbooks in release-1.0/): two more optional sheets, never in Simple
 RELEASE_MODULES = {"check": "Check", "snapshot": "TakeSnapshot"}
-RELEASE = {"on": False}
+RELEASE = {"on": False, "version": None}
+EDITIONS = ("1.0", "1.1")              # template versions of the release line; each later one adds to the one before
 _MODULE_NAMES.update({"check": r"\bchk_", "snapshot": r"\bsnap_"})
 
 
-def set_release(on):
-    """Build the Release 1.0 edition (pickers, the leave day grid, Check, TakeSnapshot ...) or the classic workbook.
-    Called once per build, before set_modules, by build.make_workbook."""
-    RELEASE["on"] = bool(on)
+def edition_of(value):
+    """The template version a build option means: False / None = classic, True = "1.0", or "1.0" / "1.1"."""
+    if value in (None, False, ""):
+        return None
+    version = "1.0" if value is True else str(value)
+    if version not in EDITIONS:
+        raise ValueError(f"unknown release {version} (choose from {', '.join(EDITIONS)})")
+    return version
+
+
+def set_release(value):
+    """Build a release-line edition (1.0: pickers, the leave day grid, Check, TakeSnapshot ...; 1.1 adds RACI,
+    dependencies on Status, Sandbox, the narrative and PERT) or the classic workbook. Called once per build, before
+    set_modules, by build.make_workbook."""
+    RELEASE["version"] = edition_of(value)
+    RELEASE["on"] = RELEASE["version"] is not None
 
 
 def release():
     return RELEASE["on"]
+
+
+def v11():
+    """True for template 1.1 and later: the v1.1 features (docs/BACKLOG.md F-1101 - F-1105)."""
+    return release() and EDITIONS.index(RELEASE["version"]) >= EDITIONS.index("1.1")
 
 
 def all_modules():

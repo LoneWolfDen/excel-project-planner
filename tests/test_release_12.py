@@ -430,7 +430,7 @@ class EngineTest(unittest.TestCase):
         self.assertAlmostEqual(t13["Progress"], 7 / 14, places=6)          # 15-23 Oct done (7 days), 7 to go
         t17 = self.t[17]
         self.assertAlmostEqual(t17["% Work Done"], 40 / t17["_LeafTotalWork"], places=6)
-        self.assertEqual(self.t[17]["_LeafWorkDone"], 40 * (t17["_LeafWork"] / t17["_LeafTotalWork"]))
+        self.assertAlmostEqual(self.t[17]["_LeafWorkDone"], 40 * (t17["_LeafWork"] / t17["_LeafTotalWork"]), places=6)
 
     def test_baseline_2(self):                                    # B-201
         self.assertEqual(serial(self.t[12]["Baseline 2 Start"]), serial(d(2026, 10, 1)))

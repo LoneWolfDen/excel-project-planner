@@ -70,9 +70,9 @@ PAGE = """<!doctype html>
     planner workbook: tasks, links, calendar, holidays, constraints, baseline, resources and assignments.</p>
   <div class="card">
     <label class="drop" id="drop" for="file">
-      <strong>Choose a planner workbook (.xlsx) or an MS Project XML file (.xml)</strong>
+      <strong>Choose a planner workbook (.xlsx), an MS Project XML file (.xml), or a task list (.csv, .txt)</strong>
       <span>or drop it here</span>
-      <input type="file" id="file" accept=".xlsx,.xml,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/xml,application/xml">
+      <input type="file" id="file" accept=".xlsx,.xml,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/xml,application/xml,text/csv,text/plain">
     </label>
     <fieldset class="choice">
       <legend>With a planner workbook (.xlsx)</legend>
@@ -80,7 +80,11 @@ PAGE = """<!doctype html>
       <label><input type="radio" name="mode" value="upgrade"> Move it to the latest template (keeps everything you typed)</label>
       <label><input type="radio" name="mode" value="reorder"> Reorder its tasks so every predecessor is above its successor (outline and UIDs kept)</label>
     </fieldset>
-    <label class="choice">With an MS Project file (.xml), the new workbook's project type
+    <label class="choice" for="outline">Or paste an outline: one task per line, indent (or "-") for sub-tasks,
+      optional "; 5d; after 2; Alex Chen" (after = line numbers)</label>
+    <textarea id="outline" rows="6" style="width:100%" placeholder="Design&#10;  Requirements; 5d; Priya Sharma&#10;  Wireframes; 3d; after 2; Casey Kim&#10;  Sign-off; milestone; after 3"></textarea>
+    <button id="fromOutline" type="button">Make a workbook from this outline</button>
+    <label class="choice">For a new workbook (from MS Project or a list), the project type
       <select id="ptype">__PROJECT_TYPES__</select></label>
     <p id="status" role="status" aria-live="polite"></p>
     <ul id="notes"></ul>
@@ -96,6 +100,9 @@ PAGE = """<!doctype html>
     <tr><td>Reorder tasks</td><td>Link Check says "UID n is below this task: move it above"? Choose the workbook with
       "Reorder its tasks" and download the reordered one: tasks move only inside their phase, as whole groups, UIDs
       and links unchanged. If the phases themselves depend on each other both ways, it says which tasks to change.</td></tr>
+    <tr><td>Start from a list</td><td>Paste an outline above, or choose a .csv: this planner's column names (Level,
+      Task Name, Duration, Predecessors, Resources ...) or an MS Project export (File &gt; Save As &gt; CSV). You get
+      a workbook with the levels, durations, links and people filled in; Excel schedules it when you open it.</td></tr>
     <tr><td>MS Project to workbook</td><td>In MS Project: File &gt; Save As &gt; XML. Choose that file here and download
       the workbook. Excel calculates it when you open it. Anything the planner can't hold (a fifth predecessor, a
       lag in % ...) is listed here and noted on the task.</td></tr>
@@ -127,9 +134,13 @@ function converter() {
 
 const RUN = `
 import base64
-from planner import mspdi, mspdi_import, reorder, upgrade
+from planner import list_import, mspdi, mspdi_import, reorder, upgrade
 try:
-    if kind == "reorder":
+    if kind == "list":
+        xlsx, warnings = list_import.convert(bytes(data.to_py()), name, ptype)
+        project = list_import.read(bytes(data.to_py()), name)[0]
+        out = ["ok", base64.b64encode(xlsx).decode(), warnings, len(project.tasks), len(project.resources)]
+    elif kind == "reorder":
         xlsx, warnings = reorder.convert(bytes(data.to_py()))
         project = upgrade.read_planner(bytes(data.to_py()))[0]
         out = ["ok", base64.b64encode(xlsx).decode(), warnings, len(project.tasks), len(project.resources)]
@@ -144,7 +155,8 @@ try:
         xlsx, warnings = mspdi_import.convert(bytes(data.to_py()), ptype)
         project, _ = mspdi_import.read_project(bytes(data.to_py()))
         out = ["ok", base64.b64encode(xlsx).decode(), warnings, len(project.tasks), len(project.resources)]
-except (mspdi.ExportError, mspdi_import.MSPImportError, upgrade.UpgradeError, reorder.ReorderError) as e:
+except (mspdi.ExportError, mspdi_import.MSPImportError, upgrade.UpgradeError, reorder.ReorderError,
+        list_import.ListImportError) as e:
     out = ["error", str(e), [], 0, 0]
 out`;
 
@@ -152,13 +164,15 @@ async function convert(file) {
   link.style.display = "none";
   notes.textContent = "";
   const mode = document.querySelector('input[name="mode"]:checked').value;
-  const kind = /\\.xml$/i.test(file.name) ? "xml" : mode === "xml" ? "xlsx" : mode;
+  const kind = /\\.xml$/i.test(file.name) ? "xml" : /\\.(csv|txt)$/i.test(file.name) ? "list"
+             : mode === "xml" ? "xlsx" : mode;
   say("Loading the converter...");
   try {
     const py = await converter();
     say("Converting " + file.name + "...");
     py.globals.set("data", new Uint8Array(await file.arrayBuffer()));
     py.globals.set("kind", kind);
+    py.globals.set("name", file.name);
     py.globals.set("ptype", document.getElementById("ptype").value);
     const [state, payload, warnings, tasks, people] = py.runPython(RUN).toJs();
     if (state !== "ok") { say(payload, "bad"); return; }
@@ -166,7 +180,7 @@ async function convert(file) {
     const type = kind === "xlsx" ? "application/xml"
                                  : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     link.href = URL.createObjectURL(new Blob([bytes], { type }));
-    link.download = file.name.replace(/\\.(xlsx|xml)$/i, "") + (kind === "xlsx" ? ".xml" : kind === "upgrade" ? " (latest).xlsx"
+    link.download = file.name.replace(/\\.(xlsx|xml|csv|txt)$/i, "") + (kind === "xlsx" ? ".xml" : kind === "upgrade" ? " (latest).xlsx"
                   : kind === "reorder" ? " (reordered).xlsx" : ".xlsx");
     link.textContent = kind === "xlsx" ? "Download the MS Project file (.xml)"
                      : kind === "upgrade" ? "Download the upgraded workbook (.xlsx)"
@@ -182,6 +196,10 @@ async function convert(file) {
 const input = document.getElementById("file");
 const drop = document.getElementById("drop");
 input.addEventListener("change", () => input.files[0] && convert(input.files[0]));
+document.getElementById("fromOutline").addEventListener("click", () => {
+  const text = document.getElementById("outline").value;
+  if (text.trim()) convert(new File([text], "Outline.txt", { type: "text/plain" }));
+});
 drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
 drop.addEventListener("dragleave", () => drop.classList.remove("over"));
 drop.addEventListener("drop", e => {

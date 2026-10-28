@@ -172,6 +172,35 @@ def protect_view(ws):
     p.selectLockedCells = p.selectUnlockedCells = False
 
 
+# B-913: optional modules. A build includes any of them; each builder leaves out, or blanks, whatever reads a module
+# that isn't there (set_modules is called once per build, by build.make_workbook).
+MODULES = {"agile": "Agile", "log": "Log", "history": "History", "resources": "Resource Report", "cost": "Cost"}
+_MODULE_NAMES = {"agile": r"\b(spr_|agl_|cap_|ShownSprint|ShowSprintInput|CurrentSprint|SprintLastEnd|TotalPoints)",
+                 "log": r"\blog_", "resources": r"\b(rw_|load_Grid|spr_LeaveGrid)", "cost": r"\b(evm_|cost_)"}
+ACTIVE = set(MODULES)
+
+
+def set_modules(modules):
+    """The modules this build includes (None = all)."""
+    unknown = set(modules or ()) - set(MODULES)
+    if unknown:
+        raise ValueError(f"unknown modules: {', '.join(sorted(unknown))} (choose from {', '.join(MODULES)})")
+    ACTIVE.clear()
+    ACTIVE.update(MODULES if modules is None else modules)
+
+
+def has(module):
+    return module in ACTIVE
+
+
+def missing(text):
+    """True when a formula (or a sheet name) needs a module this build leaves out."""
+    import re
+    text = str(text or "")
+    gone = [m for m in MODULES if m not in ACTIVE]
+    return any(text == MODULES[m] or (m in _MODULE_NAMES and re.search(_MODULE_NAMES[m], text)) for m in gone)
+
+
 def col_range(letter, first_row, last_row):
     return f"{letter}{first_row}:{letter}{last_row}"
 

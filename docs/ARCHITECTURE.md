@@ -302,6 +302,27 @@ added). Sprint length and the RAG slip thresholds default to a formula that read
 over. The upgrade reads typed values only, so typed stages and thresholds survive and defaults stay defaults. A
 typed % Complete coming in (an import or an upgrade) is matched to the type's stages.
 
+## Modules: Simple and Full (B-913)
+
+Agile, Log, History, Resource Report and Cost are optional (`core.MODULES`; `build_planner.py --modules` /
+`--simple`). `core.set_modules` records the set for the build and `core.missing(text)` says whether a formula needs
+a module that isn't there, by its name prefixes (`spr_`, `agl_`, `cap_`, `log_`, `rw_`, `evm_` ...). Each builder
+then leaves out what can't calculate instead of pointing at a missing sheet: a Tasks column whose formula reads one
+becomes blank (Sprint is hidden too), the sprint settings and capacity grids go without Agile, Status drops the RAG
+areas, key figures, lists and snapshot fields that read a missing module, and the Start sheet drops their steps and
+reference entries. The leave-by-sprint grid lives on Resources, beside the capacity it feeds, so Agile works
+without the Resource Report. `ModulesTest` builds all 32 combinations and checks that no formula, name or
+validation points at a missing sheet, table or name (`perf_check.missing_references`); a few are recalculated.
+`PlannerModules` records the set, so an upgrade of a Simple workbook stays Simple.
+
+## Starting from a list (B-914)
+
+`planner/list_import.py` reads an outline, this planner's CSV or MS Project's CSV into `ProjectData`, like the XML
+import, and builds the workbook the same way: levels from indentation, bullets or `1.2.3` numbers; durations in
+days, weeks, hours or months; MS Project's predecessors by ID mapped to UIDs; the people named become the Resources
+rows (initials that match one of them aren't added twice). Dates aren't imported: the workbook schedules from the
+durations and links, so the plan starts at the CSV's earliest Start.
+
 ## One log, typed rows
 
 The Log holds six kinds of item in one table rather than three sheets. Every row has the same core (Ref, Type, Title,

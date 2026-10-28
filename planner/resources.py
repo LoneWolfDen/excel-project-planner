@@ -3,7 +3,7 @@ End), how much of their sprint time is delivery (Focus %), and their leave by mo
 on the Cost sheet, which can be deleted before the plan is shared."""
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from .core import DATE, Col, Tab, add_table, col_range, name, title
+from .core import DATE, Col, Tab, add_table, col_range, has, name, title
 from .leave import leave_columns, month_labels, name_leave
 from .tasks import people
 
@@ -80,7 +80,8 @@ def build_resources(wb, blank, n_rows=50, resources=None, leave=None, months=Non
     dv = DataValidation(type="list", formula1="=L_ResType")
     ws.add_data_validation(dv)
     dv.add(col_range(letters["Type"], 6, 5 + n_rows))
-    capacity_grids(wb, ws, 5 + n_rows + 5, n_sprints, n_grid)
+    if has("agile"):                                   # sprint capacity needs the sprint calendar (B-913)
+        capacity_grids(wb, ws, 5 + n_rows + 5, n_sprints, n_grid)
     ws.freeze_panes = "C6"
     return ws
 
@@ -101,6 +102,7 @@ def capacity_grids(wb, ws, top, n_sprints, n_people):
                               ("Points", points_top, "DELIVERY CAPACITY (story points) by sprint: available days x "
                                                      "Focus % (1 person-day = 1 point)")):
         _capacity_grid(wb, ws, kind, at, n_sprints, n_people, heading)
+    _sprint_leave_grid(wb, ws, points_top + n_people + 5, n_sprints, n_people)
 
 
 def _capacity_grid(wb, ws, kind, top, n_sprints, n_people, heading):
@@ -137,3 +139,32 @@ def _capacity_grid(wb, ws, kind, top, n_sprints, n_people, heading):
             cell = ws.cell(r, c, f'=IFERROR(IF(OR({person}="",{sprint}=""),"",{value}),"")')
             cell.number_format, cell.border, cell.font = "0.0;;-", BOX, CALC_FONT
     name(wb, f"cap_{kind}", f"Resources!${L(first_col)}${first_row}:${L(last_col)}${last_row}")
+
+
+def _sprint_leave_grid(wb, ws, top, n_sprints, n_resources):
+    """Hidden grid: working days of leave per person per sprint (the leave months), read by the capacity grids above
+    and the Resource Report's sprint utilisation. Each person's Resources row is looked up once, in column C;
+    each sprint's month columns come from SprintTable."""
+    from openpyxl.utils import get_column_letter
+    from .agile import LEAVE_MONTHS
+    from .core import CALC_FONT, font
+    from .leave import leave_days, leave_row, month_start
+    origin = "spr_LeaveOrigin"
+    name(wb, origin, f"'{ws.title}'!$B${top}")
+    ws.cell(top, 2, "Leave days by sprint (helper for the capacity grids)").font = font(italic=True)
+    i = f"(ROW()-ROW({origin}))"
+    j = f"(COLUMN()-COLUMN({origin})-1)"
+    resource = f"INDEX(res_Name,{i})"
+    start, end = f"INDEX(spr_Start,{j})", f"INDEX(spr_End,{j})"
+    months = [(month_start(start, k), f"INDEX(spr_LeaveCol{k},{j})") for k in range(LEAVE_MONTHS)]
+    days = leave_days(start, end, f"INDEX(spr_LeaveRow,{i})", months)
+    L = get_column_letter
+    last_col = L(3 + n_sprints)
+    for r in range(top + 1, top + 1 + n_resources):
+        ws.cell(r, 3, f'=IFERROR(IF({resource}="",0,{leave_row(resource)}),0)').font = CALC_FONT
+        for c in range(4, 4 + n_sprints):
+            ws.cell(r, c, f'=IFERROR(IF(OR({resource}="",INDEX(spr_Name,{j})=""),0,{days}),0)').font = CALC_FONT
+    name(wb, "spr_LeaveRow", f"'{ws.title}'!$C${top + 1}:$C${top + n_resources}")
+    name(wb, "spr_LeaveGrid", f"'{ws.title}'!$D${top + 1}:${last_col}${top + n_resources}")
+    for r in range(top, top + 1 + n_resources):
+        ws.row_dimensions[r].hidden = True

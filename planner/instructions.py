@@ -3,7 +3,7 @@ the full reference below them."""
 from openpyxl.styles import Alignment
 from openpyxl.worksheet.hyperlink import Hyperlink
 
-from .core import CALC_FILL, HEADER_FILLS, HEADER_FONT, INPUT_FONT, NOTE_FONT, font
+from .core import CALC_FILL, HEADER_FILLS, HEADER_FONT, INPUT_FONT, NOTE_FONT, font, missing
 from .settings import ESSENTIAL, START, START_ROW
 
 # (label, text, sheet to link to)
@@ -234,6 +234,14 @@ WIZARD = [
 ]
 
 
+def _left_out(label):
+    """A reference entry about an optional sheet this build doesn't include (its label names the sheet)."""
+    from .core import MODULES, has
+    if label == "Earned value":                     # on the Cost sheet
+        return not has("cost")
+    return any(missing(sheet) and sheet in str(label) for sheet in MODULES.values())
+
+
 def build_instructions(wb, sizes, wizard=False):
     ws = wb[START]                                  # created by build_settings, which wrote the essential settings
     ws.column_dimensions["B"].width = 28
@@ -248,6 +256,8 @@ def build_instructions(wb, sizes, wizard=False):
         _header(ws, r, heading)
         r += 1
         for label, body, sheet in steps:
+            if missing(sheet):                      # B-913: a step for a sheet this build leaves out
+                continue
             ws.cell(r, 2, label).font = font(bold=True)
             c = ws.cell(r, 3, body + (f"  Go to {sheet}." if sheet else ""))
             c.alignment = Alignment(wrap_text=True, vertical="top")
@@ -259,7 +269,7 @@ def build_instructions(wb, sizes, wizard=False):
     ws.freeze_panes = "A3"
     _header(ws, r, "REFERENCE")
     r += 1
-    for label, body in text(sizes, wizard):
+    for label, body in (e for e in text(sizes, wizard) if not _left_out(e[0])):
         if body is None:
             r += 1
             ws.cell(r, 2, label).font = HEADER_FONT

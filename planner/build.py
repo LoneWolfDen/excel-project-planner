@@ -22,7 +22,7 @@ from .agile import build_agile
 from .gantt import build_timeline
 from .instructions import build_instructions
 from .msp import build_msp_resources, build_msp_tasks
-from .core import name, protect_view
+from .core import MODULES, has, name, protect_view, set_modules
 from .cost import build_cost
 from .history import build_history
 from .log import build_log
@@ -74,17 +74,20 @@ class ProjectData:
     leave_months: list = None                          # leave month headers (Resources sheet columns)
     assignments: list = field(default_factory=list)    # (task UID, resource, units): people beyond the first
     stages: list = None                                # (stage, %) rows of the Stages table; None = the default
+    modules: list = None                               # optional sheets (core.MODULES); None = all (B-913)
 
 
-VERSION = "1.7"          # PlannerVersion in every workbook: planner/upgrade.py reads it to know what to convert
+VERSION = "1.8"          # PlannerVersion in every workbook: planner/upgrade.py reads it to know what to convert
 
 
 def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, import_wizard=False, baselined=False,
-                  project_type=None):
+                  project_type=None, modules=None):
     """import_wizard: also build MSP_Tasks / MSP_Resources, formula copies of Tasks and Resources under MS Project's
     field names for its Import Wizard. Off by default: the XML converter (docs/export.html) carries more."""
     """The planner workbook: the sample project, a blank template (blank=True), or a given project (data).
-    project_type: one of settings.PRESETS (B-1018) for the stages, sprint length and RAG thresholds."""
+    project_type: one of settings.PRESETS (B-1018) for the stages, sprint length and RAG thresholds.
+    modules: the optional sheets to include (core.MODULES; None = all, () = the Simple workbook, B-913)."""
+    set_modules(modules if modules is not None else data.modules if data is not None else None)
     sizes = sizes or Sizes(tasks=n_tasks)
     sizes.check()
     n_tasks = sizes.tasks
@@ -115,20 +118,26 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
     tasks_ws, letters = build_tasks(wb, rows, n_tasks)
     build_timeline(wb, tasks_ws, letters, n_tasks, sizes.gantt_columns)
     charted = min(12, sizes.sprints)                 # sprints shown on the Status and Agile charts
-    agile_ws, sprint_letters = build_agile(wb, blank, sizes.sprints, charted)
+    agile_ws, sprint_letters = build_agile(wb, blank, sizes.sprints, charted) if has("agile") else (None, None)
     if import_wizard:
         build_msp_tasks(wb, n_tasks)
         build_msp_resources(wb, sizes.resources)
-    build_log(wb, blank)
-    build_history(wb, blank)
+    if has("log"):
+        build_log(wb, blank)
+    if has("history"):
+        build_history(wb, blank)
     build_status(wb, agile_ws, sprint_letters, charted)
     build_roadmap(wb)
-    build_resource_report(wb, sizes.grid_resources, sizes.weeks, sizes.sprints)
-    build_cost(wb, blank, n_tasks, people, sizes.resources)
+    if has("resources"):
+        build_resource_report(wb, sizes.grid_resources, sizes.weeks, sizes.sprints)
+    if has("cost"):
+        build_cost(wb, blank, n_tasks, people, sizes.resources)
     build_instructions(wb, sizes, import_wizard)
     for view in VIEWS:                                 # B-1019: formulas can't be typed over by accident
-        protect_view(wb[view])
+        if view in wb.sheetnames:
+            protect_view(wb[view])
     name(wb, "PlannerVersion", f'"{VERSION}"')
+    name(wb, "PlannerModules", '"' + ",".join(m for m in MODULES if has(m)) + '"')   # an upgrade keeps the same set
     wb._sheets = [wb[n] for n in ORDER if n in wb.sheetnames]
     for ws in wb.worksheets:
         ws.sheet_properties.tabColor = TAB_COLOURS[ws.title]
@@ -213,10 +222,15 @@ def main(argv=None):
     p.add_argument("--import-wizard-sheets", action="store_true",
                    help="also build MSP_Tasks / MSP_Resources for MS Project's Import Wizard (the XML converter "
                         "is the better route)")
+    p.add_argument("--modules", help="optional sheets to include, comma-separated, from " + ", ".join(MODULES)
+                   + " (default: all; '' = none)")
+    p.add_argument("--simple", action="store_true",
+                   help="the Simple workbook: Start, Status, Roadmap, Tasks (with its Gantt), Resources, Settings")
     a = p.parse_args(argv)
+    modules = () if a.simple else None if a.modules is None else [m.strip() for m in a.modules.split(",") if m.strip()]
     sizes = Sizes(a.tasks, a.resources, a.grid_resources, a.sprints, a.gantt_columns, a.weeks)
     save(make_workbook(a.blank, stress=a.stress, sizes=sizes, import_wizard=a.import_wizard_sheets,
-                       baselined=a.baselined, project_type=a.project_type), a.out, a.recalc)
+                       baselined=a.baselined, project_type=a.project_type, modules=modules), a.out, a.recalc)
     print("saved", a.out)
 
 

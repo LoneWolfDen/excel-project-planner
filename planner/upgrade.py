@@ -182,6 +182,9 @@ def read_planner(data):
                   sprints=max(default.sprints, len(tables.get("SprintTable", (None, None, []))[2])))
     project = ProjectData(settings=settings, tasks=tasks, resources=resources, holidays=holidays, leave=leave,
                           leave_months=months, assignments=assignments)
+    modules = _named_value(wb, "PlannerModules")          # since v1.8: a Simple workbook upgrades to a Simple one
+    if modules is not None:
+        project.modules = [m for m in str(modules).split(",") if m]
     return project, copies, sizes, warnings, version
 
 

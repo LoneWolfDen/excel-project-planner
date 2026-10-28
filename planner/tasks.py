@@ -24,7 +24,7 @@ from openpyxl.utils import column_index_from_string, get_column_letter
 from openpyxl.worksheet.cell_range import MultiCellRange
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from .core import (DATE, LABEL_FONT, NOTE_FONT, Col, Tab, add_table, col_range, fill, name, title)
+from .core import (DATE, LABEL_FONT, NOTE_FONT, Col, Tab, add_table, col_range, fill, has, missing, name, title)
 
 TABLE = "Tasks"
 HEADER_ROW = 5
@@ -677,6 +677,9 @@ def build_tasks(wb, rows, n_rows):
     ws["A3"] = '="Next free UID for a new row: "&NextFreeUID'
     ws["A3"].font = LABEL_FONT
     f = formulas()
+    for key, formula in f.items():                    # B-913: a column that reads a module left out stays blank
+        if missing(formula):
+            f[key] = '""'
     cols = []
     for key, kind, width, fmt, center, note in LAYOUT:
         values = []
@@ -708,6 +711,8 @@ def build_tasks(wb, rows, n_rows):
         if level and level > 1:
             ws[f"{L['Name']}{HEADER_ROW + 1 + i}"].alignment = Alignment(indent=min(int(level) - 1, 15))
     group_columns(ws, L["Lvl"], L[LAYOUT[-1][0]], 2)
+    if not has("agile"):                               # no sprint calendar: Sprint would always be blank
+        ws.column_dimensions[L["Sprint"]].hidden = True
     _validation_and_formatting(ws, L, n_rows)
     ws.sheet_view.zoomScale = 90
     return ws, L
@@ -790,7 +795,8 @@ def _validation_and_formatting(ws, L, n_rows):
     dv(DataValidation(type="list", formula1="=L_Stage"), "Stage")
     dv(DataValidation(type="list", formula1="=res_Name", showErrorMessage=False), "ResIn")   # pick one, or type several
     dv(DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0"), "SP")
-    dv(DataValidation(type="list", formula1="=spr_Name"), "SprIn")
+    if has("agile"):
+        dv(DataValidation(type="list", formula1="=spr_Name"), "SprIn")
     dv(DataValidation(allow_blank=True), "Name", "Notes", "PredIn", "Owner")  # prompts only: any text
 
     cf = ws.conditional_formatting

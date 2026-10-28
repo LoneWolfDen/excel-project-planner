@@ -5,8 +5,8 @@ from openpyxl.formatting.rule import FormulaRule
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from .core import (BOX, CALC_FILL, CALC_FONT, DATE, INPUT_FONT, NOTE_FONT, Col, add_table, fill, font, header_cell,
-                   name, title)
+from .core import (BOX, CALC_FILL, CALC_FONT, DATE, INPUT_FONT, NOTE_FONT, Col, add_table, fill, font, has,
+                   header_cell, missing, name, title)
 from .tasks import CONSTRAINTS
 
 # Working-week presets -> Mon..Sun mask for WORKDAY.INTL (1 = not working); "Custom" uses the seven day rows
@@ -172,9 +172,12 @@ def build_settings(wb, blank, max_sprints, values=None):
         st.column_dimensions[chr(64 + col)].width = width
     st.column_dimensions["A"].width = 3
     rows, cells = {}, {}
-    settings = [row for row in settings_rows(blank, max_sprints) if row[0] in ESSENTIAL]
+    # B-913: the sprint calendar's settings only with the Agile module; the rest whenever they can calculate
+    kept = [row for row in settings_rows(blank, max_sprints)
+            if not missing(row[2]) and (has("agile") or row[0] not in SPRINT_SETTINGS)]
+    settings = [row for row in kept if row[0] in ESSENTIAL]
     settings.sort(key=lambda row: ESSENTIAL.index(row[0]))
-    settings += [row for row in settings_rows(blank, max_sprints) if row[0] not in ESSENTIAL]
+    settings += [row for row in kept if row[0] not in ESSENTIAL]
     on_settings = 0
     for n, label, value, fmt, is_input, note in settings:
         if values and n in values:
@@ -216,15 +219,17 @@ def build_settings(wb, blank, max_sprints, values=None):
     levels = DataValidation(type="whole", operator="between", formula1="1", formula2="9")
     st.add_data_validation(levels)
     levels.add(f"C{rows['OutlineShowLevel']}")
-    sprints = DataValidation(type="whole", operator="between", formula1="1", formula2=str(max_sprints))
-    st.add_data_validation(sprints)
-    sprints.add(f"C{rows['SprintCount']}")
+    if "SprintCount" in rows:
+        sprints = DataValidation(type="whole", operator="between", formula1="1", formula2=str(max_sprints))
+        st.add_data_validation(sprints)
+        sprints.add(f"C{rows['SprintCount']}")
     for n in ("ProjectStartDate", "StatusDateInput"):
         ws, cell = cells[n]
         ws.conditional_formatting.add(cell, FormulaRule(formula=[f"N({cell})=0"], fill=fill("FFFF00")))
     return st
 
 
+SPRINT_SETTINGS = {"Sprint1Start", "SprintLength", "SprintCount", "SprintPrefix", "TotalPoints"}
 LISTS_COL = 7                      # Settings column G: the dropdown lists, side by side, in a collapsed group
 
 

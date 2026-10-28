@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(ROOT))
 import perf_check  # noqa: E402
-from test_planner import CommittedWorkbooksTest, errors_in, named_cell  # noqa: E402
+from test_planner import CommittedWorkbooksTest, errors_in, named_cell, table_rows  # noqa: E402
 from test_release import head, small, task_row, tasks_by_uid  # noqa: E402
 
 RELEASE = ROOT / "release-1.2"
@@ -176,6 +176,126 @@ class ToolsTest(unittest.TestCase):
         titles = [new["Log"].cell(r, col["Title"]).value for r in range(5, 160)]
         self.assertIn("Vendor contract signed", titles)
         self.assertEqual(new["Tasks"].cell(task_row(new, 17), head(new["Tasks"])["Pred2"]).value, 13)
+
+
+SAMPLES = RELEASE / "samples"
+
+
+class UXTest(unittest.TestCase):
+    """The v1.2 UX items, on the committed sample (recalculated by the build)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.wb = openpyxl.load_workbook(SAMPLE, data_only=True)
+        cls.t = tasks_by_uid(cls.wb)
+
+    def test_msp_status(self):                                   # B-206
+        allowed = {"Complete", "On Schedule", "Late", "Future Task"}
+        self.assertTrue({r["MSP Status"] for r in self.t.values()} <= allowed)
+        for r in self.t.values():
+            if r["Progress"] == 1:
+                self.assertEqual(r["MSP Status"], "Complete", r["Task Name"])
+            elif r["Status"] == "Behind":
+                self.assertEqual(r["MSP Status"], "Late", r["Task Name"])
+        self.assertEqual(self.t[30]["MSP Status"], "Future Task")
+
+    def test_board(self):                                         # B-404
+        from planner.tasks import BOARD_STATUSES
+        ws = self.wb["Board"]
+        leaves = [r for r in self.t.values() if r["_IsLeaf"] == 1]
+        for s, status in enumerate(BOARD_STATUSES, start=1):
+            col = 2 + 2 * s
+            head = ws.cell(7, col).value
+            want = sorted(r["Task Name"] for r in leaves if r["Status"] == status)
+            self.assertTrue(head.startswith(f"{status}  ({len(want)})"), head)
+            cards = sorted(str(ws.cell(r, col).value).split("\n")[0] for r in range(8, 33) if ws.cell(r, col).value)
+            self.assertEqual(cards, want, status)
+
+    def test_backlog(self):                                       # B-405
+        rows = {r["Item"]: r for r in table_rows(self.wb, "Backlog", "ProductBacklog") if r["Item"]}
+        self.assertEqual(rows["Accessibility review"]["On Tasks"], "Yes")
+        self.assertIn(rows["Dark mode"]["On Tasks"], ("", None))
+        totals = {self.wb["Backlog"].cell(r, 2).value: self.wb["Backlog"].cell(r, 3).value for r in range(5, 10)}
+        self.assertEqual(totals["Must"], 11)
+
+    def test_locale_safe_dates(self):                             # B-010
+        import re
+        wb = openpyxl.load_workbook(SAMPLE)
+        dated = [f"{ws.title}!{c.coordinate}" for ws in wb.worksheets for row in ws.iter_rows() for c in row
+                 if isinstance(c.value, str) and re.search(r'TEXT\([^"]*"[dmy]', c.value)]
+        self.assertEqual(dated[:5], [])
+        self.assertIn("2027", named_cell(self.wb, "sts_Narrative").value)        # still a readable date
+        self.assertIn("-Jan-2027", named_cell(self.wb, "sts_Narrative").value)
+
+    def test_summary_line_and_printing(self):                     # B-111, B-508
+        ws = self.wb["Tasks"]
+        self.assertTrue(str(ws["A3"].value).startswith("Project 07-Sep-26 to "), ws["A3"].value)
+        ws = openpyxl.load_workbook(SAMPLE)["Tasks"]
+        self.assertEqual((ws.page_setup.paperSize, ws.page_setup.orientation), (8, "landscape"))
+        self.assertTrue(ws.print_title_rows)
+
+    def test_custom_fields_go_to_ms_project(self):               # B-509
+        from planner import mspdi
+        xml = mspdi.convert(SAMPLE.read_bytes())
+        xml = xml.decode() if isinstance(xml, bytes) else xml
+        self.assertIn("<FieldName>Text2</FieldName>", xml)
+        self.assertIn("<Alias>Text 1</Alias>", xml)
+        self.assertIn("<FieldName>Flag1</FieldName>", xml)
+        self.assertIn("<Value>Payments</Value>", xml)
+
+    def test_exports(self):                                       # B-506, B-706
+        import csv
+        from planner.exports import network, to_csv
+        mmd = network(SAMPLE.read_bytes())
+        self.assertTrue(mmd.startswith("flowchart LR"))
+        self.assertIn("t16 --> t17", mmd)
+        self.assertIn("t13 -->|SS+2d| t17", mmd)
+        self.assertIn("class ", mmd)                             # critical tasks highlighted
+        self.assertIn("digraph plan", network(SAMPLE.read_bytes(), "dot"))
+        for fmt, column in (("jira", "Summary"), ("azure", "Title"), ("planner", "Task Name")):
+            rows = list(csv.DictReader(io.StringIO(to_csv(SAMPLE.read_bytes(), fmt))))
+            self.assertIn("Core API endpoints", [r[column] for r in rows], fmt)
+        jira = list(csv.DictReader(io.StringIO(to_csv(SAMPLE.read_bytes(), "jira"))))
+        self.assertEqual(next(r for r in jira if r["Summary"] == "Core API endpoints")["Parent Id"], "11")
+
+    def test_more_samples(self):                                  # B-804
+        for name, finish in (("Construction_Planner.xlsx", None), ("Event_Planner.xlsx", None)):
+            wb = openpyxl.load_workbook(SAMPLES / name, data_only=True)
+            self.assertEqual(errors_in(wb), [], name)
+            self.assertGreater(len(tasks_by_uid(wb)), 15, name)
+        event = tasks_by_uid(openpyxl.load_workbook(SAMPLES / "Event_Planner.xlsx", data_only=True))
+        self.assertEqual(str(event[19]["Start"])[:10], "2027-01-27")
+        self.assertEqual(named_cell(openpyxl.load_workbook(SAMPLES / "Construction_Planner.xlsx", data_only=True),
+                                    "ProjectType").value, "Construction")
+
+
+@unittest.skipUnless(__import__("test_planner").SOFFICE, "LibreOffice not installed")
+class BoardFilterTest(unittest.TestCase):
+
+    @classmethod
+    def tearDownClass(cls):
+        classic_again()
+
+    def test_person_filter(self):
+        from test_planner import recalc
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "v12.xlsx"
+            make(baselined=True).save(path)
+            wb = recalc(path, tmp, lambda wb: setattr(named_cell(wb, "BoardResource"), "value", "Jordan Lee"))
+        ws = wb["Board"]
+        cards = [str(ws.cell(r, c).value) for c in range(4, 13, 2) for r in range(8, 33) if ws.cell(r, c).value]
+        self.assertTrue(cards)
+        self.assertTrue(all("Jordan Lee" in c for c in cards), cards)
+
+
+class SampleBuildTest(unittest.TestCase):
+    compare = CommittedWorkbooksTest.compare
+
+    def test_construction(self):
+        self.compare(SAMPLES / "Construction_Planner.xlsx", "--release", "1.2", "--sample", "construction")
+
+    def test_event(self):
+        self.compare(SAMPLES / "Event_Planner.xlsx", "--release", "1.2", "--sample", "event")
 
 
 if __name__ == "__main__":

@@ -211,3 +211,13 @@ V11_TASKS = {
 def with_v11(row):
     """A sample row with its template 1.1 inputs."""
     return {**row, **V11_TASKS.get(row.get("UID"), {})}
+
+
+# template 1.2: custom fields (B-509) on a few tasks: a workstream, a risk score and a "needs sign-off" flag
+V12_TASKS = {13: {"CText1": "Payments", "CNum1": 4, "CFlag1": "Yes"}, 14: {"CText1": "Payments", "CNum1": 5},
+             17: {"CText1": "Web", "CNum1": 2}, 22: {"CText1": "Client", "CFlag1": "Yes"}}
+
+
+def with_v12(row):
+    """A sample row with its template 1.2 inputs."""
+    return {**row, **V12_TASKS.get(row.get("UID"), {})}

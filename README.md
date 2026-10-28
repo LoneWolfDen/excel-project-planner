@@ -44,8 +44,12 @@ with `python scripts/release_check.py --edition 1.1`; move a 1.0 workbook up wit
 ## Release 1.2
 Template 1.2, in [`release-1.2/`](release-1.2/), is 1.1 with a refreshed **Fluent design** (Microsoft 365 blues
 and greys, Segoe UI, clearer red / amber / green, report pages without gridlines, tab colours by role, a landing-page
-Start sheet) and a predecessor dropdown that lists only the tasks above the row. The rest of the backlog lands here
-too (see [docs/BACKLOG.md](docs/BACKLOG.md)). Build with `--release 1.2`; check with
+Start sheet), a predecessor dropdown that lists only the tasks above the row, a **Board** of task cards by status and
+a product **Backlog**, MS Project status names, custom fields, A3 printing and dates that read the same in every
+Excel language. Two more samples are in `release-1.2/samples/` (a clinic extension, a partner summit; build others
+with `--sample construction|event`). Tools: `scripts/network_diagram.py` (Mermaid / Graphviz) and
+`scripts/export_csv.py --format jira|azure|planner`. See [CHANGELOG.md](CHANGELOG.md) and
+[docs/BACKLOG.md](docs/BACKLOG.md). Build with `--release 1.2`; check with
 `python scripts/release_check.py --edition 1.2`; move a workbook up with
 `python scripts/upgrade_planner.py Old.xlsx New.xlsx --release 1.2`.
 

@@ -47,6 +47,8 @@ python scripts/build_planner.py release-1.1/Project_Planner_Simple.xlsx --releas
 python scripts/build_planner.py release-1.2/Project_Planner.xlsx --release 1.2 --baselined --recalc
 python scripts/build_planner.py release-1.2/Project_Planner_Blank.xlsx --release 1.2 --blank --recalc
 python scripts/build_planner.py release-1.2/Project_Planner_Simple.xlsx --release 1.2 --baselined --simple --recalc
+python scripts/build_planner.py release-1.2/samples/Construction_Planner.xlsx --release 1.2 --sample construction --recalc
+python scripts/build_planner.py release-1.2/samples/Event_Planner.xlsx --release 1.2 --sample event --recalc
 python scripts/build_planner.py release-1.1-m365/Project_Planner.xlsx --release m365 --baselined
 python scripts/build_planner.py release-1.1-m365/Project_Planner_Blank.xlsx --release m365 --blank
 python scripts/build_planner.py release-1.1-m365/Project_Planner_Simple.xlsx --release m365 --baselined --simple

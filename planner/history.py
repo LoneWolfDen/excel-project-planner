@@ -12,7 +12,7 @@ import datetime as dt
 from openpyxl.chart import LineChart, Reference
 from openpyxl.utils import get_column_letter
 
-from .core import DATE, Col, add_table, font, title
+from .core import DATE, Col, add_table, font, missing, title
 
 D = dt.date
 # header, formula (names only), number format
@@ -32,6 +32,12 @@ FIELDS = [
     ("RAG", "ProjectRAG", "@"),
 ]
 HISTORY_ROWS = 60
+
+
+def fields():
+    """(position in FIELDS, field) for the fields this build can calculate (B-913: no points without Agile, no
+    RAID counts without the Log)."""
+    return [(i, f) for i, f in enumerate(FIELDS) if not missing(f[1])]
 
 
 def sample_history():
@@ -59,7 +65,7 @@ def build_history(wb, blank):
         font(bold=True, color="1F4E78")
     add_table(ws, "StatusHistory", top, 2, [Col(h, "in", 11 if fmt != DATE else 13, fmt, center=True,
                                                 values=[row[i] for row in data])
-                                            for i, (h, _, fmt) in enumerate(FIELDS)], HISTORY_ROWS)
+                                            for i, (h, _, fmt) in fields()], HISTORY_ROWS)
     _charts(ws, top)
     ws.freeze_panes = f"C{top + 1}"
     return ws
@@ -67,11 +73,13 @@ def build_history(wb, blank):
 
 def _charts(ws, top):
     """Trend charts over the StatusHistory rows (charts need A1 ranges; empty rows leave no points)."""
-    col = {h: 2 + i for i, (h, _, _) in enumerate(FIELDS)}
+    col = {h: 2 + k for k, (_, (h, _, _)) in enumerate(fields())}
     first, last = top, top + HISTORY_ROWS
     dates = Reference(ws, min_col=col["Status Date"], min_row=first + 1, max_row=last)
 
     def chart(title_text, headers, anchor, y_format=None):
+        if any(h not in col for h in headers):
+            return
         c = LineChart()
         c.title = title_text
         for h in headers:
@@ -85,7 +93,7 @@ def _charts(ws, top):
         c.height, c.width = 7, 14
         ws.add_chart(c, anchor)
 
-    right = 2 + len(FIELDS) + 1
+    right = 2 + len(fields()) + 1
     at = lambda row: f"{get_column_letter(right)}{row}"
     chart("Forecast vs planned finish", ["Forecast Finish", "Planned Finish"], at(4), "dd-mmm-yy")
     chart("Progress: done vs planned", ["% Done", "% Planned"], at(19), "0%")

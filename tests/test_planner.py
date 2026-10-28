@@ -291,6 +291,39 @@ class CommittedWorkbooksTest(unittest.TestCase):
     def test_blank_workbook_up_to_date(self):
         self.compare(ROOT / "Project_Planner_Blank.xlsx", "--blank")
 
+    def test_simple_workbook_up_to_date(self):
+        self.compare(ROOT / "Project_Planner_Simple.xlsx", "--baselined", "--simple")
+
+
+class ModulesTest(unittest.TestCase):
+    """B-913: any set of optional modules builds a workbook with nothing pointing at a sheet, table or name that
+    isn't there (every combination, without recalculating), and the Simple one recalculates without errors."""
+
+    def test_every_combination(self):
+        import itertools
+        from planner.build import Sizes, make_workbook
+        from planner.core import MODULES
+        names = list(MODULES)
+        small = Sizes(tasks=40, resources=12, grid_resources=8, sprints=6, gantt_columns=10, weeks=6)   # fast
+        for n in range(len(names) + 1):
+            for combo in itertools.combinations(names, n):
+                wb = make_workbook(sizes=small, modules=combo)
+                self.assertEqual(perf_check.missing_references(wb), [], combo)
+                self.assertEqual({s for s in MODULES.values() if s in wb.sheetnames},
+                                 {MODULES[m] for m in combo}, combo)
+        make_workbook()                                   # back to every module for the tests that follow
+
+    @unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+    def test_simple_and_partial_builds_calculate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for flags in (("--simple",), ("--modules", "agile,log"), ("--modules", "resources,history")):
+                path = Path(tmp) / "m.xlsx"
+                build(path, *flags)
+                wb = recalc(path, tmp)
+                self.assertEqual(errors_in(wb), [], flags)
+                finish = {r["UID"]: r["Finish"] for r in table_rows(wb, "Tasks", "Tasks") if r["Task Name"]}
+                self.assertEqual(d(finish[30]), d(named_cell(wb, "ProjectFinish").value), flags)   # it schedules
+
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")
 class ScheduleTest(Tmp):

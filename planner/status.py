@@ -16,9 +16,9 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.hyperlink import Hyperlink
 
 from . import rag
-from .core import (DATE, HEADER_FILLS, HEADER_FONT, NOTE_FONT, TITLE_FONT, Col, Show, Tab, add_table, fill, font, name,
-                   ranked_table)
-from .history import FIELDS
+from .core import (DATE, HEADER_FILLS, HEADER_FONT, NOTE_FONT, TITLE_FONT, Col, Show, Tab, add_table, fill, font, has,
+                   missing, name, ranked_table)
+from .history import fields
 from .settings import STATUS as SHEET, STATUS_ROW
 from .tasks import STATUS_COLOURS
 
@@ -138,14 +138,17 @@ def build_status(wb, agile_ws=None, sprint_letters=None, n_chart_sprints=12):
     top = _this_week(ws)
     top = _rag(wb, ws, top)
     top = _key_figures(wb, ws, top)
-    top = _top_raid(ws, top)
+    if has("log"):
+        top = _top_raid(ws, top)
     top = _schedule_watch(ws, top)
     chart_at = top
-    top = _change_control(ws, top)
+    if has("log"):
+        top = _change_control(ws, top)
     end = _commentary(ws, top)
     if agile_ws is not None:
         _sprint_chart(ws, agile_ws, sprint_letters, n_chart_sprints, chart_at)
-    _snapshot(ws, end + 3)
+    if has("history"):
+        _snapshot(ws, end + 3)
     ws.print_area = f"B1:H{end}"                    # one page: everything above the snapshot row
     ws.page_setup.orientation = "portrait"
     ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 1
@@ -163,7 +166,7 @@ def _this_week(ws):
     ws.cell(r, 3, "Every reporting date, top to bottom").font = HEADER_FONT
     ws.cell(STATUS_ROW, 2).value = "1. Status date"
     ws.cell(STATUS_ROW, 4, "Type the reporting date (Ctrl+; = today)").font = NOTE_FONT
-    for i, (label, body, sheet) in enumerate(WEEKLY):
+    for i, (label, body, sheet) in enumerate(s for s in WEEKLY if not missing(s[2])):
         r = STATUS_ROW + 1 + i
         ws.cell(r, 2, label).font = font(bold=True)
         c = ws.cell(r, 3, body + (f"  Go to {sheet}." if sheet else ""))
@@ -175,7 +178,13 @@ def _this_week(ws):
     return STATUS_ROW + len(WEEKLY) + 3
 
 
+def _live(rows, at):
+    """The rows whose formula (column `at`) this build can calculate (B-913: optional modules)."""
+    return [r for r in rows if not missing(r[at])]
+
+
 def _rag(wb, ws, top):
+    shown = _live(AREAS, 2)
     areas = Tab("StatusRAG")
     worst = f'MAX(IF(COUNTIF({areas.col("RAG")},"Red")>0,2,0),IF(COUNTIF({areas.col("RAG")},"Amber")>0,1,0))'
     overall_value = f'=COUNTIF({areas.col("RAG")},"Red")&" red, "&COUNTIF({areas.col("RAG")},"Amber")&" amber"'
@@ -186,19 +195,19 @@ def _rag(wb, ws, top):
     name(wb, "ProjectRAG", "OverallStatus[RAG]")
     top = overall + 3
     add_table(ws, "StatusRAG", top, 2, _rag_columns(
-        "StatusRAG", ([a[0] for a in AREAS], [a[1] for a in AREAS]), [f"={a[2]}" for a in AREAS],
-        [f"={rag.rag_text(a[3].format(v=areas.row('Value')))}" for a in AREAS]), len(AREAS), autofilter=False)
-    for i, a in enumerate(AREAS):
+        "StatusRAG", ([a[0] for a in shown], [a[1] for a in shown]), [f"={a[2]}" for a in shown],
+        [f"={rag.rag_text(a[3].format(v=areas.row('Value')))}" for a in shown]), len(shown), autofilter=False)
+    for i, a in enumerate(shown):
         ws.cell(top + 1 + i, 4).number_format = a[4]
         ws.cell(top + 1 + i, 4).alignment = Alignment(horizontal="right")
-    for r in range(overall + 1, top + 1 + len(AREAS)):
+    for r in range(overall + 1, top + 1 + len(shown)):
         ws.cell(r, 2).font = font(bold=True)
-    rag.colour(ws, f"E{overall + 1}:G{top + len(AREAS)}", f"E{overall + 1}")
+    rag.colour(ws, f"E{overall + 1}:G{top + len(shown)}", f"E{overall + 1}")
     pick = DataValidation(type="list", formula1="=L_RAG")
     ws.add_data_validation(pick)
     pick.add(f"F{overall + 1}")
-    pick.add(f"F{top + 1}:F{top + len(AREAS)}")
-    return top + len(AREAS) + 3
+    pick.add(f"F{top + 1}:F{top + len(shown)}")
+    return top + len(shown) + 3
 
 
 # key figures other sheets read by name
@@ -207,15 +216,16 @@ KPI_NAMES = {"Overall progress (duration-weighted)": "sch_Progress", "Planned pr
 
 
 def _key_figures(wb, ws, top):
+    kpis = [k for k in _live(KPIS, 1) if not missing(k[3])]      # its source sheet left out: nothing to count
     """Key figures (B:D) with detail tasks by status beside them (E:F) and its chart below that, then the next
     milestones."""
     _heading(ws, top - 1, "KEY FIGURES")
     add_table(ws, "KPIs", top, 2, [
-        Col("Measure", width=WIDTHS["B"], values=[k[0] for k in KPIS]),
-        Col("Source", width=WIDTHS["C"], values=[k[3] for k in KPIS]),
-        Col("Value", width=WIDTHS["D"], values=[f"={k[1]}" for k in KPIS]),
-    ], len(KPIS), autofilter=False)
-    for i, (label, _, fmt, _) in enumerate(KPIS):
+        Col("Measure", width=WIDTHS["B"], values=[k[0] for k in kpis]),
+        Col("Source", width=WIDTHS["C"], values=[k[3] for k in kpis]),
+        Col("Value", width=WIDTHS["D"], values=[f"={k[1]}" for k in kpis]),
+    ], len(kpis), autofilter=False)
+    for i, (label, _, fmt, _) in enumerate(kpis):
         r = top + 1 + i
         ws.cell(r, 2).font = font(bold=True)
         value = ws.cell(r, 4)
@@ -244,7 +254,7 @@ def _key_figures(wb, ws, top):
     chart.height, chart.width = 6, 12
     ws.add_chart(chart, f"E{top + len(STATUS_COLOURS) + 2}")
 
-    top += len(KPIS) + 3
+    top += len(kpis) + 3
     nxt = Tab("NextMilestones")
     k = f"(ROW()-ROW({nxt.head('Next milestones (forecast)')}))"
     nth = f"SMALL(tsk_MilestoneKey,{k})"
@@ -361,7 +371,7 @@ def _sprint_chart(ws, agile_ws, L, n, at):
 def _snapshot(ws, top):
     """This status date's numbers in one row (formulas), to paste as values onto History's StatusHistory."""
     _heading(ws, top - 1, "SNAPSHOT: copy this row and Paste Special > Values under the last row of History's table")
-    add_table(ws, "SnapshotNow", top, 2, [Col(h, width=11, fmt=fmt, formula=f, center=True) for h, f, fmt in FIELDS],
+    add_table(ws, "SnapshotNow", top, 2, [Col(h, width=11, fmt=fmt, formula=f, center=True) for _, (h, f, fmt) in fields()],
               1, autofilter=False)
     for col, width in WIDTHS.items():                # the snapshot shares the page's columns
         ws.column_dimensions[col].width = width

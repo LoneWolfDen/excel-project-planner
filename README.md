@@ -12,13 +12,18 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 ## Files
 - `Project_Planner.xlsx` – the template, loaded with a 30-task sample project.
 - `Project_Planner_Blank.xlsx` – the same template with no sample data, for a new project.
-- `docs/` – [architecture and rules](docs/ARCHITECTURE.md), [scheduling spec](docs/SCHEDULING_SPEC.md), [MS Project gap analysis](docs/MSP_GAP_ANALYSIS.md), [backlog](docs/BACKLOG.md), [testing on iPhone](docs/TESTING_ON_IPHONE.md).
+- `Project_Planner_Simple.xlsx` – the sample in the **Simple** workbook: Start, Status, Roadmap, Tasks (with its Gantt),
+  Resources and Settings, without the Agile, Log, History, Resource Report and Cost sheets. Build any mix with
+  `--modules agile,log,history,resources,cost` (`--simple` = none of them); nothing in it points at a sheet that
+  isn't there, and an upgrade keeps the same set.
+- `docs/` – [architecture and rules](docs/ARCHITECTURE.md), [scheduling spec](docs/SCHEDULING_SPEC.md), [MS Project gap analysis](docs/MSP_GAP_ANALYSIS.md), [backlog](docs/BACKLOG.md), [testing in Excel desktop](docs/TESTING_IN_EXCEL.md), [testing on iPhone](docs/TESTING_ON_IPHONE.md).
 - `planner/` – the generator: one module per sheet (`tasks.py`, `gantt.py`, `agile.py`, `log.py`, `status.py`, ...) plus `core.py` helpers.
 - `scripts/perf_check.py` and `perf_budget.json` – performance and structure checks run on every PR.
 - `scripts/build_planner.py` – generates the workbooks (needs `openpyxl`; `--recalc` also needs LibreOffice):
   ```
   python scripts/build_planner.py Project_Planner.xlsx --baselined --recalc
   python scripts/build_planner.py Project_Planner_Blank.xlsx --blank --recalc
+  python scripts/build_planner.py Project_Planner_Simple.xlsx --baselined --simple --recalc
   ```
   `--recalc` saves the file with calculated values so previews (GitHub, phone file viewers) show numbers; Excel recalculates on open either way.
   CI fails if the committed workbooks don't match the build script, so rebuild and commit both after changing the script.
@@ -59,6 +64,12 @@ the planner can't hold (a fifth predecessor, a lag in % ...) is listed and noted
 "Move it to the latest template" (or run `python scripts/upgrade_planner.py Old.xlsx New.xlsx`). Everything you
 typed (tasks, people, assignments, leave, holidays, settings, the Log, status history, sprint
 goals, PM RAG and notes) is carried over by column name; the formulas, sheets and reports are the latest.
+
+**Starting from a list.** Paste an outline into the converter page, or choose a .csv there (or run
+`python scripts/import_csv.py tasks.csv Planner.xlsx`): one task per line, indented or bulleted for sub-tasks, with
+optional `; 5d; after 3; Alex Chen`; or a CSV with this planner's headers (Level, Task Name, Duration, Predecessors,
+Resources, ...) or one saved by MS Project (File > Save As > CSV: Name, Outline Level, Duration, Predecessors,
+Resource Names ...). The people named become the Resources rows; Excel schedules the rest.
 
 **Reordering tasks.** Link Check says "UID n is below this task: move it above"? On the same page choose "Reorder its
 tasks" (or run `python scripts/reorder_planner.py Planner.xlsx Reordered.xlsx`): tasks move only inside their phase,

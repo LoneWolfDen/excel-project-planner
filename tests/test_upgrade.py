@@ -86,7 +86,17 @@ class ReadTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "new.xlsx"
             build(path)
-            self.assertEqual(upgrade.read_planner(path.read_bytes())[4], "1.7")
+            self.assertEqual(upgrade.read_planner(path.read_bytes())[4], "1.8")
+
+    def test_a_simple_workbook_stays_simple(self):
+        # B-913: the upgrade rebuilds with the modules the old workbook had (PlannerModules)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "simple.xlsx"
+            build(path, "--simple")
+            project = upgrade.read_planner(path.read_bytes())[0]
+            self.assertEqual(project.modules, [])
+            new = openpyxl.load_workbook(io.BytesIO(upgrade.convert(path.read_bytes())[0]))
+            self.assertEqual(new.sheetnames, ["Start", "Status", "Roadmap", "Settings", "Tasks", "Resources"])
 
     def test_a_custom_week_becomes_custom(self):
         wb = openpyxl.load_workbook(FIXTURES / "planner_v1.4.xlsx")
@@ -197,6 +207,16 @@ class TypedDataTest(unittest.TestCase):
 
     def test_v1_6(self):
         self.check("planner_v1.6.xlsx")
+
+    def test_a_used_v1_8_workbook(self):
+        # tests/fixtures/make_user_fixture.py: typed stages, presets, leave, RAG overrides, history, log, rates
+        self.check("planner_v1.8_user.xlsx")
+        data = (FIXTURES / "planner_v1.8_user.xlsx").read_bytes()
+        new = openpyxl.load_workbook(io.BytesIO(upgrade.convert(data)[0]))
+        value = lambda wb, n: upgrade._named_value(wb, n)
+        old = openpyxl.load_workbook(io.BytesIO(data))
+        for n in ("SprintLength", "RAGRedSlipDays", "RescheduleAfterStatus", "StatusDateInput", "ProjectManager"):
+            self.assertEqual(value(new, n), value(old, n), n)       # typed over a default: still typed
 
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")

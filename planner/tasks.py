@@ -99,7 +99,7 @@ N = {
     # Release 1.0 only (configure): the typed cells, the pickers and the cleaned values the formulas read instead
     "DurIn": "Duration", "Days": "_Days", "PredRaw": "Predecessors", "PredUse": "_Predecessors",
     "ResRaw": "Resources", "ResUse": "_Resources", "PickKey": "_PickKey", "Pick": "_PickList",
-    "IssueKey": "_IssueKey", "OverKey": "_OverAllocKey",
+    "IssueKey": "_IssueKey", "OverKey": "_OverAllocKey", "Span": "_SpanDays",
     **{f"Pick{k}": f"Pred{k}" for k in LINK_NUMBERS}, **{f"PickT{k}": f"Type{k}" for k in LINK_NUMBERS},
     **{f"PickL{k}": f"Lag{k}" for k in LINK_NUMBERS}, **{f"Who{k}": f"Res{k}" for k in range(1, PEOPLE + 1)},
     **{f"WhoU{k}": f"Units{k}" for k in range(1, PEOPLE + 1)},
@@ -629,10 +629,12 @@ def release_formulas(f):
     # the baseline source: TakeBaseline = Yes re-baselines every task; No keeps each pasted baseline and gives the
     # current dates only to tasks that have none, so one copy and paste never loses an agreed baseline
     keep = lambda current, base: f'IF({blank},"",IF(OR(TakeBaseline="Yes",N({R(base)})=0),{current},{R(base)}))'
-    duration = f'IF({s},NETWORKDAYS.INTL({R("FS")},{R("FF")},{WD}),N({R("Dur")}))'
+    # the current duration (a summary's in working days from its start to finish): Duration Var and the MS Project
+    # export read it, since BL Source Duration may now hold the baseline
+    g["Span"] = f'IF({blank},"",IF({s},NETWORKDAYS.INTL({R("FS")},{R("FF")},{WD}),N({R("Dur")})))'
     g["SrcS"], g["SrcF"] = keep(R("FS"), "BS"), keep(R("FF"), "BF")
-    g["SrcD"], g["SrcW"] = keep(duration, "BD"), keep(R("Work"), "BW")
-    g["DVar"] = f'IF(OR({blank},{R("BD")}=""),"",{duration}-N({R("BD")}))'
+    g["SrcD"], g["SrcW"] = keep(R("Span"), "BD"), keep(R("Work"), "BW")
+    g["DVar"] = f'IF(OR({blank},{R("BD")}=""),"",{R("Span")}-N({R("BD")}))'
     return g
 
 
@@ -735,7 +737,7 @@ _RELEASE_LAYOUT = (
     + [row for k in range(1, PEOPLE + 1) for row in (
         (f"Who{k}", "in", 18, None, False, f"Person {k} on the task: pick a name from Resources."),
         (f"WhoU{k}", "in", 7, "0%", True, "Share of their time on this task (blank = Settings > DefaultUnits)."))]
-    + [(k, "help", 11, None, False, None) for k in ("Days", "PredUse", "ResUse", "PickKey", "Pick")]
+    + [(k, "help", 11, None, False, None) for k in ("Days", "PredUse", "ResUse", "PickKey", "Pick", "Span")]
 )
 CHECK_LAYOUT = [(k, "help", 8, None, False, None) for k in ("IssueKey", "OverKey")]
 

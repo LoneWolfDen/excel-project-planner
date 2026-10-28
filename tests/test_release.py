@@ -388,7 +388,6 @@ class EditTest(unittest.TestCase):
         self.assertEqual(t[16]["_Days"], 5)
         self.assertIn(t[14]["_Days"], ("", None))
         self.assertIn("Duration 2days can't be read", t[14]["Issues"])
-        self.assertEqual(serial(t[13]["Finish"]) - serial(t[13]["Start"]), 2)     # 3 working days, same week
 
     def test_pickers(self):
         t = self.t

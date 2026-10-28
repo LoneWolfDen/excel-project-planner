@@ -320,7 +320,7 @@ def to_mspdi(plan):
         summary = bool(t.get("_IsSummary"))
         days = _num(t["_Days"] if "_Days" in t else t.get("Duration"))     # Release 1.0: "2w" is read by _Days
         if summary:
-            days = _num(t.get("BL Source Duration"))
+            days = _num(t["_SpanDays"] if "_SpanDays" in t else t.get("BL Source Duration"))
         milestone = not summary and days == 0
         manual = t.get("Mode") == "Manual"
         cons = _date(t.get("Constraint Date", t.get("Start No Earlier Than")))     # (the column's name before v1.5)

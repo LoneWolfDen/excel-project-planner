@@ -6,7 +6,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 
 from .core import (BOX, CALC_FILL, CALC_FONT, DATE, INPUT_FONT, NOTE_FONT, Col, add_table, fill, font, has,
-                   header_cell, missing, name, release, title, v11)
+                   header_cell, missing, name, release, title, v11, m365)
 from .tasks import CONSTRAINTS
 
 # Working-week presets -> Mon..Sun mask for WORKDAY.INTL (1 = not working); "Custom" uses the seven day rows
@@ -211,6 +211,8 @@ def build_settings(wb, blank, max_sprints, values=None):
     settings += [row for row in kept if row[0] not in ESSENTIAL]
     on_settings = 0
     for n, label, value, fmt, is_input, note in settings:
+        if m365() and n == "FinishVarianceDays":       # the Microsoft 365 edition's named LAMBDA
+            value = "=L_WORKING_DAYS(PlannedFinish,ProjectFinish)"
         if values and n in values:
             value = values[n]
         if n in ESSENTIAL:

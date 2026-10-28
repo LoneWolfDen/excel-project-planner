@@ -22,8 +22,12 @@ import openpyxl  # noqa: E402
 
 import perf_check  # noqa: E402
 
+FOLDERS = {"1.0": "release-1.0", "1.1": "release-1.1", "m365": "release-1.1-m365"}
+LABELS = {"1.0": "1.0", "1.1": "1.1", "m365": "1.1 M365"}       # TemplateVersion and the README heading
+
+
 def files(edition):
-    folder = ROOT / f"release-{edition}"
+    folder = ROOT / FOLDERS[edition]
     return {k: folder / n for k, n in (("sample", "Project_Planner.xlsx"), ("blank", "Project_Planner_Blank.xlsx"),
                                        ("simple", "Project_Planner_Simple.xlsx"))}
 
@@ -68,7 +72,9 @@ def validation_problems(wb):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--recalc", action="store_true", help="recalculate the sample at 25-Oct-2026 with LibreOffice")
-    p.add_argument("--edition", default="1.0", choices=["1.0", "1.1"], help="which release folder to check")
+    p.add_argument("--edition", default="1.0", choices=list(FOLDERS),
+                   help="which release folder to check (m365: saved without values, so the error check only "
+                        "covers what the build wrote; Excel calculates it on open)")
     a = p.parse_args(argv)
     from planner.build import RELEASE_VIEWS
     global FILES
@@ -129,11 +135,12 @@ def main(argv=None):
          and sum(1 for r in values["simple"]["Tasks"].iter_rows(min_row=6, min_col=head["Task Name"],
                                                                  max_col=head["Task Name"], values_only=True)
                  if r[0]) == 12)
-    item(f"TemplateVersion is {a.edition} in every workbook",
-         all(b.defined_names["TemplateVersion"].attr_text == f'"{a.edition}"' for b in books.values()))
+    label = LABELS[a.edition]
+    item(f"TemplateVersion is {label} in every workbook",
+         all(b.defined_names["TemplateVersion"].attr_text == f'"{label}"' for b in books.values()))
     readme = (ROOT / "README.md").read_text()
-    item(f"README has the Release {a.edition} and Limits sections",
-         f"## Release {a.edition}" in readme and "## Limits" in readme)
+    item(f"README has the Release {label} and Limits sections",
+         f"## Release {label}" in readme and "## Limits" in readme)
     page = (ROOT / "docs" / "export.html").read_text()
     loads = sorted(set(re.findall(r"https?://[^\"' )]+", page)))
     item("export.html loads nothing but Pyodide (the workbook never leaves the device)",

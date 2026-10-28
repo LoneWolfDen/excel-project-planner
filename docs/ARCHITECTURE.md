@@ -390,6 +390,13 @@ exactly as before; `test_release.ClassicUnchangedTest` builds both in one proces
   start) and `_DepKey`; Status' TopDependencies is a ranked table over it.
 - **Narrative** (`status.narrative`): one concatenation of names; the parts that read a module this build leaves out
   are dropped (`core.missing`).
+- **Microsoft 365 edition** (`--release m365`, `core.m365()`, `planner/m365.py`): template 1.1 where `_Days`, the
+  Log's Gap, the finish variance and a working-day check call named LAMBDAs, and Check lists FILTER the tasks. A
+  LAMBDA is stored as Excel stores it: `_xlfn.LAMBDA(_xlpm.x,_xlfn.LET(_xlpm.t,...))`, and called by its name; the
+  lists are fixed-size array formulas (`openpyxl.worksheet.formula.ArrayFormula`) because openpyxl can't write the
+  metadata Excel uses for spilled arrays. `scripts/perf_check.py` counts array formulas and accepts `_xlpm.`
+  parameters. LibreOffice 24.2 can't calculate any of it, so the build saves it without `--recalc` and
+  `tests/test_m365.py` checks structure only.
 - **RACI counts** (`resources.named_in`): four `COUNTIF` patterns per role (the name alone, first, last or in the
   middle of a comma list), so "Sam" never counts "Samantha".
 

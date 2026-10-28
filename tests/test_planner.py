@@ -270,7 +270,8 @@ class CommittedWorkbooksTest(unittest.TestCase):
                 other = b[ws.title]
                 for row in ws.iter_rows():
                     for c in row:
-                        x, y = d(c.value), d(other[c.coordinate].value)
+                        # an array formula (the Microsoft 365 edition) compares by its text
+                        x, y = (d(getattr(v, "text", v)) for v in (c.value, other[c.coordinate].value))
                         if x != y and not (x in (None, "") and y in (None, "")):
                             diffs.append(f"{ws.title}!{c.coordinate}: build={x!r} committed={y!r}")
             self.assertEqual(diffs[:10], [], f"{committed.name} is out of date ({len(diffs)} cells differ)")

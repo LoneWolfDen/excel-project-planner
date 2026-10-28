@@ -45,6 +45,8 @@ def formulas(wb):
             for c in row:
                 if isinstance(c.value, str) and c.value.startswith("="):
                     yield ws.title, c, c.value
+                elif getattr(c.value, "text", None):          # an array formula (the Microsoft 365 edition)
+                    yield ws.title, c, c.value.text
 
 
 MAX_LENGTH, MAX_NESTING = 8192, 64
@@ -114,7 +116,8 @@ def missing_references(wb):
             elif "[" in v:
                 ok = v.split("[")[0] in tables
             else:
-                ok = v in names or bool(A1.match(v)) or v.upper() in ("TRUE", "FALSE")
+                # a LAMBDA / LET parameter (the Microsoft 365 edition) is stored as _xlpm.name
+                ok = v in names or bool(A1.match(v)) or v.upper() in ("TRUE", "FALSE") or v.startswith("_xlpm.")
             if not ok:
                 found.append(f"{where}: {v}")
 

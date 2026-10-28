@@ -78,7 +78,10 @@ PAGE = """<!doctype html>
       <legend>With a planner workbook (.xlsx)</legend>
       <label><input type="radio" name="mode" value="xml" checked> Convert it to an MS Project file (.xml)</label>
       <label><input type="radio" name="mode" value="upgrade"> Move it to the latest template (keeps everything you typed)</label>
+      <label><input type="radio" name="mode" value="reorder"> Reorder its tasks so every predecessor is above its successor (outline and UIDs kept)</label>
     </fieldset>
+    <label class="choice">With an MS Project file (.xml), the new workbook's project type
+      <select id="ptype">__PROJECT_TYPES__</select></label>
     <p id="status" role="status" aria-live="polite"></p>
     <ul id="notes"></ul>
     <a id="download" download>Download</a>
@@ -90,6 +93,9 @@ PAGE = """<!doctype html>
     <tr><td>Upgrade a workbook</td><td>Made your plan with an older version of the template? Choose that workbook
       with "Move it to the latest template" and download the new one: tasks, people, leave, logs, history and
       settings are carried over; the formulas, sheets and reports are the latest.</td></tr>
+    <tr><td>Reorder tasks</td><td>Link Check says "UID n is below this task: move it above"? Choose the workbook with
+      "Reorder its tasks" and download the reordered one: tasks move only inside their phase, as whole groups, UIDs
+      and links unchanged. If the phases themselves depend on each other both ways, it says which tasks to change.</td></tr>
     <tr><td>MS Project to workbook</td><td>In MS Project: File &gt; Save As &gt; XML. Choose that file here and download
       the workbook. Excel calculates it when you open it. Anything the planner can't hold (a fifth predecessor, a
       lag in % ...) is listed here and noted on the task.</td></tr>
@@ -121,9 +127,13 @@ function converter() {
 
 const RUN = `
 import base64
-from planner import mspdi, mspdi_import, upgrade
+from planner import mspdi, mspdi_import, reorder, upgrade
 try:
-    if kind == "upgrade":
+    if kind == "reorder":
+        xlsx, warnings = reorder.convert(bytes(data.to_py()))
+        project = upgrade.read_planner(bytes(data.to_py()))[0]
+        out = ["ok", base64.b64encode(xlsx).decode(), warnings, len(project.tasks), len(project.resources)]
+    elif kind == "upgrade":
         xlsx, warnings = upgrade.convert(bytes(data.to_py()))
         project = upgrade.read_planner(bytes(data.to_py()))[0]
         out = ["ok", base64.b64encode(xlsx).decode(), warnings, len(project.tasks), len(project.resources)]
@@ -131,33 +141,36 @@ try:
         xml, notes = mspdi.convert_with_notes(bytes(data.to_py()))
         out = ["ok", base64.b64encode(xml.encode("utf-8")).decode(), notes, xml.count("<Task>"), xml.count("<Resource>")]
     else:
-        xlsx, warnings = mspdi_import.convert(bytes(data.to_py()))
+        xlsx, warnings = mspdi_import.convert(bytes(data.to_py()), ptype)
         project, _ = mspdi_import.read_project(bytes(data.to_py()))
         out = ["ok", base64.b64encode(xlsx).decode(), warnings, len(project.tasks), len(project.resources)]
-except (mspdi.ExportError, mspdi_import.MSPImportError, upgrade.UpgradeError) as e:
+except (mspdi.ExportError, mspdi_import.MSPImportError, upgrade.UpgradeError, reorder.ReorderError) as e:
     out = ["error", str(e), [], 0, 0]
 out`;
 
 async function convert(file) {
   link.style.display = "none";
   notes.textContent = "";
-  const upgrading = document.querySelector('input[name="mode"]:checked').value === "upgrade";
-  const kind = /\\.xml$/i.test(file.name) ? "xml" : upgrading ? "upgrade" : "xlsx";
+  const mode = document.querySelector('input[name="mode"]:checked').value;
+  const kind = /\\.xml$/i.test(file.name) ? "xml" : mode === "xml" ? "xlsx" : mode;
   say("Loading the converter...");
   try {
     const py = await converter();
     say("Converting " + file.name + "...");
     py.globals.set("data", new Uint8Array(await file.arrayBuffer()));
     py.globals.set("kind", kind);
+    py.globals.set("ptype", document.getElementById("ptype").value);
     const [state, payload, warnings, tasks, people] = py.runPython(RUN).toJs();
     if (state !== "ok") { say(payload, "bad"); return; }
     const bytes = Uint8Array.from(atob(payload), c => c.charCodeAt(0));
     const type = kind === "xlsx" ? "application/xml"
                                  : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     link.href = URL.createObjectURL(new Blob([bytes], { type }));
-    link.download = file.name.replace(/\\.(xlsx|xml)$/i, "") + (kind === "xlsx" ? ".xml" : kind === "upgrade" ? " (latest).xlsx" : ".xlsx");
+    link.download = file.name.replace(/\\.(xlsx|xml)$/i, "") + (kind === "xlsx" ? ".xml" : kind === "upgrade" ? " (latest).xlsx"
+                  : kind === "reorder" ? " (reordered).xlsx" : ".xlsx");
     link.textContent = kind === "xlsx" ? "Download the MS Project file (.xml)"
-                     : kind === "upgrade" ? "Download the upgraded workbook (.xlsx)" : "Download the workbook (.xlsx)";
+                     : kind === "upgrade" ? "Download the upgraded workbook (.xlsx)"
+                     : kind === "reorder" ? "Download the reordered workbook (.xlsx)" : "Download the workbook (.xlsx)";
     link.style.display = "inline-block";
     for (const w of warnings) { const li = document.createElement("li"); li.textContent = w; notes.appendChild(li); }
     say("Done: " + tasks + " tasks, " + people + " resources" + (warnings.length ? ". Notes:" : "."), "ok");
@@ -199,7 +212,13 @@ def bundle():
 
 
 def page():
-    return PAGE.replace("__PYODIDE__", PYODIDE).replace("__BUNDLE__", base64.b64encode(bundle()).decode())
+    import html
+    import sys
+    sys.path.insert(0, str(ROOT))
+    from planner.settings import PRESETS
+    types = "".join(f"<option>{html.escape(t)}</option>" for t in PRESETS)
+    return (PAGE.replace("__PYODIDE__", PYODIDE).replace("__PROJECT_TYPES__", types)
+            .replace("__BUNDLE__", base64.b64encode(bundle()).decode()))
 
 
 if __name__ == "__main__":

@@ -288,6 +288,20 @@ over `StatusRAG`, `StatusNotes`, `SprintTable` and the rest unchanged). The thre
 `Log`: RAID items keep their Ref, decisions and change requests take the next free ones, and a warning lists the new
 numbers.
 
+**Reordering** (`planner/reorder.py`, B-1015) uses the same read and rebuild. Each link becomes a constraint between
+the two tasks' ancestors that are siblings under their closest common parent; each set of siblings is sorted
+topologically (Kahn's algorithm, always taking the earliest original row that is free), so a task never leaves its
+phase and the order changes only where a link needs it. A cycle among siblings (two phases that each need the other)
+is reported, naming the links, and nothing is written.
+
+## Project types (B-1018)
+
+Start > Project type picks a row of `ProjectPresets` (Settings, beside the dropdown lists; editable, and a row can be
+added). Sprint length and the RAG slip thresholds default to a formula that reads it, and each Stages row to
+`INDEX(ProjectPresets[[Stage 1]:[Stage 6]], type, row)`: the same pattern as View from, a default anyone can type
+over. The upgrade reads typed values only, so typed stages and thresholds survive and defaults stay defaults. A
+typed % Complete coming in (an import or an upgrade) is matched to the type's stages.
+
 ## One log, typed rows
 
 The Log holds six kinds of item in one table rather than three sheets. Every row has the same core (Ref, Type, Title,

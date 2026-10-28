@@ -21,7 +21,7 @@ def week_preset(settings):
 
 
 # the settings a plan needs: typed on the Start sheet (the rest are on Settings, with defaults)
-ESSENTIAL = ("ProjectName", "ProjectManager", "ProjectStartDate", "WorkingWeek", "HoursPerDay")
+ESSENTIAL = ("ProjectName", "ProjectManager", "ProjectStartDate", "WorkingWeek", "HoursPerDay", "ProjectType")
 START = "Start"
 START_ROW = 4                      # first essential setting's row on Start
 STATUS = "Status"                  # the status date is typed on the Status sheet (the weekly page), at this row
@@ -70,6 +70,9 @@ def settings_rows(blank, max_sprints):
          "Yes = like MS Project 'move incomplete parts after status date': unstarted tasks can't start before the status "
          "date and in-progress tasks finish their remaining duration after it, pushing all successors."),
         ("HoursPerDay", "Working hours per day", 8, "0.0", True, "Work (hrs) = Duration x Hours/day x Units."),
+        ("ProjectType", "Project type", DEFAULT_TYPE, "@", True,
+         "Sets the defaults for the stages (Settings > Stages), the sprint length and the RAG slip thresholds: "
+         + ", ".join(PRESETS) + ". Pick it first; each default stays editable (type over it)."),
         ("DefaultUnits", "Default assignment units", 1, "0%", True,
          "Used when a task has a resource but Units is blank. 100% = full time."),
         ("WorkingWeek", "Working week", "Mon-Fri", "@", True,
@@ -101,7 +104,8 @@ def settings_rows(blank, max_sprints):
          "The Roadmap sheet's first month. Overwrite with the first of any month to scroll it."),
         ("Sprint1Start", "Sprint 1 start date", "=ProjectStart", DATE, True,
          "Defaults to the project start. Overwrite to align with your sprint calendar."),
-        ("SprintLength", "Sprint length (calendar days)", 14, "0", True, "14 = two-week sprints."),
+        ("SprintLength", "Sprint length (calendar days)", f"={preset('Sprint Length', 14)}", "0", True,
+         "14 = two-week sprints. The default comes from the Project type (Start); type a number to set your own."),
         ("SprintCount", "Number of sprints", min(12, max_sprints), "0", True,
          f"Up to the number of rows in the sprint table (Agile sheet) ({max_sprints}; add rows to the table for more). "
          "Tasks outside the sprint range are labelled 'Backlog'."),
@@ -137,9 +141,10 @@ def settings_rows(blank, max_sprints):
          "Status lists tasks starting or due within this many working days of the status date."),
         ("LookaheadEnd", "Look-ahead window ends (calculated)", "=WORKDAY.INTL(StatusDate-1,LookaheadDays,WorkWeek,Holidays)",
          DATE, False, ""),
-        ("RAGAmberSlipDays", "RAG: amber when the finish slips by (working days)", 3, "0", True,
+        ("RAGAmberSlipDays", "RAG: amber when the finish slips by (working days)", f"={preset('Amber Slip', 3)}", "0", True,
          "Status sheet thresholds. A finish slip of at least this many working days is amber."),
-        ("RAGRedSlipDays", "RAG: red when the finish slips by (working days)", 10, "0", True, ""),
+        ("RAGRedSlipDays", "RAG: red when the finish slips by (working days)", f"={preset('Red Slip', 10)}", "0", True,
+         "Both slip thresholds default from the Project type (Start); type a number to set your own."),
         ("RAGAmberIndex", "RAG: amber when SPI or CPI is below", 0.95, "0.00", True,
          "SPI = earned value / planned value; CPI = earned value / actual cost. 1.00 = on plan."),
         ("RAGRedIndex", "RAG: red when SPI or CPI is below", 0.85, "0.00", True, ""),
@@ -194,6 +199,7 @@ def build_settings(wb, blank, max_sprints, values=None):
         name(wb, n, f"{ws.title}!$C${r}")
         if n in PROMPTED:                           # the note shows when the cell is selected
             prompt = DataValidation(type="list", formula1="=L_WorkingWeek") if n == "WorkingWeek" else \
+                DataValidation(type="list", formula1="=L_ProjectType") if n == "ProjectType" else \
                 DataValidation(type="decimal", operator="between", formula1="1", formula2="24") if n == "HoursPerDay" \
                 else DataValidation(allow_blank=True)
             prompt.showInputMessage, prompt.promptTitle, prompt.prompt = True, label[:32], note[:255]
@@ -233,7 +239,7 @@ def build_lists(wb):
         col = LISTS_COL + i * 2
         add_table(ws, table, 4, col, [Col(column, "in", 16, values=values)], len(values), autofilter=False)
         name(wb, n, f"{table}[{column}]")
-    last = LISTS_COL + 2 * len(LISTS) - 1
+    last = _presets(wb, ws, LISTS_COL + 2 * len(LISTS))
     for c in range(LISTS_COL, last + 1):
         dim = ws.column_dimensions[get_column_letter(c)]
         dim.outlineLevel, dim.hidden = 1, True
@@ -246,6 +252,43 @@ def build_lists(wb):
 # Progress by stage: each stage's % Complete (weighted milestones: the same stage is the same progress everywhere)
 STAGES = [("Not Started", 0), ("Design", 0.15), ("In Development", 0.4), ("Test Ready", 0.7), ("In Testing", 0.85),
           ("Complete", 1)]
+# B-1018: what a Project type sets by default (each stays editable): the stages, sprint length, RAG slip thresholds
+PRESETS = {
+    "Software / Agile": {"stages": STAGES, "Sprint Length": 14, "Amber Slip": 3, "Red Slip": 10},
+    "Construction": {"stages": [("Not Started", 0), ("Mobilised", 0.1), ("Under Way", 0.5), ("Inspection", 0.85),
+                                ("Snagging", 0.95), ("Complete", 1)], "Sprint Length": 28, "Amber Slip": 5, "Red Slip": 15},
+    "IT infrastructure": {"stages": [("Not Started", 0), ("Design", 0.15), ("Build", 0.5), ("Testing", 0.8),
+                                     ("Cutover", 0.95), ("Complete", 1)], "Sprint Length": 14, "Amber Slip": 2,
+                          "Red Slip": 5},
+}
+DEFAULT_TYPE = "Software / Agile"
+N_STAGES = max(len(p["stages"]) for p in PRESETS.values())
+
+
+def preset(column, fallback):
+    """The Project type's value in the ProjectPresets table (the fallback if the type isn't one of them)."""
+    return f"IFERROR(INDEX(ProjectPresets[{column}],MATCH(ProjectType,ProjectPresets[Project Type],0)),{fallback})"
+
+
+def stages_of(project_type):
+    """The (stage, %) rows a Project type starts with: for converting a typed % to a Stage when a plan comes in."""
+    return PRESETS.get(project_type or DEFAULT_TYPE, PRESETS[DEFAULT_TYPE])["stages"]
+
+
+def _presets(wb, ws, col):
+    """The ProjectPresets table, beside the dropdown lists: one row per Project type, editable like any list (add a
+    row for your own kind of project). Returns its last column."""
+    names = list(PRESETS)
+    rows = [PRESETS[n] for n in names]
+    stage = lambda k: [p["stages"][k][0] if k < len(p["stages"]) else None for p in rows]
+    pct = lambda k: [p["stages"][k][1] if k < len(p["stages"]) else None for p in rows]
+    cols = [Col("Project Type", "in", 18, values=names),
+            *[Col(h, "in", 10, values=[p[h] for p in rows]) for h in ("Sprint Length", "Amber Slip", "Red Slip")],
+            *[Col(f"Stage {k + 1}", "in", 14, values=stage(k)) for k in range(N_STAGES)],
+            *[Col(f"% {k + 1}", "in", 7, "0%", values=pct(k)) for k in range(N_STAGES)]]
+    add_table(ws, "ProjectPresets", 4, col, cols, len(names) + 3, autofilter=False)
+    name(wb, "L_ProjectType", "ProjectPresets[Project Type]")
+    return col + len(cols) - 1
 
 
 def build_stages(wb, stages=None):
@@ -256,11 +299,17 @@ def build_stages(wb, stages=None):
     top = ws.max_row + 3
     ws.cell(top - 1, 2, "STAGES: pick one per task on Tasks > Stage; its % Complete counts as the task's progress "
                         "(a typed % Complete overrides it).").font = font(bold=True, color="1F4E78")
-    data = stages or STAGES
+    if stages:                                         # an import or upgrade: the plan's own stages, typed
+        names, pcts = [n for n, _ in stages], [p for _, p in stages]
+    else:                                              # B-1018: the Project type's stages, until someone types over one
+        k = "ROW()-ROW(StageTable[[#Headers],[Stage]])"
+        row = "MATCH(ProjectType,ProjectPresets[Project Type],0)"
+        names = [f'=IFERROR(INDEX(ProjectPresets[[Stage 1]:[Stage {N_STAGES}]],{row},{k})&"","")'] * N_STAGES
+        pcts = [f'=N(IFERROR(INDEX(ProjectPresets[[% 1]:[% {N_STAGES}]],{row},{k}),0))'] * N_STAGES
     add_table(ws, "StageTable", top, 2, [
-        Col("Stage", "in", 34, values=[n for n, _ in data]),               # the settings' column widths
-        Col("% Complete", "in", 24, "0%", values=[p for _, p in data]),
-    ], len(data), autofilter=False)
+        Col("Stage", "in", 34, values=names),               # the settings' column widths
+        Col("% Complete", "in", 24, "0%", values=pcts),
+    ], len(names), autofilter=False)
     name(wb, "stg_Name", "StageTable[Stage]")
     name(wb, "stg_Pct", "StageTable[% Complete]")
     name(wb, "L_Stage", "StageTable[Stage]")

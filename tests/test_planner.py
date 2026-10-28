@@ -1025,8 +1025,11 @@ class StageTest(Tmp):
 
     def test_sample_uses_stages(self):
         wb = openpyxl.load_workbook(self.path)
-        stages = {r["Stage"]: r["% Complete"] for r in table_rows(wb, "Settings", "StageTable")}
-        self.assertEqual(stages, dict(settings.STAGES))
+        # B-1018: the stages are the Project type's defaults (formulas anyone can type over) ...
+        self.assertTrue(all(str(r["Stage"]).startswith("=") for r in table_rows(wb, "Settings", "StageTable")))
+        done = openpyxl.load_workbook(ROOT / "Project_Planner.xlsx", data_only=True)
+        stages = {r["Stage"]: r["% Complete"] for r in table_rows(done, "Settings", "StageTable")}
+        self.assertEqual(stages, dict(settings.STAGES))                # ... which for Software / Agile are these
         t = {r["UID"]: r for r in table_rows(wb, "Tasks", "Tasks")}
         self.assertEqual((t[2]["Stage"], t[2]["% Complete"]), ("Complete", None))
         self.assertEqual((t[13]["Stage"], t[13]["% Complete"]), ("In Development", 0.5))     # the override kept

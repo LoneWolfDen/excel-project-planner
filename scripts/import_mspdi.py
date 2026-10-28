@@ -15,6 +15,7 @@ import openpyxl  # noqa: E402
 
 from planner.build import save  # noqa: E402
 from planner.mspdi_import import MSPImportError, convert  # noqa: E402
+from planner.settings import PRESETS  # noqa: E402
 
 
 def main(argv=None):
@@ -23,10 +24,12 @@ def main(argv=None):
     p.add_argument("out", nargs="?", help="output .xlsx (default: the XML name with .xlsx)")
     p.add_argument("--recalc", action="store_true",
                    help="recalculate with LibreOffice so the file carries values (Excel recalculates on open anyway)")
+    p.add_argument("--project-type", choices=list(PRESETS),
+                   help="Start > Project type: the stages a % Complete is matched to, sprint length, RAG thresholds")
     a = p.parse_args(argv)
     out = Path(a.out or Path(a.xml).with_suffix(".xlsx"))
     try:
-        xlsx, warnings = convert(Path(a.xml).read_bytes())
+        xlsx, warnings = convert(Path(a.xml).read_bytes(), a.project_type)
     except MSPImportError as e:
         raise SystemExit(f"error: {e}")
     if a.recalc:

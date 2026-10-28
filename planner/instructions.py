@@ -8,8 +8,10 @@ from .settings import ESSENTIAL, START, START_ROW
 
 # (label, text, sheet to link to)
 QUICK_START = [
-    ("1. Your project", "Fill in the blue cells above: name, manager, start date, working week and hours per day. "
-                        "Everything else has a sensible default on Settings.", None),
+    ("1. Your project", "Fill in the blue cells above: name, manager, start date, working week, hours per day and "
+                        "the project type (Software / Agile, Construction, IT infrastructure: it sets the stages, "
+                        "sprint length and RAG thresholds, each still editable). Everything else has a sensible "
+                        "default on Settings.", None),
     ("2. People", "List the people (or roles) with their Allocation % to this project and any leave (by month, on "
                   "the same row); their day rates go on the Cost sheet.", "Resources"),
     ("3. Tasks", "One row per task: Level (1 = phase, 2 = task ...), Task Name, Duration in working days, the UID of "

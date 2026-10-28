@@ -106,6 +106,11 @@ N = {
     "PertShift": "_PertShift",
     # template 1.2: MS Project's Status names (B-206), custom fields (B-509), the Board's key (B-404)
     "MspStatus": "MSP Status", "BoardKey": "_BoardKey",
+    # template 1.2 engine items: inactive tasks (B-110), elapsed lags (B-102), remaining duration and actual work
+    # (B-202), baselines 2 and 3 (B-201)
+    "Active": "Active", **{f"X{k}": f"_Pred{k}Elapsed" for k in LINK_NUMBERS}, "RemDur": "Remaining Duration",
+    "ActWork": "Actual Work", "PctWork": "% Work Done", "DoneShare": "_DoneShare",
+    "B2S": "Baseline 2 Start", "B2F": "Baseline 2 Finish", "B3S": "Baseline 3 Start", "B3F": "Baseline 3 Finish",
     **{f"CText{k}": f"Text {k}" for k in range(1, 6)}, **{f"CNum{k}": f"Number {k}" for k in range(1, 6)},
     **{f"CFlag{k}": f"Flag {k}" for k in range(1, 4)},
     **{f"Pick{k}": f"Pred{k}" for k in LINK_NUMBERS}, **{f"PickT{k}": f"Type{k}" for k in LINK_NUMBERS},
@@ -147,7 +152,10 @@ RELEASE_ALIAS = {"Dur": "Days", "PredIn": "PredUse", "ResIn": "ResUse"}
 RELEASE_NAMES = {"DurIn": "tsk_DurationInput", "Pick": "tsk_PickList", "IssueKey": "tsk_IssueKey",
                  "OverKey": "tsk_OverAllocKey", "Acc": "tsk_Accountable", "Con": "tsk_Consulted",
                  "Inf": "tsk_Informed", "PertExp": "tsk_PertExpected", "PertVar": "tsk_PertVariance",
-                 "PertShift": "tsk_PertShift", "MspStatus": "tsk_MspStatus", "BoardKey": "tsk_BoardKey"}
+                 "PertShift": "tsk_PertShift", "MspStatus": "tsk_MspStatus", "BoardKey": "tsk_BoardKey",
+                 "Active": "tsk_Active", "RemDur": "tsk_RemainingDuration", "ActWork": "tsk_ActualWork",
+                 "B2S": "tsk_Base2Start", "B2F": "tsk_Base2Finish", "B3S": "tsk_Base3Start", "B3F": "tsk_Base3Finish",
+                 **{f"X{k}": f"tsk_Pred{k}Elapsed" for k in LINK_NUMBERS}}
 
 
 def R(key):
@@ -213,7 +221,9 @@ def link_problem(p, pos):
             f'IF({pred}={R("UID")},"links to itself",IF({at}<0,"UID "&{pred}&" not found",'
             f'IF(INDEX({C("Name")},{at})="","UID "&{pred}&" is an empty row",'
             f'IF({at}>{R("Idx")},"UID "&{pred}&" is below this task: move it above",'
-            f'IF(INDEX({C("IsSum")},{at}),"UID "&{pred}&" is a summary: link to one of its tasks","")))))))')
+            f'IF(INDEX({C("IsSum")},{at}),"UID "&{pred}&" is a summary: link to one of its tasks",'
+            + (f'IF(INDEX({C("Active")},{at})="No","UID "&{pred}&" is inactive","")' if v12() else '""')
+            + ')))))))')
 
 
 def driver(k, start_key, finish_key):
@@ -223,18 +233,32 @@ def driver(k, start_key, finish_key):
     pred_start = other_row(start_key, pos)
     t, lag, dur = R(f"T{k}"), f"N({R(f'L{k}')})", R("Dur")
     back = f"-MAX(0,N({dur})-1)"
+    working = (f'CHOOSE(MATCH(IF({t}="","FS",{t}),{{"FS","SS","FF","SF"}},0),'
+               f'WORKDAY.INTL({pred_finish},IF(N({dur})=0,0,1)+{lag},{WD}),'
+               f'WORKDAY.INTL({pred_start},{lag},{WD}),'
+               f'WORKDAY.INTL(WORKDAY.INTL({pred_finish},{lag},{WD}),{back},{WD}),'
+               f'WORKDAY.INTL(WORKDAY.INTL({pred_start},{lag},{WD}),{back},{WD}))')
+    if v12():
+        # B-102 an elapsed lag ("3ed"): calendar days, then the first working day on or after (FS on a task with
+        # work: the first working day after); docs/SCHEDULING_SPEC.md section 2
+        e = f"N({R(f'X{k}')})"
+        on_after = lambda d: f"WORKDAY.INTL({d}+{e}-1,1,{WD})"
+        elapsed = (f'CHOOSE(MATCH(IF({t}="","FS",{t}),{{"FS","SS","FF","SF"}},0),'
+                   f'WORKDAY.INTL({pred_finish}+{e}-IF(N({dur})=0,1,0),1,{WD}),{on_after(pred_start)},'
+                   f'WORKDAY.INTL({on_after(pred_finish)},{back},{WD}),WORKDAY.INTL({on_after(pred_start)},{back},{WD}))')
+        working = f'IF({R(f"X{k}")}="",{working},{elapsed})'
     return (f'IF(OR({pos}<=0,{R(f"M{k}")}<>"",{R("IsSum")},{R("Name")}=""),0,'
-            f'IFERROR(CHOOSE(MATCH(IF({t}="","FS",{t}),{{"FS","SS","FF","SF"}},0),'
-            f'WORKDAY.INTL({pred_finish},IF(N({dur})=0,0,1)+{lag},{WD}),'
-            f'WORKDAY.INTL({pred_start},{lag},{WD}),'
-            f'WORKDAY.INTL(WORKDAY.INTL({pred_finish},{lag},{WD}),{back},{WD}),'
-            f'WORKDAY.INTL(WORKDAY.INTL({pred_start},{lag},{WD}),{back},{WD})),0))')
+            f'IFERROR({working},0))')
 
 
 def pred_text(k, by_id):
     """Link k in MS Project notation with a leading comma (",12", ",6SS+3d"); "" when there is no usable link."""
     typ, lg = f'IF({R(f"T{k}")}="","FS",{R(f"T{k}")})', f"N({R(f'L{k}')})"
     ref = f"INDEX({C('ID')},{R(f'R{k}')})" if by_id else R(f"P{k}")
+    if v12():                                       # an elapsed lag shows as typed: +3ed (B-102)
+        x = R(f"X{k}")
+        return (f'IF(OR(N({R(f"P{k}")})=0,{R(f"M{k}")}<>""),"",","&{ref}&IF(AND({typ}="FS",{lg}=0,{x}=""),"",'
+                f'{typ}&IF({x}<>"",IF({x}<0,"","+")&{x}&"ed",IF({lg}=0,"",IF({lg}>0,"+","")&{lg}&"d"))))')
     return (f'IF(OR(N({R(f"P{k}")})=0,{R(f"M{k}")}<>""),"",","&{ref}&IF(AND({typ}="FS",{lg}=0),"",'
             f'{typ}&IF({lg}=0,"",IF({lg}>0,"+","")&{lg}&"d")))')
 
@@ -387,6 +411,18 @@ def formulas():
         f[f"L{k}"] = f'IF({item}="","",IF({lag}="",0,IFERROR(VALUE({lag}),"?")))'
         unreadable = (f'AND({item}<>"",OR({R(f"P{k}")}="",ISNA(MATCH({R(f"T{k}")},{{"FS","SS","FF","SF"}},0)),'
                       f'NOT(ISNUMBER({R(f"L{k}")}))))')
+        if v12():
+            # B-102: "+50%" = half the predecessor's duration (rounded to working days); "+3ed" = 3 elapsed
+            # (calendar) days, kept apart in _Pred{k}Elapsed because the drivers count it differently
+            raw = f"IF({typed},MID({rest},3,99),{rest})"
+            pred_dur = f"N(INDEX({C('Dur')},MAX(1,{R(f'R{k}')})))"
+            f[f"L{k}"] = (f'IF({item}="","",IF({raw}="",0,IF(RIGHT({raw},1)="%",'
+                          f'IFERROR(ROUND(VALUE(LEFT({raw},LEN({raw})-1))/100*{pred_dur},0),"?"),'
+                          f'IF(RIGHT({raw},2)="ED",0,IFERROR(VALUE(SUBSTITUTE({raw},"D","")),"?")))))')
+            f[f"X{k}"] = (f'IF(OR({item}="",RIGHT({raw},2)<>"ED"),"",'
+                          f'IFERROR(VALUE(LEFT({raw},LEN({raw})-2)),"?"))')
+            unreadable = (f'AND({item}<>"",OR({R(f"P{k}")}="",ISNA(MATCH({R(f"T{k}")},{{"FS","SS","FF","SF"}},0)),'
+                          f'NOT(ISNUMBER({R(f"L{k}")})),{R(f"X{k}")}="?"))')
         f[f"R{k}"] = pred_pos(f"P{k}")
         f[f"M{k}"] = (f'IF({unreadable},"can\'t read "&{item}&" (type UIDs like 12 or 12SS+2d, comma-separated)",'
                       f'{link_problem(f"P{k}", f"R{k}")})')
@@ -464,6 +500,13 @@ def formulas():
         finish_limit = (f'IF({typ}="FS",WORKDAY.INTL({R("LLS")},-(IF(N({R("Dur")})=0,0,1)+{lg}),{WD}),'
                         f'IF({typ}="FF",WORKDAY.INTL({R("LLF")},-{lg},{WD}),'
                         f'IF({pred_dur}<=0,{start_limit},WORKDAY.INTL({start_limit},{pred_dur}-1,{WD}))))')
+        if v12():                                      # B-102 elapsed lags: the mirror of the forward pass
+            e = f"N({R(f'X{k}')})"
+            start_e = f'WORKDAY.INTL(IF({typ}="SS",{R("LLS")},{R("LLF")})-{e}+1,-1,{WD})'
+            finish_e = (f'IF({typ}="FS",WORKDAY.INTL({R("LLS")}-{e}+IF(N({R("Dur")})=0,1,0),-1,{WD}),'
+                        f'IF({typ}="FF",WORKDAY.INTL({R("LLF")}-{e}+1,-1,{WD}),'
+                        f'IF({pred_dur}<=0,{start_e},WORKDAY.INTL({start_e},{pred_dur}-1,{WD}))))')
+            finish_limit = f'IF({R(f"X{k}")}="",{finish_limit},{finish_e})'
         f[f"F{k}"] = f'IF({valid},{NO_LIMIT}-{finish_limit},"")'
         f[f"K{k}"] = f'IF({valid},{SLACK_OFFSET}-{wdiff(R(f"E{k}"), R("LFS"))},"")'
     # where the last successor sits: reads only input columns, so it isn't recalculated after every edit
@@ -586,21 +629,50 @@ def formulas():
     if release():
         f.update(release_formulas(f))
     if v12():
-        f.update(v12_formulas())
+        f.update(v12_formulas(f))
     return f
 
 
 BOARD_STATUSES = ["Not Started", "Late Start", "In Progress", "Behind", "Complete"]
 
 
-def v12_formulas():
-    """Template 1.2 columns: MS Project's Status (B-206) and the Board's key (B-404)."""
+def v12_formulas(f):
+    """Template 1.2 columns: MS Project's Status (B-206), the Board's key (B-404), and the engine items, which wrap
+    the 1.1 formulas (f) so a plan that doesn't use them schedules exactly as before: inactive tasks (B-110),
+    remaining duration and actual work (B-202), baselines 2 and 3 (B-201). Elapsed and % lags (B-102) are in the
+    link columns and the drivers (formulas())."""
     leaf, prog = f'{R("IsLeaf")}=1', R("Prog")
+    nm, s = R("Name"), R("IsSum")
     g = {}
+    # B-110: an inactive task (Active = No) is not a detail task: no dates, no work, out of every roll-up and link
+    g["IsLeaf"] = f'IF(AND({nm}<>"",NOT({s}),{R("Active")}<>"No"),1,0)'
+    g["Status"] = f'IF(AND({nm}<>"",{R("Active")}="No"),"Inactive",{f["Status"]})'
+    for k in ("SVar", "Var"):                     # no dates to compare
+        g[k] = f'IF({R("Active")}="No","",{f[k]})'
+    # B-202: a Remaining Duration on a started task sets its progress (done / (done + remaining) working days) and
+    # its finish (counted from the status date); Actual Work sets the work done (and so actual cost)
+    started = f'AND(N({R("AS")})>0,N({R("AF")})=0,ISNUMBER({R("RemDur")}))'
+    done_days = f'IF(StatusDate>{R("AS")},NETWORKDAYS.INTL({R("AS")},StatusDate-1,{WD}),0)'
+    g["PctUse"] = (f'IF(AND({started},NOT(ISNUMBER({R("Pct")}))),IFERROR({done_days}/({done_days}+'
+                   f'MAX(0,{R("RemDur")})),1),{f["PctUse"]})')
+    rem = f'ROUNDUP(MAX(0,{R("RemDur")}),0)'
+    g["LFF"] = (f'IF(AND({leaf},{started}),MAX({R("LFS")},IF({rem}=0,WORKDAY.INTL(StatusWorkday,-1,{WD}),'
+                f'WORKDAY.INTL(StatusWorkday,{rem}-1,{WD}))),{f["LFF"]})')
+    g["DoneShare"] = (f'IF(ISNUMBER({R("ActWork")}),IF({R("LTW")}>0,{R("ActWork")}/{R("LTW")},0),{R("LProg")})')
+    g["LWDone"] = f'{R("LWork")}*{R("DoneShare")}'
+    for k in MORE_PEOPLE:
+        g[f"Rd{k}"] = f'{R(f"Rw{k}")}*{R("DoneShare")}'
+    g["PctWork"] = f'IF(AND({leaf},{R("LTW")}>0),{R("DoneShare")},"")'
+    # B-201: Planned Start / Finish from the baseline Settings > CompareBaseline names (1, 2 or 3)
+    chosen = lambda a, b, c: f"CHOOSE(CompareBaseline,N({R(a)}),N({R(b)}),N({R(c)}))"
+    base_s, base_f = chosen("BS", "B2S", "B3S"), chosen("BF", "B2F", "B3F")
+    g["PS"] = f'IF({nm}="","",IF({base_s}>0,{base_s},{R("CPS")}))'
+    g["PF"] = f'IF({nm}="","",IF({base_f}>0,{base_f},{R("CPF")}))'
+    g["ShowPlan"] = f'IF({nm}="",FALSE(),OR(NOT(BaselineSet),{base_s}>0))'
     # MS Project: Complete; Future Task (starts after the status date); Late (less done than planned by now, or
     # finishing after the planned finish); otherwise On Schedule
-    g["MspStatus"] = (f'IF({R("Name")}="","",IF({prog}>=1,"Complete",IF({R("FS")}>StatusDate,"Future Task",'
-                      f'IF(OR(N({R("Var")})>0,AND({leaf},{prog}<{R("PlanPct")})),"Late","On Schedule"))))')
+    g["MspStatus"] = (f'IF(OR({R("Name")}="",{R("Active")}="No"),"",IF({prog}>=1,"Complete",IF({R("FS")}>StatusDate,'
+                      f'"Future Task",IF(OR(N({R("Var")})>0,AND({leaf},{prog}<{R("PlanPct")})),"Late","On Schedule"))))')
     if has("board"):
         # unique, ordered by status (the Board's columns) then plan order; blank when the Board's sprint or person
         # filter leaves the task out
@@ -618,7 +690,15 @@ def release_issues():
             f'pickers are used. ","")'
             f'&IF(AND({R("ResRaw")}<>"",{picked([f"Who{k}" for k in range(1, PEOPLE + 1)])}),"The Resources text is '
             f'ignored: the Res pickers are used. ","")'
-            + (v11_issues() if v11() else "") + (m365_issues() if m365() else ""))
+            + (v11_issues() if v11() else "") + (v12_issues() if v12() else "") + (m365_issues() if m365() else ""))
+
+
+def v12_issues():
+    """Template 1.2: a Remaining Duration or Actual Work that can't be used (B-202)."""
+    rem, work = R("RemDur"), R("ActWork")
+    return (f'&IF(AND({rem}<>"",NOT(ISNUMBER({rem}))),"Remaining Duration isn\'t a number of working days. ","")'
+            f'&IF(AND(ISNUMBER({rem}),N({R("AS")})=0),"Remaining Duration needs an Actual Start. ","")'
+            f'&IF(AND({work}<>"",NOT(ISNUMBER({work}))),"Actual Work isn\'t a number of hours. ","")')
 
 
 def m365_issues():
@@ -680,6 +760,17 @@ def release_formulas(f):
         uid = f'IFERROR(VALUE(LEFT({pick}&"",FIND(" ",{pick}&" ")-1)),{pick})'
         return (f'IF({pick}="","",{uid}&IF(AND(OR({typ}="",{typ}="FS"),{lag}=0),"",IF({typ}="","FS",{typ})'
                 f'&IF({lag}=0,"",IF({lag}>0,"+","")&{lag}&"d")))')
+    if v12():
+        # B-102: Lag k may also be text: 50% (of the predecessor's duration) or 3ed (elapsed days); a number is
+        # working days as before
+        def link(k):
+            pick, typ, raw = R(f"Pick{k}"), R(f"PickT{k}"), R(f"PickL{k}")
+            uid = f'IFERROR(VALUE(LEFT({pick}&"",FIND(" ",{pick}&" ")-1)),{pick})'
+            lag = f'TRIM({raw}&"")'
+            none = f'OR({lag}="",{lag}="0")'
+            return (f'IF({pick}="","",{uid}&IF(AND(OR({typ}="",{typ}="FS"),{none}),"",IF({typ}="","FS",{typ})'
+                    f'&IF({none},"",IF(OR(LEFT({lag},1)="-",LEFT({lag},1)="+"),"","+")&{lag}'
+                    f'&IF(ISNUMBER({raw}),"d",""))))')
     none = lambda keys: "AND(" + ",".join(f'{R(k)}=""' for k in keys) + ")"
     g["PredUse"] = (f'IF({none(each("Pick"))},{R("PredRaw")}&"",'
                     f'_xlfn.TEXTJOIN(", ",TRUE(),{",".join(link(k) for k in LINK_NUMBERS)}))')
@@ -829,6 +920,18 @@ V11_LAYOUT = [
 ]
 # template 1.2 columns
 CUSTOM = [f"CText{k}" for k in range(1, 6)] + [f"CNum{k}" for k in range(1, 6)] + [f"CFlag{k}" for k in range(1, 4)]
+V12_ENGINE = [
+    ("Active", "in", 7, None, True, "No = the task is left out: no dates, work or cost, and links to it are ignored "
+                                    "(MS Project's Inactive). Blank = Yes."),
+    ("RemDur", "in", 10, None, True, "Optional, on a started task: working days still to go. Sets its finish (from "
+                                     "the status date) and its % complete."),
+    ("ActWork", "in", 10, "#,##0.0", True, "Optional: hours actually worked so far. Sets work done and actual cost "
+                                           "(instead of work x progress)."),
+    ("PctWork", "calc", 9, "0%", True, "Work done / work (MS Project's % Work Complete)."),
+    *[(k, "in", 15, DATE, False, None) for k in ("B2S", "B2F", "B3S", "B3F")],
+    *[(f"X{k}", "help", 8, None, False, None) for k in LINK_NUMBERS],
+    ("DoneShare", "help", 8, None, False, None),
+]
 V12_LAYOUT = [
     ("MspStatus", "calc", 12, None, True, "MS Project's Status: Complete, On Schedule, Late (behind the progress "
                                           "planned by the status date) or Future Task (starts after it)."),
@@ -879,12 +982,15 @@ def configure():
     if release():
         # the Microsoft 365 edition's Check lists FILTER the tasks directly: no key columns
         rows += _RELEASE_LAYOUT + (CHECK_LAYOUT if has("check") and not m365() else []) + (V11_LAYOUT if v11() else [])
-        rows += (V12_LAYOUT + (BOARD_LAYOUT if has("board") else [])) if v12() else []
+        rows += (V12_LAYOUT + V12_ENGINE + (BOARD_LAYOUT if has("board") else [])) if v12() else []
         sections = RELEASE_SECTIONS + (V11_SECTIONS if v11() else []) + (V12_SECTIONS if v12() else [])
-        if v12():                                      # MS Project's Status sits with the other status columns
-            sections = [(label, key, rest + ["MspStatus"] if label == "DETAIL" else rest)
-                        for label, key, rest in sections]
+        if v12():                                      # 1.2's columns join the sections they belong to
+            more = {"DETAIL": ["MspStatus"], "SCHEDULING": ["Active"], "BASELINE": ["B2S", "B2F", "B3S", "B3F"]}
+            sections = [(label, key, rest + more.get(label, [])) for label, key, rest in sections]
+            sections.append(("ACTUALS (B-202)", "RemDur", ["ActWork", "PctWork"]))
         ALIAS.update(RELEASE_ALIAS)
+    if v12():                                          # Lag k holds text (50%, 3ed) as typed (B-102)
+        rows = [(k, kind, w, "@" if k.startswith("PickL") else fmt, *rest) for k, kind, w, fmt, *rest in rows]
     by_key = {row[0]: row for row in rows}
     shown = [k for _, key, rest in sections for k in ([key] if key else []) + rest]
     assert len(shown) == len(set(shown)) and all(by_key[k][1] != "help" for k in shown), "every column once"
@@ -896,7 +1002,8 @@ def configure():
 
 def input_keys():
     """Every Tasks input key of either edition (the upgrade reads a workbook by header before it knows which)."""
-    return [row[0] for row in _BASE_LAYOUT + _RELEASE_LAYOUT + V11_LAYOUT + V12_LAYOUT if row[1] == "in"]
+    return [row[0] for row in _BASE_LAYOUT + _RELEASE_LAYOUT + V11_LAYOUT + V12_LAYOUT + V12_ENGINE
+            if row[1] == "in"]
 
 
 configure()
@@ -951,6 +1058,10 @@ def build_tasks(wb, rows, n_rows):
     if release():                                      # what TakeSnapshot's baseline links select
         name(wb, "tsk_BLSource", f"{TABLE}[[{N['SrcS']}]:[{N['SrcW']}]]")
         name(wb, "tsk_Baseline", f"{TABLE}[[{N['BS']}]:[{N['BW']}]]")
+        if v12():                                  # B-201: keep the current baseline's dates as baseline 2 or 3
+            name(wb, "tsk_BaseDates", f"{TABLE}[[{N['BS']}]:[{N['BF']}]]")
+            name(wb, "tsk_Baseline2", f"{TABLE}[[{N['B2S']}]:[{N['B2F']}]]")
+            name(wb, "tsk_Baseline3", f"{TABLE}[[{N['B3S']}]:[{N['B3F']}]]")
     ws.freeze_panes = f"{L['Dur']}{HEADER_ROW + 1}"
     group_outline(ws, [r.get("Level") for r in rows], HEADER_ROW + 1)
     for i, r in enumerate(rows):                              # names indented by level, for the rows built in
@@ -1037,6 +1148,9 @@ RELEASE_PROMPTS = {
     **{f"WhoU{k}": (f"Units {k}", "Optional: their share of time on this task, e.g. 50%. Blank = Settings > "
                                   "DefaultUnits.") for k in range(1, PEOPLE + 1)},
 }
+# template 1.2: a lag may be a % of the predecessor or elapsed (calendar) days (B-102)
+V12_PROMPTS = {f"PickL{k}": (f"Lag {k}", "Optional: 2 = two working days, -1 = a lead, 50% = half the "
+                                        "predecessor's duration, 3ed = three calendar days.") for k in LINK_NUMBERS}
 
 
 V11_PROMPTS = {
@@ -1062,7 +1176,8 @@ def _validation_and_formatting(ws, L, n_rows):
         for k in keys:
             r = copy.copy(rule)
             r.sqref = MultiCellRange()
-            prompts = {**PROMPTS, **RELEASE_PROMPTS, **(V11_PROMPTS if v11() else {})} if release() else PROMPTS
+            prompts = ({**PROMPTS, **RELEASE_PROMPTS, **(V11_PROMPTS if v11() else {}),
+                        **(V12_PROMPTS if v12() else {})} if release() else PROMPTS)
             if k in prompts:
                 r.showInputMessage, (r.promptTitle, r.prompt) = True, prompts[k]
             ws.add_data_validation(r)
@@ -1119,8 +1234,11 @@ def _validation_and_formatting(ws, L, n_rows):
         else:
             dv(DataValidation(type="list", formula1="=tsk_PickList", showErrorMessage=False), *each("Pick"))
         dv(DataValidation(type="list", formula1="=L_DepType"), *each("PickT"))
-        dv(DataValidation(type="decimal", operator="between", formula1="-999", formula2="999", showErrorMessage=True,
-                          error="Lag in working days, e.g. 2 or -1."), *each("PickL"))
+        if v12():                                      # text too: 50% or 3ed (B-102); Issues flags a bad one
+            dv(DataValidation(allow_blank=True), *each("PickL"))
+        else:
+            dv(DataValidation(type="decimal", operator="between", formula1="-999", formula2="999",
+                              showErrorMessage=True, error="Lag in working days, e.g. 2 or -1."), *each("PickL"))
         dv(DataValidation(type="list", formula1="=res_Name", showErrorMessage=False),
            *[f"Who{k}" for k in range(1, PEOPLE + 1)])
         dv(DataValidation(type="decimal", operator="between", formula1="0", formula2="1", showErrorMessage=True,
@@ -1129,6 +1247,13 @@ def _validation_and_formatting(ws, L, n_rows):
         dv(DataValidation(type="list", formula1="=L_YesNo"), *[k for k in CUSTOM if k.startswith("CFlag")])
         dv(DataValidation(type="decimal", showErrorMessage=True, error="A number.", operator="between",
                           formula1="-1E+15", formula2="1E+15"), *[k for k in CUSTOM if k.startswith("CNum")])
+        dv(DataValidation(type="list", formula1="=L_YesNo"), "Active")
+        dv(DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0", showErrorMessage=True,
+                          error="Working days still to go, e.g. 3."), "RemDur")
+        dv(DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0", showErrorMessage=True,
+                          error="Hours worked so far, e.g. 12."), "ActWork")
+        dv(DataValidation(type="date", operator="greaterThan", formula1="1", showErrorMessage=True,
+                          error="A date."), "B2S", "B2F", "B3S", "B3F")
     if v11():
         dv(DataValidation(type="decimal", operator="greaterThanOrEqual", formula1="0", showErrorMessage=True,
                           error="Working days, e.g. 4."), "Opt", "Pess")
@@ -1142,6 +1267,9 @@ def _validation_and_formatting(ws, L, n_rows):
         dv(DataValidation(allow_blank=True), "Con", "Inf")
 
     cf = ws.conditional_formatting
+    if "Active" in L:                 # B-110: an inactive task is struck through and greyed, like MS Project
+        cf.add(f"A{first}:{L['BW']}{last}", FormulaRule(formula=[f'{at("Active")}="No"'],
+                                                       font=Font(color="A6A6A6", strike=True)))
     cf.add(f"A{first}:{L['BW']}{last}", FormulaRule(formula=[f"{at('IsSum')}=TRUE"], font=Font(bold=True), fill=fill("DDEBF7")))
     greyed = ("Dur", "PredIn", "CType", "Cons", "AS", "AF", "Stage", "Pct", "ResIn", "SprIn", "SP")
     if release():                     # one rule over every input a summary ignores (the formula's column is fixed)

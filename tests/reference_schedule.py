@@ -14,6 +14,8 @@ CONSTRAINTS = ["As Soon As Possible", "As Late As Possible", "Must Start On", "M
                "Start No Later Than", "Finish No Earlier Than", "Finish No Later Than"]
 LINKS = 4
 LINK = re.compile(r"^(\d+)(FS|SS|FF|SF)?([+-]\d+(?:\.\d+)?)?D?$")
+# template 1.2 (B-102): a lag may also be a % of the predecessor's duration (+50%) or elapsed calendar days (+3ed)
+LINK_12 = re.compile(r"^(\d+)(FS|SS|FF|SF)?(?:([+-]\d+(?:\.\d+)?)(%|ED|D)?)?$")
 
 
 class Calendar:
@@ -46,21 +48,32 @@ class Calendar:
         return self.networkdays(a, b) - 1 if b >= a else 1 - self.networkdays(b, a)
 
 
-def parse_links(text):
-    """§2: the Predecessors text: up to LINKS items "UID[type][+/-lag]" (lag in working days, d optional).
-    [(uid, type, lag) or None for an item that can't be read]"""
+def parse_links(text, v12=False):
+    """§2: the Predecessors text: up to LINKS items "UID[type][+/-lag]" (lag in working days, d optional; template
+    1.2 also % and ed). [(uid, type, lag, unit) or None for an item that can't be read]; unit "" = working days."""
     items = [i for i in str(text or "").upper().replace(";", ",").replace(" ", "").split(",") if i][:LINKS]
     out = []
     for item in items:
-        m = LINK.match(item)
-        out.append((int(m.group(1)), m.group(2) or "FS", float(m.group(3) or 0)) if m else None)
+        if v12:
+            m = LINK_12.match(item)
+            unit = "" if not m or m.group(4) in (None, "D") else m.group(4)
+        else:
+            m, unit = LINK.match(item), ""
+        out.append((int(m.group(1)), m.group(2) or "FS", float(m.group(3) or 0), unit) if m else None)
     return out
 
 
-def schedule(rows, settings, stages):
+def excel_round(x):
+    """Excel's ROUND(x, 0): halves away from zero (Python's round() goes to even)."""
+    return math.copysign(math.floor(abs(x) + 0.5), x)
+
+
+def schedule(rows, settings, stages, v12=False):
     """rows: dicts of the typed Tasks columns in order (Level, Name, Mode, Dur, Pred, CType, Cons, DL, AS, AF, Pct,
-    Stage, UID, BS, BF). settings: ProjectStart, StatusDate, WorkWeek, Holidays, RescheduleAfterStatus,
-    CriticalSlackDays. stages: {stage name: %}. Returns one dict per row with the calculated values."""
+    Stage, UID, BS, BF; template 1.2 also Active and RemDur). settings: ProjectStart, StatusDate, WorkWeek, Holidays,
+    RescheduleAfterStatus, CriticalSlackDays. stages: {stage name: %}. v12: template 1.2's % and elapsed lags,
+    inactive tasks and Remaining Duration (§2, §3, §6). Returns one dict per active row with the calculated
+    values."""
     cal = Calendar(settings["WorkWeek"], settings["Holidays"])
     start, status = settings["ProjectStart"], settings["StatusDate"]
     resched = settings["RescheduleAfterStatus"] == "Yes"
@@ -70,6 +83,8 @@ def schedule(rows, settings, stages):
     level = [max(1, int(r.get("Level") or 0)) for r in rows]
     # §3 outline: a row is a summary when the next row is deeper; its tasks are the deeper rows right below it
     summary = [i + 1 < n and level[i + 1] > level[i] for i in range(n)]
+    # §3 (template 1.2): an inactive task (Active = No) isn't scheduled, and links to it are ignored
+    inactive = [v12 and not summary[i] and str(rows[i].get("Active") or "").strip().lower() == "no" for i in range(n)]
     below = []
     for i in range(n):
         j = i + 1
@@ -85,20 +100,33 @@ def schedule(rows, settings, stages):
         if summary[i]:
             return []
         usable = []
-        for link in parse_links(rows[i].get("Pred")):
+        for link in parse_links(rows[i].get("Pred"), v12):
             if link is None:
                 continue
-            uid, kind, lag = link
+            uid, kind, lag, unit = link
             p = pos.get(uid)
-            if p is None or p == i or p > i or summary[p]:
+            if p is None or p == i or p > i or summary[p] or inactive[p]:
                 continue
-            usable.append((p, kind, lag))
+            if unit == "%":                         # §2: a share of the predecessor's duration, in working days
+                lag = excel_round(lag / 100 * num(rows[p].get("Dur")))
+            usable.append((p, kind, lag, unit == "ED"))
         return usable
 
-    def driver(i, p, kind, lag, s_key, f_key):
-        """§4: the earliest start link (p, kind, lag) allows row i."""
+    def on_or_after(d):
+        return cal.workday(d - dt.timedelta(days=1), 1)
+
+    def driver(i, p, kind, lag, s_key, f_key, elapsed=False):
+        """§4: the earliest start link (p, kind, lag) allows row i. An elapsed lag counts calendar days, then the
+        first working day on or after (FS on a task with work: the first working day after)."""
         dur = num(rows[i].get("Dur"))
         back = -max(0, dur - 1)
+        if elapsed:
+            e = dt.timedelta(days=int(lag))
+            if kind == "FS":
+                return on_or_after(out[p][f_key] + e) if dur == 0 else cal.workday(out[p][f_key] + e, 1)
+            if kind == "SS":
+                return on_or_after(out[p][s_key] + e)
+            return cal.workday(on_or_after(out[p][f_key if kind == "FF" else s_key] + e), back)
         if kind == "FS":
             return cal.workday(out[p][f_key], (0 if dur == 0 else 1) + lag)
         if kind == "SS":
@@ -108,7 +136,7 @@ def schedule(rows, settings, stages):
         return cal.workday(cal.workday(out[p][s_key], lag), back)
 
     for i, r in enumerate(rows):                    # §4 forward pass (plan and forecast), top to bottom
-        if summary[i]:
+        if summary[i] or inactive[i]:
             continue
         o, dur, cons = out[i], num(r.get("Dur")), r.get("Cons")
         ctype = r.get("CType") or ""
@@ -128,7 +156,7 @@ def schedule(rows, settings, stages):
         o["links"] = lk
 
         def earliest(s_key, f_key, floor=dt.date.min):
-            drivers = [driver(i, p, kind, lag, s_key, f_key) for p, kind, lag in lk]
+            drivers = [driver(i, p, kind, lag, s_key, f_key, x) for p, kind, lag, x in lk]
             day = min(max([start, low] + drivers), high)
             return cal.workday(max(day, floor) - dt.timedelta(days=1), 1)
 
@@ -136,6 +164,12 @@ def schedule(rows, settings, stages):
         o["CF"] = o["CS"] if dur <= 0 else cal.workday(o["CS"], dur - 1)
         # §6 actuals and the status date
         pct = r.get("Pct")
+        rem = r.get("RemDur") if v12 else None
+        started = r.get("AS") and not r.get("AF") and isinstance(rem, (int, float)) and not isinstance(rem, bool)
+        if started and not isinstance(pct, (int, float)):
+            # §6 (template 1.2): a Remaining Duration sets the progress: done / (done + remaining) working days
+            done = cal.networkdays(r["AS"], status - dt.timedelta(days=1)) if status > r["AS"] else 0
+            pct = done / (done + max(0, rem)) if done + max(0, rem) else 1
         pct = pct if isinstance(pct, (int, float)) else stages.get(r.get("Stage") or "", 0)
         if r.get("AS"):
             o["FS"] = r["AS"]
@@ -147,6 +181,9 @@ def schedule(rows, settings, stages):
         remaining = cal.workday(status_wd, max(0, math.ceil(round(dur * (1 - min(1, pct)), 9)) - 1))
         if r.get("AF"):
             o["FF"] = r["AF"]
+        elif started:                               # §6 (1.2): the remaining working days from the status date
+            left = math.ceil(max(0, rem))
+            o["FF"] = max(o["FS"], cal.workday(status_wd, -1) if left == 0 else cal.workday(status_wd, left - 1))
         elif dur <= 0:
             o["FF"] = o["FS"]
         elif r.get("AS") and resched:
@@ -155,7 +192,7 @@ def schedule(rows, settings, stages):
             o["FF"] = natural
         o["progress"] = 1 if r.get("AF") else min(1, pct)
 
-    leaves = [i for i in range(n) if not summary[i]]
+    leaves = [i for i in range(n) if not summary[i] and not inactive[i]]
     finish = max(out[i]["FF"] for i in leaves)
     # §7 backward pass, bottom to top: each successor limits its predecessors' late finish
     limits = {i: [] for i in leaves}
@@ -166,8 +203,20 @@ def schedule(rows, settings, stages):
         o["LF"] = min([finish, r.get("DL") or NO_LIMIT, cons_limit] + limits[i])
         o["LS"] = o["LF"] if dur <= 0 else cal.workday(o["LF"], -(dur - 1))
         o["TS"] = cal.diff(o["FF"], o["LF"])
-        for p, kind, lag in o["links"]:
+        for p, kind, lag, elapsed in o["links"]:
             p_dur = num(rows[p].get("Dur"))
+            if elapsed:                             # the mirror of the forward pass
+                e = dt.timedelta(days=int(lag))
+                one = dt.timedelta(days=1)
+                if kind == "FS":
+                    limit = cal.workday(o["LS"] - e + (one if dur == 0 else dt.timedelta(0)), -1)
+                elif kind == "FF":
+                    limit = cal.workday(o["LF"] - e + one, -1)
+                else:
+                    at = cal.workday((o["LS"] if kind == "SS" else o["LF"]) - e + one, -1)
+                    limit = at if p_dur <= 0 else cal.workday(at, p_dur - 1)
+                limits[p].append(limit)
+                continue
             if kind == "FS":
                 limit = cal.workday(o["LS"], -((0 if dur == 0 else 1) + lag))
             elif kind == "FF":
@@ -179,8 +228,8 @@ def schedule(rows, settings, stages):
     # §7 free slack: the smallest gap on an outgoing link, capped at total slack
     gaps = {i: [] for i in leaves}
     for i in leaves:
-        for p, kind, lag in out[i]["links"]:
-            gaps[p].append(cal.diff(driver(i, p, kind, lag, "FS", "FF"), out[i]["FS"]))
+        for p, kind, lag, elapsed in out[i]["links"]:
+            gaps[p].append(cal.diff(driver(i, p, kind, lag, "FS", "FF", elapsed), out[i]["FS"]))
     for i in leaves:
         o = out[i]
         o["FSl"] = min([o["TS"]] + gaps[i])
@@ -192,8 +241,10 @@ def schedule(rows, settings, stages):
             o["shown_" + key] = cal.workday(o[key], shift) if shift else o[key]
     result = []
     for i, r in enumerate(rows):                    # §8 roll-ups and the planned dates
+        if inactive[i]:
+            continue
         if summary[i]:
-            kids = [j for j in below[i] if not summary[j]]
+            kids = [j for j in below[i] if not summary[j] and not inactive[j]]
             pick = lambda fn, key: fn(out[j][key] for j in kids)
             v = {"Start": pick(min, "shown_FS"), "Finish": pick(max, "shown_FF"), "CS": pick(min, "shown_CS"),
                  "CF": pick(max, "shown_CF"), "Late Start": pick(min, "LS"), "Late Finish": pick(max, "LF"),

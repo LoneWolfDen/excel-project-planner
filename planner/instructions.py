@@ -100,7 +100,13 @@ def text(sizes, wizard=False):
         ("10. Resource Report", "Per resource: work, done, remaining, late and critical tasks, peak "
                                 "week and weeks over capacity. Hours and utilisation grids by week from "
                                 "Settings > ResourceWeekStart and by sprint (red = over capacity), leave by week, and a "
-                                "team hours vs capacity chart."),
+                                "team hours vs capacity chart. Entering a big plan? Set Settings > Live resource "
+                                "grids to No while you type (the grids and Tasks > Over-allocated pause; Status says "
+                                "so), then back to Yes."),
+        ("Protected views", "Status, Roadmap and the Resource Report are protected without a password so a formula "
+                            "isn't typed over by accident: their blue input cells (status date, PM RAG, comments, "
+                            "notes) still take typing, and filtering, copying and resizing work. Review > Unprotect "
+                            "Sheet lifts it. Tasks and the other input sheets are never protected."),
         ("Leave", "On Resources, to the right of each person's details: one column per month (Jan-26 ... Dec-28; add a month by inserting a column "
                   "among the months and typing e.g. Jan-29). Type the days off: '16, 17(0.5)' under Nov-26 = all of 16 November "
                   "and half of the 17th. Weekends and holidays are ignored. Leave lowers capacity on the Resource "
@@ -153,6 +159,10 @@ def text(sizes, wizard=False):
                         "and moves nothing else (its planned dates move by the same days)."),
         ("Rescheduling", "Settings > RescheduleAfterStatus = Yes moves incomplete work to after the status date (like MS "
                          "Project 'Update Project'), so late tasks push successors."),
+        ("Pasting rows", "Paste rows under the last task (or into the table) as values: formulas fill in. Pasting skips "
+                         "the cells' checks, so Issues also flags a Duration or date that came in as text (e.g. '2d', or "
+                         "a date in another format) and suggests a name ('Did you mean Alex Chen?') for a person who "
+                         "isn't on Resources."),
         ("Capacity", f"Tables grow when you add rows: Tasks starts with {sizes.tasks} rows, Resources {sizes.resources}, "
                      f"SprintTable {sizes.sprints}, Log 150, Holidays 100. The Gantt timeline has "
                      f"{sizes.gantt_columns} columns; "

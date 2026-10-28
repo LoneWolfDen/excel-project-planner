@@ -22,7 +22,7 @@ from .agile import build_agile
 from .gantt import build_timeline
 from .instructions import build_instructions
 from .msp import build_msp_resources, build_msp_tasks
-from .core import name
+from .core import name, protect_view
 from .cost import build_cost
 from .history import build_history
 from .log import build_log
@@ -33,6 +33,7 @@ from .settings import PRESETS, build_holidays, build_lists, build_settings, buil
 from .status import build_status
 from .tasks import build_tasks, take_people, take_stage
 
+VIEWS = ("Status", "Roadmap", "Resource Report")    # protected without a password; inputs stay unlocked
 ORDER = ["Start", "Status", "Roadmap", "Resource Report", "Agile", "Log", "History", "Settings",
          "Tasks", "Resources", "Cost", "MSP_Tasks", "MSP_Resources"]
 TAB_COLOURS = {"Start": "1F4E78", "Status": "548235", "Tasks": "2F75B5", "Roadmap": "548235",
@@ -125,6 +126,8 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
     build_resource_report(wb, sizes.grid_resources, sizes.weeks, sizes.sprints)
     build_cost(wb, blank, n_tasks, people, sizes.resources)
     build_instructions(wb, sizes, import_wizard)
+    for view in VIEWS:                                 # B-1019: formulas can't be typed over by accident
+        protect_view(wb[view])
     name(wb, "PlannerVersion", f'"{VERSION}"')
     wb._sheets = [wb[n] for n in ORDER if n in wb.sheetnames]
     for ws in wb.worksheets:

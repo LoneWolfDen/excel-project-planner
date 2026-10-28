@@ -115,7 +115,7 @@ Template 1.1 is its own workbook too: `--release 1.1` builds `release-1.1/` (Tem
 
 | ID | Item | Pri | Notes |
 |---|---|---|---|
-| F-1110 | Microsoft 365 edition: spilled lists and a searchable pick list | P3 | Real spilled arrays (Excel's dynamic-array metadata, which openpyxl can't write) instead of fixed-size array formulas; a Pred dropdown filtered to the tasks above the row; CI recalculation once LibreOffice (24.8+) or another engine can evaluate LAMBDA |
+| F-1110b | Microsoft 365 edition: CI recalculation | P3 | Once LibreOffice (24.8+) or another engine can evaluate LAMBDA and FILTER (the spilled lists and the pick list are done in template 1.2's PR: F-1110 below) |
 
 ## Template 1.2: design, UX and the rest of the backlog
 
@@ -138,6 +138,9 @@ UX, the UX backlog items, the engine items, the add-ons (and the Microsoft 365 e
 | B-803 | ✅ Versioning and releases | P2 | CHANGELOG.md; the version is on Start and in printed footers (TemplateVersion) | review | none |
 | B-804 | ✅ More sample projects | P3 | `--sample construction` (a clinic extension, Construction stages) and `--sample event` (a partner summit with a fixed date), in `release-1.2/samples/` | `test_more_samples` | none |
 | D-1202 | ✅ Pred dropdown lists only the tasks above | P2 | The Pred1-4 validation list is `OFFSET` over the pick list, as long as the number of detail tasks above the row (`COUNTIF` of `_IsLeaf` from the header down): the only tasks a link may use. Validation is evaluated when the dropdown opens, so it adds nothing to recalculation | `test_pick_list_shows_only_tasks_above` | none |
+| B-704 | ✅ Optional macros | P2 | `addons/vba/PlannerMacros.bas` for a copy saved as `.xlsm`: SetBaseline, KeepBaseline (2 / 3), RecordSnapshot, InsertTask (next free UID, same level), Indent / Outdent, Expand / Collapse. Found by defined name and table, never by address; each is a documented manual step | `tests/test_addons.py` (structure: names, tables, columns exist; no cell addresses); by hand, TESTING_IN_EXCEL.md section 9 | none (not in the .xlsx) |
+| B-705 | ✅ Office Scripts | P3 | `addons/office-scripts/*.ts`: the same actions for Excel for the web | `tests/test_addons.py`; by hand | none |
+| F-1110 | ✅ Microsoft 365: spilled lists, pick list above | P3 | The Check lists are one formula each that spills: `m365.spill` adds Excel's dynamic-array metadata (`xl/metadata.xml`, `cm="1"`) after openpyxl saves. The Pred dropdown lists only the tasks above, as in 1.2 | `test_m365.test_lists_spill`, `test_pick_list_shows_only_tasks_above`; by hand, TESTING_IN_EXCEL.md section 8 | none |
 
 ## Done in v1.7 (was "Next up after v1.6")
 

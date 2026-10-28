@@ -70,6 +70,8 @@ with docs/TESTING_IN_EXCEL.md section 8. Build with `--release m365` (no `--reca
   `--modules agile,log,history,resources,cost` (`--simple` = none of them); nothing in it points at a sheet that
   isn't there, and an upgrade keeps the same set.
 - `release-1.0/`, `release-1.1/`, `release-1.1-m365/` – the release workbooks (above).
+- `addons/` – optional VBA macros and Office Scripts that automate the baseline, snapshot and insert-task steps
+  ([README](addons/README.md)); the workbooks never need them.
 - `docs/` – [architecture and rules](docs/ARCHITECTURE.md), [scheduling spec](docs/SCHEDULING_SPEC.md), [MS Project gap analysis](docs/MSP_GAP_ANALYSIS.md), [backlog](docs/BACKLOG.md), [testing in Excel desktop](docs/TESTING_IN_EXCEL.md), [testing on iPhone](docs/TESTING_ON_IPHONE.md).
 - `planner/` – the generator: one module per sheet (`tasks.py`, `gantt.py`, `agile.py`, `log.py`, `status.py`, ...) plus `core.py` helpers.
 - `scripts/perf_check.py` and `perf_budget.json` – performance and structure checks run on every PR.

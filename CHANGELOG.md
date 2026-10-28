@@ -17,7 +17,11 @@ reasons behind each item are in [docs/BACKLOG.md](docs/BACKLOG.md).
 - **Tools:** a network diagram (Mermaid or Graphviz, B-506) and CSV exports for Jira, Azure DevOps and Microsoft
   Planner (B-706); two more sample projects, a clinic extension and a partner summit (`--sample`, B-804).
 
+- **Optional add-ons** (`addons/`): VBA macros for desktop Excel (B-704) and Office Scripts for Excel for the web
+  (B-705) that automate the baseline, snapshot, insert-task and indent steps.
+
 ## Microsoft 365 edition (`release-1.1-m365/`, PlannerVersion 2.1-m365)
+- The Check lists spill (real dynamic arrays) and the Pred dropdown lists only the tasks above (F-1110).
 - Template 1.1 with named LAMBDA functions (`L_PARSE_DURATION`, `L_WORKING_DAYS`, `L_IS_WORKING_DAY`) and FILTER
   lists on the Check sheet; a working-day check on actual dates. Saved without values; Excel calculates on open.
 

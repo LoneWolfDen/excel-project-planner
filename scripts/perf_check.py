@@ -11,6 +11,9 @@ Static checks (openpyxl only):
   * A1 references inside formulas: there must be none; formulas use structured references and defined names
   * Excel's hard limits: balanced parentheses, at most 8,192 characters and 64 nested functions per formula
     (LibreOffice silently repairs some of these; Excel refuses the formula or repairs the file)
+  * conditional-formatting rules per sheet (B-1016): a budget on the total, and no sheet may carry many rules
+    that each cover one row (a rule per task row: Excel re-evaluates every rule on screen at each redraw, and
+    the file grows with the plan); one rule over a whole column range does the same job
 Timing (LibreOffice via python3-uno, with --timing):
   * full recalculation and a single-edit recalculation, median of three runs
 
@@ -31,6 +34,7 @@ import openpyxl
 from openpyxl.formula import Tokenizer
 
 ROOT = Path(__file__).resolve().parents[1]
+SINGLE_ROW_RANGES_MAX = 20      # per sheet: more looks like a rule written for each row
 VOLATILE = ("OFFSET", "INDIRECT", "TODAY", "NOW", "RAND", "RANDBETWEEN", "CELL", "INFO")
 A1 = re.compile(r"^(?:'?[^!']+'?!)?\$?(?:[A-Z]{1,3}\$?\d+(?::\$?[A-Z]{1,3}\$?\d+)?|[A-Z]{1,3}:\$?[A-Z]{1,3}|\d+:\$?\d+)$")
 
@@ -131,6 +135,22 @@ def missing_references(wb):
     return found
 
 
+def cf_report(wb):
+    """{sheet: {"ranges", "rules", "single_row"}}: conditional-formatting ranges, the rules on them, and how many
+    ranges cover a single row (the one-rule-per-row pattern)."""
+    from openpyxl.utils.cell import range_boundaries
+    out = {}
+    for ws in wb.worksheets:
+        ranges = rules = single = 0
+        for cf in ws.conditional_formatting:
+            ranges += 1
+            rules += len(cf.rules)
+            single += sum(1 for r in cf.sqref.ranges if range_boundaries(r.coord)[1] == range_boundaries(r.coord)[3])
+        if ranges:
+            out[ws.title] = {"ranges": ranges, "rules": rules, "single_row": single}
+    return out
+
+
 def static_report(path):
     wb = openpyxl.load_workbook(path)
     names = set(wb.defined_names)
@@ -155,7 +175,8 @@ def static_report(path):
     return {"formulas": dict(per_sheet), "formulas_total": sum(per_sheet.values()),
             "volatile": {s: dict(c) for s, c in volatile.items()},
             "volatile_cells": sum(sum(c.values()) for c in volatile.values()), "a1_references": a1,
-            "excel_limit_problems": limits, "longest_formula": longest, "missing_references": missing_references(wb)}
+            "excel_limit_problems": limits, "longest_formula": longest, "missing_references": missing_references(wb),
+            "cf": cf_report(wb)}
 
 
 def time_recalc(path, runs=3):
@@ -255,6 +276,14 @@ def check(report, budget):
     if report["missing_references"]:
         problems.append(f"{len(report['missing_references'])} references to a missing sheet, table or name, e.g. "
                         + "; ".join(report["missing_references"][:5]))
+    cf = report.get("cf", {})
+    total = sum(v["rules"] for v in cf.values())
+    if "cf_rules_max" in budget and total > budget["cf_rules_max"]:
+        problems.append(f"{total} conditional-formatting rules > budget {budget['cf_rules_max']}")
+    for sheet, v in cf.items():
+        if v["single_row"] > SINGLE_ROW_RANGES_MAX:
+            problems.append(f"{sheet}: {v['single_row']} conditional-formatting ranges cover one row each "
+                            f"(at most {SINGLE_ROW_RANGES_MAX}): use one rule over the whole column range")
     for k in ("full_recalc_s", "edit_recalc_s"):
         if k in report and report[k] > budget[k + "_max"]:
             problems.append(f"{k} {report[k]:.3f}s > budget {budget[k + '_max']}s")
@@ -269,7 +298,9 @@ def markdown(path, profile, report, budget, problems):
              f"| Formulas with A1 references | {len(report['a1_references'])} | 0 |",
              f"| References to a missing sheet, table or name | {len(report['missing_references'])} | 0 |",
              f"| Formulas breaking Excel limits (parentheses, length, nesting) | {len(report['excel_limit_problems'])} | 0 |",
-             f"| Longest formula | {report['longest_formula']:,} chars | {MAX_LENGTH:,} |"]
+             f"| Longest formula | {report['longest_formula']:,} chars | {MAX_LENGTH:,} |",
+             f"| Conditional-formatting rules | {sum(v['rules'] for v in report.get('cf', {}).values()):,} | "
+             f"{budget.get('cf_rules_max', '-')} |"]
     for k, label in (("full_recalc_s", "Full recalculation (LibreOffice)"),
                      ("edit_recalc_s", "Edit a duration near the top, then recalculate"),
                      ("edit_last_task_s", "Edit the last task's duration"), ("edit_note_s", "Edit a note")):
@@ -277,6 +308,8 @@ def markdown(path, profile, report, budget, problems):
             limit = budget.get(k + "_max")
             lines.append(f"| {label} | {report[k]:.3f} s | {f'{limit} s' if limit else '-'} |")
     lines += ["", "Formulas by sheet: " + ", ".join(f"{s} {n:,}" for s, n in sorted(report["formulas"].items())), ""]
+    lines += ["Conditional-formatting rules by sheet: " + ", ".join(
+        f"{s} {v['rules']}" for s, v in sorted(report.get("cf", {}).items())), ""]
     vol = "; ".join(f"{s}: " + ", ".join(f"{fn} {n}" for fn, n in fns.items()) for s, fns in report["volatile"].items())
     lines += [f"Volatile functions: {vol or 'none'}", ""]
     lines += (["**Budget exceeded:**", ""] + [f"- {p}" for p in problems]) if problems else ["All budgets met."]

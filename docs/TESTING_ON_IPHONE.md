@@ -61,6 +61,18 @@ Tick each one and note anything odd (a screenshot is ideal).
 - [ ] Agile: the sprint table, release figures and charts show; picking a sprint under "Sprint to show" lists its tasks. Resources: the person-days and points grids fill in. Cost: task costs and earned value show; deleting the sheet leaves no #REF! elsewhere. Resource Report: hours and utilisation by sprint fill in; red cells only where someone is over capacity.
 - [ ] Tasks: the Resource and Type cells show dropdowns.
 
+## Timing in Microsoft 365 (desktop, about 5 minutes)
+
+CI times recalculation in LibreOffice only. Once per release, time the same edits in Excel (B-1016):
+
+1. Build the 1,000-task workbook: `python scripts/build_planner.py stress.xlsx --tasks 1000 --stress 33`, and open
+   it in Excel for Microsoft 365 on a desktop.
+2. Formulas > Calculation Options > Manual. Then Ctrl+Alt+F9 (full recalculation) and time it with a stopwatch;
+   repeat twice and keep the middle time.
+3. Change the Duration of task 2, then press F9; time that too (middle of three).
+4. Switch back to Automatic and report both times with the Excel build (File > Account > About Excel) next to the
+   CI numbers in the release PR. Excel is usually several times faster than LibreOffice; a slower one is a bug.
+
 ## Reporting back
 
 Paste the results (or screenshots) into the B-001 GitHub issue or this chat. A failure in "Calculation" is the most important to report, with the cell and the value shown.

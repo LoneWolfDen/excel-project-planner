@@ -76,7 +76,7 @@ cells recalculate, with everything downstream, after every edit. Everything else
   running on D) - SUMIFS(work before start, running on D)` in working days since the project start: six `SUMIFS`
   per cell instead of a `SUMPRODUCT` over every task, and weekends and holidays carry no work.
 
-**Ordering rule.** A predecessor must be a detail task listed above its successor. The critical path's backward
+**Ordering rule** ([SCHEDULING_SPEC.md](SCHEDULING_SPEC.md) section 2). A predecessor must be a detail task listed above its successor. The critical path's backward
 pass reads successors from the rows below, so the rule keeps the forward and backward passes consistent. Link
 Check explains a link that breaks it, and the link is ignored rather than causing an error.
 
@@ -90,22 +90,15 @@ Excel on Windows is usually several times faster than LibreOffice and calculates
 
 ## Critical path (backward pass)
 
+The rules (late dates per link type, deadlines, constraint caps, total and free slack, Critical) are in
+[SCHEDULING_SPEC.md](SCHEDULING_SPEC.md) section 7. How the formulas do it without a circular reference:
+
 Each successor row works out, for each of its links (`LINKS` = 4 in `planner/tasks.py`; every link column is
-generated from it), the latest its predecessor may finish:
-FS `WORKDAY(LateStart, -(1 + lag))` (no +1 into a milestone), FF `WORKDAY(LateFinish, -lag)`, and SS / SF the latest
-start converted to a finish with the predecessor's duration (an input, so no circularity). These mirror the forward
-pass exactly.
-
-The predecessor takes the earliest of those limits, its deadline, a No Later Than / Must On constraint and
-`ProjectFinish` (the latest early forecast finish of the detail tasks).
-Successors sit below their predecessors, so it looks only at the rows from the one below down to
-`_LastSuccessorRow`. That helper reads only input columns, so it isn't volatile, and it keeps each look-up short.
-Limits are stored as keys (`31-Dec-9999 - date`, `100000 - slack`) so that one `MAXIFS` per link answers both
-"is there a successor" and "what is its tightest limit".
-
-Total Slack = working days from forecast finish to late finish; Free Slack = the smallest slack on any outgoing
-link (capped at total slack); Critical = an unfinished detail task with total slack <= `CriticalSlackDays`. A missed
-deadline gives negative slack to the task and the chain feeding it, as in MS Project.
+generated from it), the latest its predecessor may finish; SS / SF use the predecessor's duration, an input, so
+there is no circularity. Successors sit below their predecessors, so a predecessor looks only at the rows from the
+one below down to `_LastSuccessorRow`. That helper reads only input columns, so it isn't volatile, and it keeps each
+look-up short. Limits are stored as keys (`31-Dec-9999 - date`, `100000 - slack`) so that one `MAXIFS` per link
+answers both "is there a successor" and "what is its tightest limit".
 
 | LibreOffice, one edit then recalculate | Before the critical path | With it |
 |---|---|---|
@@ -114,22 +107,15 @@ deadline gives negative slack to the task and the chain feeding it, as in MS Pro
 
 ## Constraints
 
-The Constraint column holds MS Project's eight types; `_ConstraintCode` is MS Project's own code (0 As Soon As
-Possible ... 7 Finish No Later Than; a date with a blank type is Start No Earlier Than). `_ConstraintStart` turns the
-Constraint Date into a start (a finish constraint ends the task on the date), and two bounds clamp the forward pass:
+The rules are in [SCHEDULING_SPEC.md](SCHEDULING_SPEC.md) section 5. In the formulas, `_ConstraintCode` is MS
+Project's own code, `_ConstraintStart` turns the date into a start, and two bounds clamp the forward pass:
 
     start = MIN(MAX(ProjectStart, _ConstraintLow, link drivers), _ConstraintHigh)
 
-No Earlier Than sets the low bound, No Later Than the high bound, Must Start / Finish On both, so the task is pinned.
-Constraint dates win over links, as with MS Project's default "Tasks will always honor their constraint dates"; a
-conflict shows as negative slack because the backward pass caps the late finish with the same high bound. The
-forecast still never starts unstarted work before the status date when RescheduleAfterStatus = Yes.
-
 **As Late As Possible** needs the backward pass, which reads the early dates, so it can't move them without a
 circular reference. Instead the early dates stay as calculated (`_Leaf...`: links, slack and `ProjectFinish` read
-them) and the shown dates (`_Shown...`, rolled up into Planned Start / Finish and Start / Finish) move later by the task's
-free slack. The task then finishes just in time for its successors (or the project finish) and moves nothing else.
-The plan moves by the same number of days as the forecast, so an ALAP task adds no finish variance.
+them) and the shown dates (`_Shown...`, rolled up into Planned Start / Finish and Start / Finish) move later by the
+task's free slack.
 
 ## Views: outline, timeline scales, Roadmap
 

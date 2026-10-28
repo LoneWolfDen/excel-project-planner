@@ -62,6 +62,22 @@ class ExportTest(unittest.TestCase):
             if ws.cell(r, col["Task Name"]).value:
                 cls.sheet[ws.cell(r, col["UID"]).value] = {h: ws.cell(r, c).value for h, c in col.items()}
 
+    def test_notes_say_what_ms_project_wont_see(self):
+        # B-1014: the converter lists what it simplified or left out; the workbook is not changed
+        before = SAMPLE.read_bytes()
+        xml, notes = mspdi.convert_with_notes(before)
+        self.assertEqual(xml, self.xml)
+        joined = "\n".join(notes)
+        for expected in ("Stage is exported as % Complete only", "tasks have Issues on Tasks",
+                         "Advisory roles (Priya Sharma, Alex Chen)", "custom fields Text1 and Number1",
+                         "Not exported: Status, Roadmap"):
+            self.assertIn(expected, joined)
+        self.assertNotIn("Cost sheet isn't in this workbook", joined)
+        self.assertEqual(SAMPLE.read_bytes(), before)
+        # the phase owner travels as MS Project's Contact
+        self.assertEqual(text(self.tasks[1], "Contact"), "Priya Sharma")
+        self.assertIsNone(self.tasks[2].find(NS + "Contact"))
+
     def test_project_and_calendar(self):
         p = self.root
         self.assertEqual(p.tag, NS + "Project")
@@ -379,7 +395,7 @@ class ImportRecalcTest(unittest.TestCase):
                     *[f"_Pred{k}{x}" for k in tasks.LINK_NUMBERS for x in ("UID", "Type", "Lag")],
                     "Constraint", "Constraint Date", "Deadline", "Actual Start", "Actual Finish",
                     "% Complete", "Resources", "Resource Names", "Story Points", "Notes", "Start",
-                    "Finish", "Late Finish", "Total Slack", "Work", "Status", "Critical"]
+                    "Finish", "Late Finish", "Total Slack", "Work", "Status", "Critical", "Owner"]
             blank = (None, "", 0)
             diffs = [(w["UID"], k, w[k], g[k]) for w, g in zip(want, got) for k in keys
                      if w[k] != g[k] and not (w[k] in blank and g[k] in blank)]

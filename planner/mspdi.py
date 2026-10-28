@@ -13,11 +13,14 @@ LibreOffice) after its last edit, which every normal save does.
 Field mapping, in one place for both:
   Tasks row            -> <Task>: UID, ID, Name, WBS, OutlineLevel, Start / Finish (forecast), Duration, Work,
                           Milestone, Summary, Manual, % Complete, actuals, constraint (all eight types),
-                          Deadline, Notes, links (Pred UID + type + lag), Baseline, Text1 = Sprint, Number1 = Points
+                          Deadline, Notes, Owner = Contact, links (Pred UID + type + lag), Baseline,
+                          Text1 = Sprint, Number1 = Points
   Settings             -> project name, manager, start, status date, calendar (WorkMon..WorkSun, HoursPerDay)
   HolidayTable         -> calendar exceptions (non-working days)
   ResourceTable        -> <Resource>: name, initials, group, type, max units, standard rate, email
   Tasks Resource+Units -> <Assignment>
+What MS Project XML can't hold (stage names, Issues, ignored links, focus %, the views) is listed by
+export_notes(), shown by the CLI and the page before the file is opened (B-1014); the workbook isn't changed.
 Elements are written in the order MS Project writes them (ORDER below); MS Project reports a file with elements out
 of order as corrupt.
 """
@@ -46,7 +49,7 @@ ORDER = {
                 "CalendarUID", "DefaultStartTime", "DefaultFinishTime", "MinutesPerDay", "MinutesPerWeek",
                 "DaysPerMonth", "DurationFormat", "WorkFormat", "HonorConstraints", "StatusDate", "ExtendedAttributes",
                 "Calendars", "Tasks", "Resources", "Assignments"],
-    "Task": ["UID", "ID", "Name", "Active", "Manual", "Type", "IsNull", "WBS", "OutlineNumber", "OutlineLevel",
+    "Task": ["UID", "ID", "Name", "Active", "Manual", "Type", "IsNull", "Contact", "WBS", "OutlineNumber", "OutlineLevel",
              "Start", "Finish", "Duration", "DurationFormat", "Work", "Milestone", "Summary", "PercentComplete",
              "ActualStart", "ActualFinish", "ActualCost", "ConstraintType", "ConstraintDate", "Deadline", "Notes",
              "PredecessorLink", "Baseline", "ExtendedAttribute"],
@@ -333,6 +336,8 @@ def to_mspdi(plan):
         _sub(e, "Name", t["Task Name"])
         _sub(e, "Type", 0)                      # fixed units, MS Project's default
         _sub(e, "IsNull", 0)
+        if _text(t.get("Owner")).strip():
+            _sub(e, "Contact", t["Owner"].strip())        # the phase owner (Roadmap): MS Project's Contact field
         _sub(e, "WBS", _text(t.get("WBS")))
         _sub(e, "OutlineNumber", _text(t.get("WBS")))
         _sub(e, "OutlineLevel", int(_num(t.get("Level"), 1)) or 1)
@@ -480,5 +485,39 @@ def _has_links(t):
 
 
 def convert(data):
-    """Workbook bytes (or a path) in, MSPDI XML text out: the one call the CLI and the browser page make."""
+    """Workbook bytes (or a path) in, MSPDI XML text out."""
     return to_mspdi(read_plan(data))
+
+
+def convert_with_notes(data):
+    """(MSPDI XML text, notes): what the CLI and the browser page call, so the notes come from the same read."""
+    plan = read_plan(data)
+    return to_mspdi(plan), export_notes(plan)
+
+
+def export_notes(plan):
+    """What the export simplified or left out, in words, so nobody is surprised in MS Project (B-1014)."""
+    tasks, notes = plan["tasks"], []
+    staged = sum(1 for t in tasks if _text(t.get("Stage")).strip() and not t.get("_IsSummary"))
+    if staged:
+        notes.append(f"Stage is exported as % Complete only ({staged} tasks): MS Project has no stage names.")
+    issues = [t for t in tasks if _text(t.get("Issues")).strip()]
+    if issues:
+        notes.append(f"{len(issues)} tasks have Issues on Tasks (e.g. ID {issues[0].get('ID')}: "
+                     f"{_text(issues[0]['Issues']).strip()}). MS Project gets the plan as calculated: fix them first.")
+    ignored = [t for t in tasks if _text(t.get("Link Check")).strip()]
+    if ignored:
+        notes.append(f"{len(ignored)} tasks have links or constraints the planner ignores (Link Check); "
+                     "they are left out.")
+    advisory = [_text(r.get("Resource Name")) for r in plan["resources"]
+                if isinstance(r.get("_Focus"), (int, float)) and r["_Focus"] == 0]
+    if advisory:
+        notes.append(f"Advisory roles ({', '.join(advisory)}) are ordinary resources in MS Project: Focus % and "
+                     "sprint capacity aren't part of MS Project XML.")
+    if not plan["rates"]:
+        notes.append("The Cost sheet isn't in this workbook: no rates or costs are exported.")
+    if any(_text(t.get("Sprint")).strip() or _num(t.get("Story Points"), None) for t in tasks):
+        notes.append("Sprint and Story Points are in the custom fields Text1 and Number1.")
+    notes.append("Not exported: Status, Roadmap, Log, History and the Resource Report (MS Project builds its own "
+                 "views from the schedule).")
+    return notes

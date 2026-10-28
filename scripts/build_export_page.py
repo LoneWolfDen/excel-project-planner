@@ -138,8 +138,8 @@ try:
         project = upgrade.read_planner(bytes(data.to_py()))[0]
         out = ["ok", base64.b64encode(xlsx).decode(), warnings, len(project.tasks), len(project.resources)]
     elif kind == "xlsx":
-        xml = mspdi.convert(bytes(data.to_py()))
-        out = ["ok", base64.b64encode(xml.encode("utf-8")).decode(), [], xml.count("<Task>"), xml.count("<Resource>")]
+        xml, notes = mspdi.convert_with_notes(bytes(data.to_py()))
+        out = ["ok", base64.b64encode(xml.encode("utf-8")).decode(), notes, xml.count("<Task>"), xml.count("<Resource>")]
     else:
         xlsx, warnings = mspdi_import.convert(bytes(data.to_py()), ptype)
         project, _ = mspdi_import.read_project(bytes(data.to_py()))

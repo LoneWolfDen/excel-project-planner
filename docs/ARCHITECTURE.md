@@ -390,6 +390,10 @@ exactly as before; `test_release.ClassicUnchangedTest` builds both in one proces
   start) and `_DepKey`; Status' TopDependencies is a ranked table over it.
 - **Narrative** (`status.narrative`): one concatenation of names; the parts that read a module this build leaves out
   are dropped (`core.missing`).
+- **Template 1.2** (`--release 1.2`, `core.v12()`): the look is `planner/theme.py`, a last pass over the built
+  workbook (a colour table for fonts, fills, borders and conditional formats; fonts; tabs; gridlines), so no builder
+  knows about colours twice. It runs after protection, which still finds inputs by the classic blue. The upgrade
+  recognises input headers in either look (`upgrade.INPUT_FILLS`).
 - **Microsoft 365 edition** (`--release m365`, `core.m365()`, `planner/m365.py`): template 1.1 where `_Days`, the
   Log's Gap, the finish variance and a working-day check call named LAMBDAs, and Check lists FILTER the tasks. A
   LAMBDA is stored as Excel stores it: `_xlfn.LAMBDA(_xlpm.x,_xlfn.LET(_xlpm.t,...))`, and called by its name; the

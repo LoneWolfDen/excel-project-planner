@@ -117,6 +117,17 @@ Template 1.1 is its own workbook too: `--release 1.1` builds `release-1.1/` (Tem
 |---|---|---|---|
 | F-1110 | Microsoft 365 edition: spilled lists and a searchable pick list | P3 | Real spilled arrays (Excel's dynamic-array metadata, which openpyxl can't write) instead of fixed-size array formulas; a Pred dropdown filtered to the tasks above the row; CI recalculation once LibreOffice (24.8+) or another engine can evaluate LAMBDA |
 
+## Template 1.2: design, UX and the rest of the backlog
+
+Built with `--release 1.2` into `release-1.2/` (TemplateVersion 1.2, PlannerVersion 2.2) from the 1.1 code; 1.0, 1.1
+and the Microsoft 365 edition don't change. Everything new is behind `core.v12()`. Delivered in four PRs: design and
+UX, the UX backlog items, the engine items, the add-ons (and the Microsoft 365 edition's F-1110).
+
+| ID | Item | Pri | Done as | Acceptance | Perf |
+|---|---|---|---|---|---|
+| D-1201 | ✅ Fluent design | P1 | `planner/theme.py`: one final pass remaps every colour and font to a Fluent palette (brand blue #0F6CBD inputs, dark brand #0F548C input headers, neutral #424242 formula headers, #F5F5F5 formula cells, Fluent red / amber / green with AA-contrast text), Segoe UI, banded tables, tab colours by role (plan blue, reports teal, logs orange, settings grey), no gridlines and 100% zoom on report pages, the Start sheet as a landing page (large title, tinted step rows, prints one page wide). Meanings unchanged: blue = type, grey = calculated | `test_release_12.DesignTest` (no classic colour or font left; inputs still unlocked) | none (styles only) |
+| D-1202 | ✅ Pred dropdown lists only the tasks above | P2 | The Pred1-4 validation list is `OFFSET` over the pick list, as long as the number of detail tasks above the row (`COUNTIF` of `_IsLeaf` from the header down): the only tasks a link may use. Validation is evaluated when the dropdown opens, so it adds nothing to recalculation | `test_pick_list_shows_only_tasks_above` | none |
+
 ## Done in v1.7 (was "Next up after v1.6")
 
 Most of the original top 10 is done. The planner now does nearly everything; the next step is to make it ask for less.

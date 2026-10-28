@@ -45,6 +45,12 @@ jobs:
           python3 scripts/perf_check.py dist/Release11_Planner.xlsx --profile sample --timing
           python3 scripts/perf_check.py dist/Release11_Stress_1000_tasks.xlsx --profile stress --timing
 
+      - name: Performance check (template 1.2)
+        run: |
+          python3 scripts/build_planner.py dist/Release12_Planner.xlsx --release 1.2 --baselined --recalc
+          python3 scripts/perf_check.py dist/Release12_Planner.xlsx --profile sample --timing
+          python3 scripts/release_check.py --edition 1.2
+
       - name: Structure check (Microsoft 365 edition; LibreOffice can't time LAMBDA / FILTER)
         run: |
           python3 scripts/build_planner.py dist/M365_Planner.xlsx --release m365 --baselined

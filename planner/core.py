@@ -183,7 +183,9 @@ RELEASE_MODULES = {"check": "Check", "snapshot": "TakeSnapshot"}
 RELEASE = {"on": False, "version": None}
 # template versions of the release line; each later one adds to the one before. "m365" is template 1.1 rebuilt with
 # Microsoft 365 functions (LAMBDA, LET, FILTER): its own folder, so a problem there never touches 1.1 (F-1108)
-EDITIONS = ("1.0", "1.1", "m365")
+EDITIONS = ("1.0", "1.1", "m365", "1.2")
+# each edition's feature level: 0 = Release 1.0, 1 = the v1.1 features, 2 = template 1.2 (design, UX, engine items)
+LEVELS = {"1.0": 0, "1.1": 1, "m365": 1, "1.2": 2}
 _MODULE_NAMES.update({"check": r"\bchk_", "snapshot": r"\bsnap_"})
 
 
@@ -211,7 +213,12 @@ def release():
 
 def v11():
     """True for template 1.1 and later: the v1.1 features (docs/BACKLOG.md F-1101 - F-1107)."""
-    return release() and EDITIONS.index(RELEASE["version"]) >= EDITIONS.index("1.1")
+    return release() and LEVELS[RELEASE["version"]] >= 1
+
+
+def v12():
+    """True for template 1.2: the Fluent design, the UX items and the engine items (docs/BACKLOG.md v1.2)."""
+    return release() and LEVELS[RELEASE["version"]] >= 2
 
 
 def m365():

@@ -84,8 +84,8 @@ class ProjectData:
 VERSION = "1.8"          # PlannerVersion in every workbook: planner/upgrade.py reads it to know what to convert
 # PlannerVersion of each release-line edition (the code that builds it; planner/upgrade.py reads it), by its
 # TemplateVersion (the release users see: Start, every printed footer)
-PLANNER_VERSIONS = {"1.0": "2.0", "1.1": "2.1", "m365": "2.1-m365"}
-TEMPLATE_LABELS = {"1.0": "1.0", "1.1": "1.1", "m365": "1.1 M365"}      # TemplateVersion, as users see it
+PLANNER_VERSIONS = {"1.0": "2.0", "1.1": "2.1", "m365": "2.1-m365", "1.2": "2.2"}
+TEMPLATE_LABELS = {"1.0": "1.0", "1.1": "1.1", "m365": "1.1 M365", "1.2": "1.2"}  # TemplateVersion, as users see it
 RELEASE_VERSION, TEMPLATE_VERSION = PLANNER_VERSIONS["1.0"], "1.0"
 
 
@@ -172,7 +172,10 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
     name(wb, "PlannerModules", '"' + ",".join(m for m in all_modules() if has(m)) + '"')   # an upgrade keeps the same set
     wb._sheets = [wb[n] for n in ORDER if n in wb.sheetnames]
     for ws in wb.worksheets:
-        ws.sheet_properties.tabColor = TAB_COLOURS[ws.title]
+        ws.sheet_properties.tabColor = TAB_COLOURS.get(ws.title, "595959")
+    if release_edition == "1.2":                      # the Fluent look: one pass after everything is built
+        from .theme import apply
+        apply(wb)
     wb.active = wb.sheetnames.index("Tasks")
     wb.calculation.fullCalcOnLoad = True
     wb.calculation.calcMode = "auto"                   # B-1001: views follow every edit

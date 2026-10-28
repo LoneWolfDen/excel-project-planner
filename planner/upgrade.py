@@ -32,6 +32,7 @@ LOGS = {"RAIDLog": (None, {}),
 # tables the builder fills from ProjectData; everything else with inputs is copied by header
 BUILT = {"Tasks", "HolidayTable", "LeaveTable", "AssignmentTable"} | set(LOGS)
 INPUT_FILL = HEADER_FILLS["in"].start_color.rgb[-6:]
+INPUT_FILLS = {INPUT_FILL, "0F548C", "0F6CBD"}     # input headers in the classic look and template 1.2's
 MONTH = re.compile(r"^[A-Z][a-z]{2}-\d\d$")          # a leave month header: Nov-26
 
 
@@ -236,7 +237,7 @@ def copy_inputs(wb, copies, warnings):
         c1, r1, c2, r2 = range_boundaries(table.ref)
         for i, h in enumerate(head):
             fill = (ws.cell(r1, c1 + i).fill.start_color.rgb or "")[-6:]
-            if h not in old_head or fill != INPUT_FILL:
+            if h not in old_head or fill.upper() not in INPUT_FILLS:
                 continue
             values = [row[old_head.index(h)] for row in old_rows]
             if name.startswith("List"):

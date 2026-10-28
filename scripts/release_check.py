@@ -22,8 +22,8 @@ import openpyxl  # noqa: E402
 
 import perf_check  # noqa: E402
 
-FOLDERS = {"1.0": "release-1.0", "1.1": "release-1.1", "m365": "release-1.1-m365"}
-LABELS = {"1.0": "1.0", "1.1": "1.1", "m365": "1.1 M365"}       # TemplateVersion and the README heading
+FOLDERS = {"1.0": "release-1.0", "1.1": "release-1.1", "m365": "release-1.1-m365", "1.2": "release-1.2"}
+LABELS = {"1.0": "1.0", "1.1": "1.1", "m365": "1.1 M365", "1.2": "1.2"}       # TemplateVersion and the README heading
 
 
 def files(edition):

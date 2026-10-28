@@ -121,8 +121,9 @@ class EditionsTest(unittest.TestCase):
         for edition in ("1.1", "m365"):
             wb = make_workbook(sizes=small(), release_edition=edition)
             self.assertEqual(wb["Tasks"]["A6"].font.name, "Arial", edition)
-            self.assertNotIn("OFFSET(", next(dv.formula1 for dv in wb["Tasks"].data_validations.dataValidation
-                                             if dv.formula1 and "PickList" in dv.formula1), edition)
+        # 1.1 keeps the whole pick list; the Microsoft 365 edition lists the tasks above too (F-1110, test_m365)
+        wb = make_workbook(sizes=small(), release_edition="1.1")
+        self.assertIn("=tsk_PickList", [dv.formula1 for dv in wb["Tasks"].data_validations.dataValidation])
 
     def test_modules(self):
         for combo in ((), ("check",), ("log",), ("check", "log", "history", "snapshot")):

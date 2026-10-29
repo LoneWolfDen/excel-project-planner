@@ -97,7 +97,7 @@ class DesignTest(unittest.TestCase):
         col = head(ws)
         rule = next(dv for dv in ws.data_validations.dataValidation
                     if openpyxl.utils.cell.range_boundaries(str(dv.sqref).split()[0])[0] == col["Pred1"])
-        self.assertTrue(rule.formula1.startswith("=OFFSET("), rule.formula1)
+        self.assertTrue(rule.formula1.startswith("=INDEX(tsk_PickList,1):INDEX("), rule.formula1)
         self.assertIn("COUNTIF(", rule.formula1)
 
 
@@ -121,9 +121,6 @@ class EditionsTest(unittest.TestCase):
         for edition in ("1.1", "m365"):
             wb = make_workbook(sizes=small(), release_edition=edition)
             self.assertEqual(wb["Tasks"]["A6"].font.name, "Arial", edition)
-        # 1.1 keeps the whole pick list; the Microsoft 365 edition lists the tasks above too (F-1110, test_m365)
-        wb = make_workbook(sizes=small(), release_edition="1.1")
-        self.assertIn("=tsk_PickList", [dv.formula1 for dv in wb["Tasks"].data_validations.dataValidation])
 
     def test_modules(self):
         for combo in ((), ("check",), ("log",), ("check", "log", "history", "snapshot")):

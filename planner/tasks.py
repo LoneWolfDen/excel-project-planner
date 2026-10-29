@@ -1224,15 +1224,14 @@ def _validation_and_formatting(ws, L, n_rows):
     dv(DataValidation(allow_blank=True), "Name", "Notes", "PredIn", "Owner")  # prompts only: any text
     if release():
         # the pickers: a list to pick from (typing a UID or a name not on the list is allowed; Issues checks it)
-        if v12() or m365():                            # (F-1110 in the Microsoft 365 edition)
-            # only the detail tasks listed above this row (the ones a link may point at): the first n entries of the
-            # pick list, n counted from the header down to the row above. Validation may use A1 and OFFSET; Excel
-            # evaluates it when the dropdown opens, so it costs nothing on recalculation.
-            pick, leaf = L["Pick"], L["IsLeaf"]
-            above = f"OFFSET(${pick}${first},0,0,MAX(1,COUNTIF(${leaf}${first - 1}:${leaf}{first - 1},1)))"
-            dv(DataValidation(type="list", formula1=f"={above}", showErrorMessage=False), *each("Pick"))
-        else:
-            dv(DataValidation(type="list", formula1="=tsk_PickList", showErrorMessage=False), *each("Pick"))
+        # only the detail tasks listed above this row (the ones a link may point at): the first n entries of the pick
+        # list, n counted from the header down to the row above. INDEX(...):INDEX(...) is a range, as a list needs,
+        # without OFFSET; validation may use A1 references, and Excel evaluates it only when the dropdown opens, so
+        # it costs nothing on recalculation. Every release edition (1.0 as a fix: a list of 200 tasks on each of
+        # 800 pickers was slow to open, and most of it was tasks a link may not use).
+        leaf = L["IsLeaf"]
+        above = f"INDEX(tsk_PickList,1):INDEX(tsk_PickList,MAX(1,COUNTIF(${leaf}${first - 1}:${leaf}{first - 1},1)))"
+        dv(DataValidation(type="list", formula1=f"={above}", showErrorMessage=False), *each("Pick"))
         dv(DataValidation(type="list", formula1="=L_DepType"), *each("PickT"))
         if v12():                                      # text too: 50% or 3ed (B-102); Issues flags a bad one
             dv(DataValidation(allow_blank=True), *each("PickL"))

@@ -104,7 +104,7 @@ class StructureTest(unittest.TestCase):
         col = head(ws)
         rule = next(dv for dv in ws.data_validations.dataValidation
                     if openpyxl.utils.cell.range_boundaries(str(dv.sqref).split()[0])[0] == col["Pred1"])
-        self.assertTrue(rule.formula1.startswith("=OFFSET("), rule.formula1)
+        self.assertTrue(rule.formula1.startswith("=INDEX(tsk_PickList,1):INDEX("), rule.formula1)
 
     def test_formula_rules(self):
         r = self.report

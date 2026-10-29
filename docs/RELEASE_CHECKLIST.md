@@ -5,7 +5,7 @@ marked **script** and prints PASS / FAIL; `--recalc` also recalculates the sampl
 Items marked **test** are covered by `python -m unittest discover -s tests -v` (the test named). **Manual** items
 are done in Excel with [TESTING_IN_EXCEL.md](TESTING_IN_EXCEL.md) and [TESTING_ON_IPHONE.md](TESTING_ON_IPHONE.md).
 
-Last run: 28-Oct-2026, on the commit that added Release 1.0 (results in the PR). Template 1.1 (`release-1.1/`): the
+Last run: 29-Oct-2026, on the ready-to-use fixes (R1-17 – R1-22 in BACKLOG.md; results in the PR). Template 1.1 (`release-1.1/`): the
 same list with `python scripts/release_check.py --edition 1.1` and `tests/test_release_11.py`, plus a manual Sandbox
 check in Excel (Settings > Sandbox = Yes: Status shows the red banner; set it back to No).
 
@@ -27,6 +27,7 @@ check in Excel (Settings > Sandbox = Yes: Status shows the red banner; set it ba
 | ☑ | No OFFSET outside the 2,200 scheduling helper cells; no INDIRECT, TODAY, NOW | script; test: `StructureTest.test_formula_rules` |
 | ☑ | Excel 2019 functions only (MINIFS, MAXIFS, TEXTJOIN; no LET, LAMBDA, FILTER, XLOOKUP) | test: `StructureTest.test_functions_need_at_most_excel_2019` |
 | ☑ | No reference to a missing sheet, table or name, Simple and every module mix included | script; test: `ModulesTest` |
+| ☑ | Simple names none of Agile, Log, History, Resource Report, Cost, Check, TakeSnapshot; 1.0 names no Board or Backlog | script |
 | ☑ | The sample schedules the same as the classic sample and as the Python reference scheduler | test: `CommittedSampleTest` |
 
 ## Inputs and rules
@@ -36,6 +37,8 @@ check in Excel (Settings > Sandbox = Yes: Status shows the red banner; set it ba
 | ☑ | Every data validation has cells and refers only to names that exist | script |
 | ☑ | Duration takes 1, 1d, 1w, 0 and refuses "2days"; dates must be on or after the project start; a duplicate UID is refused | test: `StructureTest.test_validation`, `EditTest` |
 | ☑ | Every picker shows an input message | test: `StructureTest.test_validation` |
+| ☑ | Pred dropdowns list only the detail tasks above the row (an INDEX range, no OFFSET); Res dropdowns list Resources | script; test: `StructureTest.test_validation` |
+| ☑ | Check counts a duplicate UID, a link to a task below and leave typed in both the day grid and a month cell; a clean plan reads "All clear" | test: `EditTest.test_check_lists_each_problem`, `BlankCheckTest` |
 | ☑ | Conditional formatting: at most 120 rules (v1.8: 121), none per row | script; test: `StructureTest.test_formula_rules` |
 
 ## Protection, printing, files
@@ -43,9 +46,9 @@ check in Excel (Settings > Sandbox = Yes: Status shows the red banner; set it ba
 | | Item | How |
 |---|---|---|
 | ☑ | Start, Status, Roadmap, Resource Report, Agile, Log, Cost, Check and TakeSnapshot protected without a password; their blue cells unlocked | script; test: `StructureTest.test_protection` |
-| ☑ | Tasks, Resources, Settings and History unprotected (rows are added there) with blue cells unlocked and formulas locked | script |
+| ☑ | Tasks, Resources, Settings and History unprotected (rows are added there); on every sheet blue cells unlocked and formulas locked | script (every cell) |
 | ☐ | Protection works in Excel: a grey cell refuses typing, a blue one takes it, Review > Unprotect Sheet needs no password | manual: TESTING_IN_EXCEL.md section 4 |
-| ☑ | Status, Roadmap and Resource Report print on one page with the template version in the footer | test: `StructureTest.test_printing`; manual: Print preview |
+| ☑ | Status, Roadmap and Resource Report print on one page with the template version in the footer, and repeat their title rows (project name, status date) | script; test: `StructureTest.test_printing`; manual: Print preview |
 | ☑ | Each file under 5 MB, no external links | script |
 | ☑ | TemplateVersion = 1.0 in every workbook | script |
 

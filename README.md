@@ -15,7 +15,7 @@ A separate, frozen edition for first-time project managers, in [`release-1.0/`](
 sheets). The workbooks at the repository root stay as they are. Template version 1.0 (shown on Start and in the printed
 footers). What it adds, all in Excel alone (Excel 2019 functions, no macros):
 
-- **Pickers** on Tasks: Pred1-4 (a dropdown of the tasks, with Type and Lag) and Res1-4 (with Units). The typed
+- **Pickers** on Tasks: Pred1-4 (a dropdown of the tasks above the row, with Type and Lag) and Res1-4 (with Units). The typed
   Predecessors / Resources cells still work while the pickers are blank: pasted and imported plans land there.
 - **Duration** as `3`, `3d` or `2w`; "2days" is refused. Dates must be on or after the project start. A typed UID must
   be new.
@@ -152,9 +152,10 @@ depend on each other both ways it says which links to change and writes nothing.
 - Insert tasks with right-click → Insert → Table Rows Above (formulas fill in), then give the row `NextFreeUID`.
 - **A predecessor must be a detail task listed above its successor.** It keeps the schedule and the critical path consistent. Links that break it (or point to the task itself, an empty row or a missing UID) are ignored and explained in Link Check. Plans imported from MS Project may need reordering.
 - The status date is a typed date (Ctrl+; for today), not `TODAY()`, so it doesn't force a full recalculation after every edit. Update it when you report progress.
-- **Release 1.0:** the Pred dropdown lists every detail task (Excel 2019 has no searchable or filtered dropdown):
-  picking one below the task is allowed and explained in Link Check. Leave for a person and month is read from the
-  first matching row of the day grid; don't enter the same day in the grid and in the month cell. Tasks, Resources,
+- **Release 1.0:** the Pred dropdown lists the detail tasks above the row (Excel 2019 has no searchable dropdown);
+  typing a UID below the task is allowed and explained in Link Check. Leave for a person and month is read from the
+  first matching row of the day grid and adds to the month cell: a day typed in both shows in the grid's Also Typed
+  Above column and on the Check sheet, so clear it in one place. Tasks, Resources,
   Settings and History are not protected, because Excel can't add table rows on a protected sheet (Review > Protect
   Sheet locks their formulas when you want it). Printed headers can't show a cell's value, so the project name and
   status date print from each sheet's title rows. The converter page needs the internet once, to load Pyodide.

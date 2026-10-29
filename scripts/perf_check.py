@@ -34,6 +34,13 @@ import openpyxl
 from openpyxl.formula import Tokenizer
 
 ROOT = Path(__file__).resolve().parents[1]
+def lo_profile():
+    """-env:UserInstallation for a parallel worker's own LibreOffice profile (PLANNER_LO_PROFILE; see
+    planner.build.lo_profile, which this mirrors so the script needs no planner import)."""
+    folder = os.environ.get("PLANNER_LO_PROFILE")
+    return [f"-env:UserInstallation={Path(folder).resolve().as_uri()}"] if folder else []
+
+
 SINGLE_ROW_RANGES_MAX = 20      # per sheet: more looks like a rule written for each row
 VOLATILE = ("OFFSET", "INDIRECT", "TODAY", "NOW", "RAND", "RANDBETWEEN", "CELL", "INFO")
 A1 = re.compile(r"^(?:'?[^!']+'?!)?\$?(?:[A-Z]{1,3}\$?\d+(?::\$?[A-Z]{1,3}\$?\d+)?|[A-Z]{1,3}:\$?[A-Z]{1,3}|\d+:\$?\d+)$")
@@ -209,8 +216,9 @@ def time_recalc(path, runs=3):
              "edit_last_task_s": f"{head['Duration']}{named[-1] if named else header_row + 2}",
              "edit_note_s": f"{head['Notes']}{header_row + 2}"}
 
-    port = 2084
-    proc = subprocess.Popen(["soffice", "--headless", "--invisible", "--norestore", "--nologo",
+    base = os.environ.get("PLANNER_LO_PORT")                          # parallel runs: beside lo_session's ports
+    port = int(base) + 99 if base else 2084
+    proc = subprocess.Popen(["soffice", *lo_profile(), "--headless", "--invisible", "--norestore", "--nologo",
                              f"--accept=socket,host=localhost,port={port};urp;"],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     out = {}

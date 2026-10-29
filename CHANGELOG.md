@@ -5,6 +5,13 @@ The workbooks carry their version: **TemplateVersion** (what users see, on Start
 upgrade is a choice (`python scripts/upgrade_planner.py Old.xlsx New.xlsx --release <version>`). Details and the
 reasons behind each item are in [docs/BACKLOG.md](docs/BACKLOG.md).
 
+## Build and release tooling (no workbook content changes)
+- **Reproducible builds:** the same build gives the same bytes (fixed chart axis ids, file dates and zip
+  timestamps). The committed workbooks were rewritten once this way; their cells are unchanged.
+- **Automated releases:** a `v*` tag publishes its edition's workbooks, checksums and notes as a GitHub Release.
+- **Faster CI:** the tests run in three parallel shards, each running two classes at a time; builds, performance and
+  the browser test run as their own jobs.
+
 ## Template 1.2 (`release-1.2/`, PlannerVersion 2.2)
 - **Design:** a Fluent look (Microsoft 365 blues and greys, Segoe UI, clearer red / amber / green, banded tables),
   tab colours by role, report pages without gridlines, a landing-page Start sheet.

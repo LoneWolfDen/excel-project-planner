@@ -4,8 +4,31 @@ on:
   push:
   pull_request:
 
+# Three jobs run side by side (B-tooling): the test suite in three balanced shards, the builds with their
+# performance and release checks, and the browser test of the converter page. Each shard runs two test classes at
+# a time, each with its own LibreOffice profile (scripts/run_tests.py).
 jobs:
   test:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+
+      # System Python, because the timing check drives LibreOffice through python3-uno.
+      - name: Install LibreOffice and Python packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libreoffice-calc python3-uno python3-pip
+          python3 -m pip install --break-system-packages -r requirements-dev.txt
+
+
+      - name: Run tests (shard ${{ matrix.shard }} of 3)
+        run: python3 scripts/run_tests.py --shard ${{ matrix.shard }}/3 -j 2
+
+  build:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -17,8 +40,6 @@ jobs:
           sudo apt-get install -y --no-install-recommends libreoffice-calc python3-uno python3-pip
           python3 -m pip install --break-system-packages -r requirements-dev.txt
 
-      - name: Run tests
-        run: python3 -m unittest discover -s tests -v
 
       - name: Build workbooks
         run: |
@@ -63,15 +84,6 @@ jobs:
           python3 scripts/release_check.py
           python3 scripts/release_check.py --edition 1.1
 
-      # docs/export.html in headless Chromium, with Pyodide from its GitHub release instead of the CDN
-      - name: Browser export page
-        run: |
-          npm install --no-save playwright@1.63.0
-          npx playwright install --with-deps chromium
-          curl -sSL -o /tmp/pyodide.tar.bz2 https://github.com/pyodide/pyodide/releases/download/0.26.4/pyodide-core-0.26.4.tar.bz2
-          tar xjf /tmp/pyodide.tar.bz2 -C /tmp
-          PYODIDE_DIR=/tmp/pyodide python3 -m unittest tests.test_mspdi.ExportPageTest -v
-
       - name: Export the sample to MS Project XML
         run: python3 scripts/export_mspdi.py dist/Project_Planner.xlsx dist/Project_Planner.xml
 
@@ -82,3 +94,20 @@ jobs:
             dist/Project_Planner.xlsx
             dist/Project_Planner_Blank.xlsx
             dist/Project_Planner.xml
+
+  browser:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python packages
+        run: python3 -m pip install --break-system-packages -r requirements-dev.txt
+
+      # docs/export.html in headless Chromium, with Pyodide from its GitHub release instead of the CDN
+      - name: Browser export page
+        run: |
+          npm install --no-save playwright@1.63.0
+          npx playwright install --with-deps chromium
+          curl -sSL -o /tmp/pyodide.tar.bz2 https://github.com/pyodide/pyodide/releases/download/0.26.4/pyodide-core-0.26.4.tar.bz2
+          tar xjf /tmp/pyodide.tar.bz2 -C /tmp
+          PYODIDE_DIR=/tmp/pyodide python3 -m unittest tests.test_mspdi.ExportPageTest -v

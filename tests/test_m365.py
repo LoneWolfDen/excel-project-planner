@@ -87,6 +87,25 @@ class StructureTest(unittest.TestCase):
         self.assertNotIn("_OverdueKey", head(self.wb["Log"], 4))
         self.assertFalse(ws.tables)                                    # no ranked tables left
 
+    def test_lists_spill(self):                                   # F-1110
+        import zipfile
+        with zipfile.ZipFile(self.path) as z:
+            self.assertIn("xl/metadata.xml", z.namelist())
+            self.assertIn("XLDAPR", z.read("xl/metadata.xml").decode())
+            self.assertIn("/xl/metadata.xml", z.read("[Content_Types].xml").decode())
+            self.assertIn("relationships/sheetMetadata", z.read("xl/_rels/workbook.xml.rels").decode())
+            sheets = [z.read(n).decode() for n in z.namelist() if n.startswith("xl/worksheets/sheet")]
+        spilled = [m for x in sheets for m in re.findall(r'<c r="[A-Z]+\d+" cm="1"[^>]*><f t="array" ref="([A-Z]+\d+)">'
+                                                         r'IFERROR\(_xlfn\._xlws\.FILTER', x)]
+        self.assertEqual(len(spilled), 3)                     # one cell each: Excel spills them
+
+    def test_pick_list_shows_only_tasks_above(self):              # F-1110
+        ws = self.wb["Tasks"]
+        col = head(ws)
+        rule = next(dv for dv in ws.data_validations.dataValidation
+                    if openpyxl.utils.cell.range_boundaries(str(dv.sqref).split()[0])[0] == col["Pred1"])
+        self.assertTrue(rule.formula1.startswith("=OFFSET("), rule.formula1)
+
     def test_formula_rules(self):
         r = self.report
         self.assertEqual((r["a1_references"], r["missing_references"], r["excel_limit_problems"]), ([], [], []))

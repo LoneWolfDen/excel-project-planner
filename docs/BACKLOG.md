@@ -115,7 +115,7 @@ Template 1.1 is its own workbook too: `--release 1.1` builds `release-1.1/` (Tem
 
 | ID | Item | Pri | Notes |
 |---|---|---|---|
-| F-1110 | Microsoft 365 edition: spilled lists and a searchable pick list | P3 | Real spilled arrays (Excel's dynamic-array metadata, which openpyxl can't write) instead of fixed-size array formulas; a Pred dropdown filtered to the tasks above the row; CI recalculation once LibreOffice (24.8+) or another engine can evaluate LAMBDA |
+| F-1110b | Microsoft 365 edition: CI recalculation | P3 | Once LibreOffice (24.8+) or another engine can evaluate LAMBDA and FILTER (the spilled lists and the pick list are done in template 1.2's PR: F-1110 below) |
 
 ## Template 1.2: design, UX and the rest of the backlog
 
@@ -143,6 +143,9 @@ UX, the UX backlog items, the engine items, the add-ons (and the Microsoft 365 e
 | B-202 | ✅ Remaining duration, actual work, % work complete | P2 | Tasks > ACTUALS: Remaining Duration on a started task sets its finish (from the status date) and progress; Actual Work sets work done and actual cost; % Work Done = actual work / work; Issues explains a value it can't use | `EngineTest.test_remaining_duration_and_actual_work` | +2 columns |
 | B-201 | ✅ Baselines 2 and 3 | P2 | Tasks > BASELINE: Baseline 2 / 3 Start and Finish; Settings > CompareBaseline (1-3) picks the one Planned Start / Finish, the variances and the Gantt use; TakeSnapshot links copy the current baseline's dates into 2 or 3 | `EngineTest.test_baseline_2`, `CompareBaselineTest` | none (inputs; PS / PF use a CHOOSE) |
 | B-302 | ✅ Cost per use and fixed costs (part) | P2 | Cost sheet: RateCard Per Use (once per task a person is on, accrued at the start) and a FixedCosts table (UID, amount, description; accrued with progress), in each task's cost, budget and actual cost. Overtime and material / cost resources stay in the backlog | `EngineTest.test_costs` | +2 helper columns on TaskCost (`SUMIFS`) |
+| B-704 | ✅ Optional macros | P2 | `addons/vba/PlannerMacros.bas` for a copy saved as `.xlsm`: SetBaseline, KeepBaseline (2 / 3), RecordSnapshot, InsertTask (next free UID, same level), Indent / Outdent, Expand / Collapse. Found by defined name and table, never by address; each is a documented manual step | `tests/test_addons.py` (structure: names, tables, columns exist; no cell addresses); by hand, TESTING_IN_EXCEL.md section 9 | none (not in the .xlsx) |
+| B-705 | ✅ Office Scripts | P3 | `addons/office-scripts/*.ts`: the same actions for Excel for the web | `tests/test_addons.py`; by hand | none |
+| F-1110 | ✅ Microsoft 365: spilled lists, pick list above | P3 | The Check lists are one formula each that spills: `m365.spill` adds Excel's dynamic-array metadata (`xl/metadata.xml`, `cm="1"`) after openpyxl saves. The Pred dropdown lists only the tasks above, as in 1.2 | `test_m365.test_lists_spill`, `test_pick_list_shows_only_tasks_above`; by hand, TESTING_IN_EXCEL.md section 8 | none |
 
 ## Done in v1.7 (was "Next up after v1.6")
 

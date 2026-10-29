@@ -83,7 +83,22 @@ calculate. Every value should equal the 1.1 sample's (`release-1.1/Project_Plann
 - [ ] Log: Dependency 13's Gap (days) is -2; Dependency 5's is 1.
 - [ ] Check: "9 to fix before you report"; counts 4 (Issues), 0, 0, 0, 3 (over-allocated), 1 (overdue), 0, 0, 1
       (late dependency). The lists show tasks 13, 19, 23, 26 with issues; 13, 23, 26 over-allocated; Log item 3
-      overdue. The rows under each list that FILTER doesn't fill are blank, not `#N/A`.
+      overdue. Each list is one formula that spills (a blue border when a result is selected; no curly braces in
+      the formula bar), not `#SPILL!`; the rows below it are blank, not `#N/A`.
+- [ ] Tasks > Pred1 on Go-live (UID 25): the dropdown lists only the tasks above it.
 - [ ] Type a Saturday in an Actual Start: Issues says "Actual Start is not a working day". Undo.
 - [ ] Settings > Sandbox = Yes: the red banner on Status, Core API endpoints (UID 13) gets 7 days. Set No.
 - [ ] Save, then export it with docs/export.html (the converter reads the values Excel saved).
+
+## 9. Optional add-ons (`addons/`)
+
+Only for teams that use them (addons/README.md). In a copy saved as `.xlsm` with `vba/PlannerMacros.bas` imported,
+or in Excel for the web with the scripts in `office-scripts/`, on the template 1.2 sample:
+
+- [ ] SetBaseline / setBaseline.ts: the Baseline columns equal BL Source (as TakeSnapshot's steps give); TakeBaseline
+      is No.
+- [ ] KeepBaseline / keepBaseline.ts (2): Baseline 2 Start / Finish equal Baseline Start / Finish.
+- [ ] RecordSnapshot / recordSnapshot.ts: one new History row, values not formulas, equal to the snapshot row.
+- [ ] InsertTask / insertTask.ts on Core API endpoints: a row below it at level 3 with UID = the old NextFreeUID; the
+      formula columns filled; no `#REF!`.
+- [ ] IndentTask / OutdentTask / indentTask.ts: Level changes by one; the WBS and the outline follow.

@@ -1224,7 +1224,7 @@ def _validation_and_formatting(ws, L, n_rows):
     dv(DataValidation(allow_blank=True), "Name", "Notes", "PredIn", "Owner")  # prompts only: any text
     if release():
         # the pickers: a list to pick from (typing a UID or a name not on the list is allowed; Issues checks it)
-        if v12():
+        if v12() or m365():                            # (F-1110 in the Microsoft 365 edition)
             # only the detail tasks listed above this row (the ones a link may point at): the first n entries of the
             # pick list, n counted from the header down to the row above. Validation may use A1 and OFFSET; Excel
             # evaluates it when the dropdown opens, so it costs nothing on recalculation.

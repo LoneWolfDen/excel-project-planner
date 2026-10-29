@@ -5,7 +5,10 @@ marked **script** and prints PASS / FAIL; `--recalc` also recalculates the sampl
 Items marked **test** are covered by `python -m unittest discover -s tests -v` (the test named). **Manual** items
 are done in Excel with [TESTING_IN_EXCEL.md](TESTING_IN_EXCEL.md) and [TESTING_ON_IPHONE.md](TESTING_ON_IPHONE.md).
 
-Last run: 29-Oct-2026, on the ready-to-use fixes (R1-17 – R1-22 in BACKLOG.md; results in the PR). Template 1.1 (`release-1.1/`): the
+Last run: 29-Oct-2026 on `main` at `753ee65`, tagged **`v1.0` (production ready; `release-1.0/` frozen)**: the three
+Release 1.0 builds with `--recalc` matched the committed workbooks cell for cell (only LibreOffice's chart axis ids
+and file timestamps differ between saves), `release_check.py` passed for 1.0 (22 of 22), 1.1 (22 of 22) and 1.2
+(20 of 20), and `unittest discover` ran 283 tests OK (1 skipped). Template 1.1 (`release-1.1/`): the
 same list with `python scripts/release_check.py --edition 1.1` and `tests/test_release_11.py`, plus a manual Sandbox
 check in Excel (Settings > Sandbox = Yes: Status shows the red banner; set it back to No).
 

@@ -35,7 +35,7 @@ flowchart LR
 | **v2.0 Agile & reporting** | Sprint planning and status reporting | B-402, B-403, B-404, B-505, B-601, B-602 |
 | **v1.7 Simpler to use** | A first plan in minutes; a weekly update on three sheets ([review](SIMPLIFICATION_REVIEW.md)) | B-901 – B-918 (E9) |
 | **v1.8 Real-world fit** | What a PM using it in Excel asked for: one plan sheet, visible slip, real sprint capacity and cost ([design](REAL_WORLD_FIT.md)) | B-1001 – B-1020 (E10), then B-913 / B-914 |
-| **Release 1.0 (final freeze)** | A first-time PM can't break it and reports in 10 minutes: a separate workbook in `release-1.0/` | R1-01 – R1-22 ✅ DONE (v1.0 ready to use); the rest is v1.1 Future |
+| **Release 1.0 (final freeze)** | A first-time PM can't break it and reports in 10 minutes: a separate workbook in `release-1.0/` | R1-01 – R1-22 ✅ DONE; tagged `v1.0` (production ready, frozen); the rest is v1.1 Future |
 | **Later** | | everything else |
 
 ## Next up (v1.8)

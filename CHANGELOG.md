@@ -5,6 +5,11 @@ The workbooks carry their version: **TemplateVersion** (what users see, on Start
 upgrade is a choice (`python scripts/upgrade_planner.py Old.xlsx New.xlsx --release <version>`). Details and the
 reasons behind each item are in [docs/BACKLOG.md](docs/BACKLOG.md).
 
+## Template 1.3 (`release-1.3/`, PlannerVersion 2.3)
+- **Guided setup on Start:** the six set-up steps are a checklist that ticks itself (project name and start date,
+  people, tasks, Check all clear, a baseline, a status date). A Progress line names the next step, which is
+  highlighted, and each step links to where it is done. Simple's Check and Baseline steps use the Tasks sheet.
+
 ## Build and release tooling (no workbook content changes)
 - **Reproducible builds:** the same build gives the same bytes (fixed chart axis ids, file dates and zip
   timestamps). The committed workbooks were rewritten once this way; their cells are unchanged.

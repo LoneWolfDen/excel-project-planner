@@ -164,10 +164,10 @@ def main(argv=None):
               if s in books["sample"].sheetnames}
     item("Report pages repeat their title rows (project name, status date) when printed",
          all(t and t.startswith("$1:") for t in titled.values()), titled)
-    picks = [dv.formula1 for b in books.values() for dv in b["Tasks"].data_validations.dataValidation
-             if dv.formula1 and "tsk_PickList" in dv.formula1]
+    picks = [dv.formula1.lstrip("=") for b in books.values() for dv in b["Tasks"].data_validations.dataValidation
+             if dv.formula1 and "tsk_PickList" in dv.formula1]       # (LibreOffice saves it without the "=")
     item("Pred dropdowns list only the tasks above the row (a range, no OFFSET)",
-         picks and all(f.startswith("=INDEX(tsk_PickList,1):INDEX(tsk_PickList,") and "OFFSET" not in f
+         picks and all(f.startswith("INDEX(tsk_PickList,1):INDEX(tsk_PickList,") and "OFFSET" not in f
                        for f in picks), sorted(set(picks))[:2])
     if "Check" in books["sample"].sheetnames:
         item("Check counts leave typed twice (day grid and month cell)",

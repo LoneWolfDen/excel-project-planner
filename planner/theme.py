@@ -15,8 +15,9 @@ FONT_NAME = "Segoe UI"                 # Windows' UI font; Excel substitutes a s
 BRAND, BRAND_DARK, BRAND_TINT = "0F6CBD", "0F548C", "EBF3FC"
 # classic colour -> Fluent colour, for fonts, fills, borders and conditional formats alike
 COLOURS = {
-    # blues: inputs, headers, titles, links, the summary rows and the Gantt's remaining work
-    "0000FF": BRAND, "1F4E78": BRAND_DARK, "2F75B5": BRAND, "0563C1": BRAND, "DDEBF7": BRAND_TINT,
+    # blues: inputs, headers, titles, links, the summary rows and the Gantt's remaining work. Only inputs get the
+    # brand blue (blue = type here); links and the "In Progress" status word take the dark brand blue
+    "0000FF": BRAND, "1F4E78": BRAND_DARK, "2F75B5": BRAND_DARK, "0563C1": BRAND_DARK, "DDEBF7": BRAND_TINT,
     "5B9BD5": "479EF5", "9DC3E6": "B4D6FA", "C9D5E8": "D6E4F5",
     # neutrals: calculated cells and their headers, helper headers, notes, borders
     "F2F2F2": "F5F5F5", "595959": "424242", "404040": "424242", "A6A6A6": "9E9E9E", "7F7F7F": "707070",

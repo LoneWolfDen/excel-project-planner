@@ -25,7 +25,7 @@ from openpyxl.styles import Alignment, Font
 from openpyxl.utils import get_column_letter
 
 from . import rag
-from .core import DATE, NOTE_FONT, TITLE_FONT, Col, Tab, add_table, fill, font, name
+from .core import DATE, NOTE_FONT, TITLE_FONT, Col, Tab, add_table, fill, font, name, v12
 from .resources import by_resource
 from .tasks import PEOPLE, people
 
@@ -33,6 +33,7 @@ SHEET = "Cost"
 MONEY = "#,##0"
 WD = "WorkWeek,Holidays"
 HISTORY_ROWS = 60
+FIXED_ROWS = 30                    # template 1.2 (B-302): rows of the FixedCosts table
 
 # defined name, label, formula, meaning, format
 EVM = [
@@ -72,6 +73,11 @@ def rate(person):
     return f"IFERROR(INDEX(cost_Rate,MATCH({person},cost_RateName,0)),0)"
 
 
+def per_use(person):
+    """Template 1.2 (B-302): a person's cost per use, charged once for each task they are on (MS Project's)."""
+    return f"IFERROR(N(INDEX(cost_PerUse,MATCH({person},cost_RateName,0))),0)"
+
+
 def build_cost(wb, blank, n_tasks, resources, n_rates=50):
     """resources: the (name, initials, group, allocation, day rate, ...) rows the workbook was built with; their
     names and day rates fill the rate card."""
@@ -83,6 +89,8 @@ def build_cost(wb, blank, n_tasks, resources, n_rates=50):
     ws["B2"].font = NOTE_FONT
     ws.column_dimensions["A"].width = 3
     top = _rate_card(wb, ws, 5, resources, n_rates)
+    if v12():
+        top = _fixed_costs(wb, ws, top)
     top = _summary(wb, ws, top)
     top = _history(wb, ws, top, blank)
     _task_costs(wb, ws, top, n_tasks)
@@ -104,6 +112,8 @@ def _rate_card(wb, ws, top, resources, n_rows):
     add_table(ws, "RateCard", top, 2, [
         Col("Resource", "in", 30, values=[r[0] for r in resources]),
         Col("Day Rate", "in", 11, MONEY, values=[r[4] for r in resources], note="Cost of one working day."),
+    ] + ([Col("Per Use", "in", 9, MONEY, note="Optional: charged once on every task the person is on (a call-out "
+                                              "fee, a licence). MS Project's Cost/Use.")] if v12() else []) + [
         Col("Check", width=16, formula=f'IF({blank},"",IF(ISNA({row}),"Not on Resources",""))'),
         Col("Allocated Days", width=10, fmt="0.0", center=True, formula=f'IF({blank},"",IFERROR({allocated},0))',
             note="Working days between their Start and End (or the project's) x Allocation %."),
@@ -119,8 +129,33 @@ def _rate_card(wb, ws, top, resources, n_rows):
     ], max(n_rows, len(resources) + 10))
     name(wb, "cost_RateName", "RateCard[Resource]")
     name(wb, "cost_Rate", "RateCard[Day Rate]")
+    if v12():
+        name(wb, "cost_PerUse", "RateCard[Per Use]")
     last = top + max(n_rows, len(resources) + 10)
-    ws.conditional_formatting.add(f"D{top + 1}:D{last}", FormulaRule(formula=[f'D{top + 1}<>""'],
+    check = get_column_letter(5 if v12() else 4)
+    ws.conditional_formatting.add(f"{check}{top + 1}:{check}{last}", FormulaRule(formula=[f'{check}{top + 1}<>""'],
+                                                                      font=Font(color="C00000", bold=True)))
+    return last + 4
+
+
+def _fixed_costs(wb, ws, top):
+    """Template 1.2 (B-302): costs that aren't work (a venue, a licence, materials), typed against a task's UID so
+    moving rows on Tasks can't misalign them. Several rows may share a UID; they add up on that task, accrue with
+    its progress (MS Project's prorated accrual) and are part of its budget."""
+    ws.cell(top - 1, 2, "FIXED COSTS: type the task's UID (Tasks > UID); several rows may share one").font = \
+        font(bold=True, color="1F4E78")
+    t = Tab("FixedCosts")
+    uid = t.row("UID")
+    add_table(ws, "FixedCosts", top, 2, [
+        Col("UID", "in", 30, "0", note="The task's UID (Tasks > UID): a detail task."),
+        Col("Amount", "in", 11, MONEY),
+        Col("Description", "in", 30),
+        Col("Task", width=30, formula=f'IF({uid}="","",IFERROR(INDEX(tsk_Name,MATCH({uid},tsk_UID,0)),"Not on Tasks"))'),
+    ], FIXED_ROWS)
+    name(wb, "cost_FixedUID", "FixedCosts[UID]")
+    name(wb, "cost_FixedAmount", "FixedCosts[Amount]")
+    last = top + FIXED_ROWS
+    ws.conditional_formatting.add(f"E{top + 1}:E{last}", FormulaRule(formula=[f'E{top + 1}="Not on Tasks"'],
                                                                       font=Font(color="C00000", bold=True)))
     return last + 4
 
@@ -220,12 +255,27 @@ def _task_costs(wb, ws, top, n_rows):
         return f'IF({blank},"",IF({task("tsk_IsSummary")},SUM({below}),{t.row(helper)}))'
 
     work, base = task("tsk_LeafTotalWork"), task("tsk_BaseWork")
-    budget = f"IF(N({base})>0,IF({work}>0,{base}*{t.row('_LeafCost')}/{work},{t.row('_LeafCost')}),{t.row('_LeafCost')})"
+    labour = f"({t.row('_LeafCost')}-{t.row('_LeafExtra')})" if v12() else t.row("_LeafCost")
+    budget = f"IF(N({base})>0,IF({work}>0,{base}*{labour}/{work},{labour}),{labour})"
+    extra, extra_done = [], []
+    if v12():
+        # B-302: each person's cost per use (accrued at the task's start, as MS Project does) and the task's fixed
+        # costs (accrued with progress); the budget keeps them whole, only work cost scales with the baseline
+        uses = [f'IF({slot("Name", k)}="",0,{per_use(slot("Name", k))})' for k in range(1, PEOPLE + 1)]
+        uses = "+".join([uses[0]] + [f"IF(MaxPeople>={k},{p},0)" for k, p in enumerate(uses[1:], start=2)])
+        fixed = f"SUMIFS(cost_FixedAmount,cost_FixedUID,{task('tsk_UID')})"
+        progress = task("tsk_LeafProgress")
+        extra = [Col("_LeafExtra", "help", 9, formula=f"IF({blank},0,IF({leaf},{uses}+{fixed},0))"),
+                 Col("_ExtraDone", "help", 9, formula=f"IF({blank},0,IF({leaf},IF({progress}>0,{uses},0)"
+                                                      f"+{fixed}*{progress},0))")]
+        budget = f"{budget}+{t.row('_LeafExtra')}"
     add_table(ws, "TaskCost", top, 2, [
         Col("Task", width=30, formula=f'IF({blank},"",REPT("    ",{task("tsk_Level")}-1)&{task("tsk_Name")})'),
         Col("ID", width=11, center=True, formula=f'IF({blank},"",{task("tsk_ID")})'),
-        Col("Cost", width=11, fmt=MONEY, formula=rolled("_LeafCost"), note="Work x day rates (summaries add up)."),
-        Col("Actual Cost", width=11, fmt=MONEY, formula=rolled("_LeafActual"), note="Work done x day rates."),
+        Col("Cost", width=11, fmt=MONEY, formula=rolled("_LeafCost"),
+            note="Work x day rates (summaries add up)" + (", plus cost per use and fixed costs." if v12() else ".")),
+        Col("Actual Cost", width=11, fmt=MONEY, formula=rolled("_LeafActual"),
+            note="Work done x day rates" + (", plus per-use and fixed costs accrued." if v12() else ".")),
         Col("Budget", width=11, fmt=MONEY, formula=rolled("_LeafBudget"),
             note="Cost at the baseline's work once a baseline is set, otherwise the cost."),
         Col("PV", width=11, fmt=MONEY, formula=rolled("_LeafPV"), note="Budget x share planned by the status date."),
@@ -233,14 +283,16 @@ def _task_costs(wb, ws, top, n_rows):
         Col("Cost Var", width=11, fmt=MONEY, formula=f'IF({blank},"",{t.row("Cost")}-{t.row("Budget")})',
             note="Cost - budget. Positive = more than budgeted."),
         Col("_Row", "help", 5, formula=f"ROW()-ROW({t.head('Task')})"),
-        Col("_LeafCost", "help", 9, formula=f"IF({blank},0,IF({leaf},{per_person('Work')},0))"),
-        Col("_LeafActual", "help", 9, formula=f"IF({blank},0,IF({leaf},{per_person('Done')},0))"),
+        Col("_LeafCost", "help", 9, formula=f"IF({blank},0,IF({leaf},{per_person('Work')},0))"
+                                            + (f"+{t.row('_LeafExtra')}" if v12() else "")),
+        Col("_LeafActual", "help", 9, formula=f"IF({blank},0,IF({leaf},{per_person('Done')},0))"
+                                              + (f"+{t.row('_ExtraDone')}" if v12() else "")),
         Col("_LeafBudget", "help", 9, formula=f"IF({blank},0,IF({leaf},{budget},0))"),
         Col("_LeafPV", "help", 9, formula=f"{t.row('_LeafBudget')}*IF({blank},0,{task('tsk_PlannedPct')})"),
         Col("_LeafEV", "help", 9, formula=f"{t.row('_LeafBudget')}*IF({blank},0,{task('tsk_LeafProgress')})"),
-    ], n_rows, autofilter=False)
+    ] + extra, n_rows, autofilter=False)
     first = get_column_letter(10)
-    ws.column_dimensions.group(first, get_column_letter(15), hidden=True, outline_level=1)
+    ws.column_dimensions.group(first, get_column_letter(15 + len(extra)), hidden=True, outline_level=1)
     ws.conditional_formatting.add(f"B{top + 1}:I{top + n_rows}", FormulaRule(
         formula=[f'AND($B{top + 1}<>"",INDEX(tsk_IsSummary,ROW()-ROW($B${top})))'], font=Font(bold=True),
         fill=fill("DDEBF7")))

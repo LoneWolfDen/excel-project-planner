@@ -24,6 +24,12 @@ Tests: `ScheduleTest.test_weekend_skipped`, `test_holidays_skipped`; `ReferenceS
 
 - The Predecessors cell holds up to four links, comma- (or semicolon-) separated: `UID[type][+/-lag][d]`, e.g. `12`,
   `14SS+2d`, `9FF-1`. Type is FS (default), SS, FF or SF; the lag is in working days, negative for a lead.
+- Template 1.2 (B-102): the lag may also be `+50%` (a share of the predecessor's duration, rounded to whole working
+  days: then exactly a working-day lag) or `+3ed` (elapsed calendar days). An elapsed lag counts calendar days from the
+  predecessor's date, then takes the first working day **on or after** it (FS on a task with a duration: the first
+  working day **after**, as a working-day FS does); FF / SF then step back the task's duration as usual. The backward
+  pass mirrors it: FS `WORKDAY(LS - e + (D = 0), -1)`, FF `WORKDAY(LF - e + 1, -1)`, SS / SF
+  `WORKDAY(anchor - e + 1, -1)` then forward the predecessor's duration. The Lag pickers take the same text.
 - A link is **ignored**, with the reason in Link Check, when it can't be read, its UID isn't on Tasks, it names the task
   itself, an empty row, a summary task, or a task **below** this one, or it sits on a summary row. A fifth link is
   ignored with a note. An ignored link never causes an error or a circular reference.
@@ -38,6 +44,9 @@ Tests: `ScheduleTest.test_predecessor_text`, `LinkCheckTest`, `ReferenceSchedule
 - Level is the outline level (at least 1). A row is a **summary** when the next row is deeper; its tasks are the
   deeper rows directly below it. Every other named row is a **detail task**.
 - Summaries take no inputs that schedule: their dates, work and progress roll up (section 8).
+- Template 1.2 (B-110): a detail task with Active = No is **inactive**: not a detail task (`_IsLeaf` = 0), so it has no
+  dates, work or cost, is left out of every roll-up, and a link to it is ignored ("UID n is inactive"). Status says
+  Inactive; the row is struck through.
 
 Columns: `_Level`, `_IsSummary`, `_Descendants`, `_IsLeaf`, WBS. Tests: `ScheduleTest.test_wbs_and_outline`,
 `test_summary_rollup`.
@@ -98,6 +107,11 @@ Tests: `ScheduleTest.test_start_no_earlier_than`, `ConstraintTest`, `ReferenceSc
 - Forecast finish = Actual Finish when entered; for a milestone, its start; for a started task with
   RescheduleAfterStatus = Yes, the later of start + D - 1 and the remaining work
   (`ROUNDUP(D x (1 - progress))` working days counted from `StatusWorkday`); otherwise start + D - 1.
+- Template 1.2 (B-202): on a started, unfinished task a **Remaining Duration** R sets the forecast finish to the later
+  of the start and `ROUNDUP(R)` working days counted from `StatusWorkday` (R = 0: the working day before it), whatever
+  RescheduleAfterStatus says, and, unless % Complete is typed, the progress to done / (done + R), done = working days
+  from the Actual Start to the day before the status date. **Actual Work** (hours) sets the work done (and so actual
+  cost) instead of work x progress; % Work Done = actual work / work.
 
 Columns: `_Pct`, `_LeafProgress`, `_LeafFcstStart`, `_LeafFcstFinish`. Tests: `ScheduleTest.test_actuals_drive_forecast`,
 `RippleTest.test_status_date_moves_unstarted_work`, `StageTest`, `ReferenceScheduleTest.test_reschedule_after_status`.

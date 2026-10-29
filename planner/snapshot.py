@@ -12,7 +12,7 @@ places to paste one click away.
 from openpyxl.styles import Alignment
 from openpyxl.worksheet.hyperlink import Hyperlink
 
-from .core import NOTE_FONT, TITLE_FONT, Col, add_table, font, has, header_cell, name
+from .core import NOTE_FONT, TITLE_FONT, Col, add_table, font, has, header_cell, name, v12
 from .history import fields
 
 SHEET = "TakeSnapshot"
@@ -57,6 +57,17 @@ def build_snapshot(wb):
                               "(Ctrl+Alt+V, V). The Gantt outlines and the variance columns follow.", "tsk_Baseline")
     _step(ws, 13, "4. Reset", "Set Settings > TakeBaseline back to No.", "TakeBaseline")
     top = 16
+    if v12():
+        # B-201: before re-baselining, keep the agreed dates as baseline 2 (or 3) to compare against later
+        header_cell(ws.cell(15, 2), "KEEP A BASELINE", "in")
+        header_cell(ws.cell(15, 3), "Before re-baselining: keep the current baseline's dates as Baseline 2 or 3", "in")
+        _step(ws, 16, "1. Copy", "Click this link: it selects Tasks' Baseline Start and Baseline Finish. Ctrl+C.",
+              "tsk_BaseDates")
+        _step(ws, 17, "2. Paste", "Click this link (Baseline 2) and Paste Special > Values. Use Baseline 3 for a third "
+                                  "set.", "tsk_Baseline2")
+        _step(ws, 18, "3. Compare", "Settings > CompareBaseline: 1, 2 or 3 picks the baseline Planned Start / Finish, "
+                                    "the variances and the Gantt compare against.", "CompareBaseline")
+        top = 21
     ws.cell(top - 1, 2, "SNAPSHOT ROW: this status date's numbers (formulas: copy them, paste values on History)"
             ).font = font(bold=True, color="1F4E78")
     letters = add_table(ws, "SnapshotRow", top, 2, [Col(h, width=13, fmt=fmt, formula=f, center=True)

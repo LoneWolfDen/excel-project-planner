@@ -46,7 +46,8 @@ Template 1.2, in [`release-1.2/`](release-1.2/), is 1.1 with a refreshed **Fluen
 and greys, Segoe UI, clearer red / amber / green, report pages without gridlines, tab colours by role, a landing-page
 Start sheet), a predecessor dropdown that lists only the tasks above the row, a **Board** of task cards by status and
 a product **Backlog**, MS Project status names, custom fields, A3 printing and dates that read the same in every
-Excel language. Two more samples are in `release-1.2/samples/` (a clinic extension, a partner summit; build others
+Excel language. The schedule adds % and elapsed lags, inactive tasks, Remaining Duration and Actual Work, baselines 2
+and 3 (Settings > CompareBaseline), and the Cost sheet a cost per use and fixed costs. Two more samples are in `release-1.2/samples/` (a clinic extension, a partner summit; build others
 with `--sample construction|event`). Tools: `scripts/network_diagram.py` (Mermaid / Graphviz) and
 `scripts/export_csv.py --format jira|azure|planner`. See [CHANGELOG.md](CHANGELOG.md) and
 [docs/BACKLOG.md](docs/BACKLOG.md). Build with `--release 1.2`; check with

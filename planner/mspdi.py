@@ -394,9 +394,14 @@ def to_mspdi(plan):
                     link = _sub(e, "PredecessorLink")
                     _sub(link, "PredecessorUID", int(pred))
                     _sub(link, "Type", LINK_TYPES.get(_text(_link(t, k, "Type")) or "FS", 1))
-                    _sub(link, "LinkLag", round(_num(_link(t, k, "Lag")) * hours * 600))  # tenths of a minute
-                    _sub(link, "LagFormat", 7)
-        _sub(e, "Active", 1)
+                    elapsed = t.get(f"_Pred{k}Elapsed")      # template 1.2: "+3ed", calendar days (B-102)
+                    if isinstance(elapsed, (int, float)) and not isinstance(elapsed, bool):
+                        _sub(link, "LinkLag", round(elapsed * 24 * 600))      # tenths of a minute, 24-hour days
+                        _sub(link, "LagFormat", 8)                            # elapsed days
+                    else:                                    # a % lag arrives as the working days it works out to
+                        _sub(link, "LinkLag", round(_num(_link(t, k, "Lag")) * hours * 600))
+                        _sub(link, "LagFormat", 7)
+        _sub(e, "Active", 0 if _text(t.get("Active")).strip().lower() == "no" else 1)      # B-110
         _sub(e, "Manual", flag(manual))
         if not summary:
             values = [(TEXT1, _text(t.get("Sprint"))), (NUMBER1, _num(t.get("Story Points"), None))]

@@ -16,6 +16,10 @@ reasons behind each item are in [docs/BACKLOG.md](docs/BACKLOG.md).
   Project (B-509), a one-line project summary at the top (B-111), A3 landscape printing with repeated headings (B-508).
 - **Tools:** a network diagram (Mermaid or Graphviz, B-506) and CSV exports for Jira, Azure DevOps and Microsoft
   Planner (B-706); two more sample projects, a clinic extension and a partner summit (`--sample`, B-804).
+- **Scheduling:** lags in % of the predecessor (`12+50%`) and in elapsed days (`12+3ed`, B-102); inactive tasks
+  (Active = No, B-110); Remaining Duration and Actual Work with % Work Done (B-202); baselines 2 and 3 with a
+  Compare against setting (B-201).
+- **Cost:** a cost per use on the rate card and a Fixed Costs table per task (B-302).
 
 ## Microsoft 365 edition (`release-1.1-m365/`, PlannerVersion 2.1-m365)
 - Template 1.1 with named LAMBDA functions (`L_PARSE_DURATION`, `L_WORKING_DAYS`, `L_IS_WORKING_DAY`) and FILTER

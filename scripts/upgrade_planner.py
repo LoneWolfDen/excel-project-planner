@@ -20,7 +20,7 @@ def main(argv=None):
     p.add_argument("old", help="the older planner workbook (.xlsx)")
     p.add_argument("out", help="the new workbook to write")
     p.add_argument("--recalc", action="store_true", help="recalculate with LibreOffice so the file carries values")
-    p.add_argument("--release", nargs="?", const="1.0", default=None, choices=["1.0", "1.1", "m365", "1.2"],
+    p.add_argument("--release", nargs="?", const="1.0", default=None, choices=["1.0", "1.1", "m365", "1.2", "1.3"],
                    help="move it into a release-line workbook: 1.0 (the default) or 1.1 (one stays in its edition "
                         "without this)")
     a = p.parse_args(argv)

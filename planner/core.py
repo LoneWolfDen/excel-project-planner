@@ -183,9 +183,10 @@ RELEASE_MODULES = {"check": "Check", "snapshot": "TakeSnapshot"}
 RELEASE = {"on": False, "version": None}
 # template versions of the release line; each later one adds to the one before. "m365" is template 1.1 rebuilt with
 # Microsoft 365 functions (LAMBDA, LET, FILTER): its own folder, so a problem there never touches 1.1 (F-1108)
-EDITIONS = ("1.0", "1.1", "m365", "1.2")
-# each edition's feature level: 0 = Release 1.0, 1 = the v1.1 features, 2 = template 1.2 (design, UX, engine items)
-LEVELS = {"1.0": 0, "1.1": 1, "m365": 1, "1.2": 2}
+EDITIONS = ("1.0", "1.1", "m365", "1.2", "1.3")
+# each edition's feature level: 0 = Release 1.0, 1 = the v1.1 features, 2 = template 1.2 (design, UX, engine items),
+# 3 = template 1.3 (the guided setup on Start)
+LEVELS = {"1.0": 0, "1.1": 1, "m365": 1, "1.2": 2, "1.3": 3}
 _MODULE_NAMES.update({"check": r"\bchk_", "snapshot": r"\bsnap_", "board": r"\b(Board[A-Z]|brd_)",
                       "backlog": r"\bbkl_"})
 # template 1.2 (B-404, B-405): a task board and a product backlog, optional and never in Simple
@@ -220,8 +221,13 @@ def v11():
 
 
 def v12():
-    """True for template 1.2: the Fluent design, the UX items and the engine items (docs/BACKLOG.md v1.2)."""
+    """True for template 1.2 and later: the Fluent design, the UX items and the engine items (docs/BACKLOG.md v1.2)."""
     return release() and LEVELS[RELEASE["version"]] >= 2
+
+
+def v13():
+    """True for template 1.3: template 1.2 plus a Start checklist that ticks itself as the plan is set up."""
+    return release() and LEVELS[RELEASE["version"]] >= 3
 
 
 def m365():

@@ -10,6 +10,7 @@ table rows get their formulas automatically. Recalculation cost is measured on e
 **Requires Excel 2019 or Microsoft 365** (Windows or Mac; Excel for the web works too).
 
 ## Release 1.0
+**Production ready, tagged `v1.0`** (commit `753ee65`): `release-1.0/` is frozen there and changes only through a fix release (`v1.0.1`, ...).
 A separate, frozen edition for first-time project managers, in [`release-1.0/`](release-1.0/): `Project_Planner.xlsx`
 (the 30-task sample), `Project_Planner_Blank.xlsx` and `Project_Planner_Simple.xlsx` (a 12-task sample on six
 sheets). The workbooks at the repository root stay as they are. Template version 1.0 (shown on Start and in the printed

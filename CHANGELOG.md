@@ -38,7 +38,8 @@ reasons behind each item are in [docs/BACKLOG.md](docs/BACKLOG.md).
   status summary, three-point estimates with P50 / P80 finishes.
 - A risk-exposure trend on History, a capacity chart on Agile, fewer conditional-formatting rules.
 
-## Release 1.0 (`release-1.0/`, PlannerVersion 2.0), frozen
+## Release 1.0 (`release-1.0/`, PlannerVersion 2.0), frozen at tag `v1.0`
+- **v1.0, 29-Oct-2026:** production ready. `release-1.0/` is frozen at this tag; later changes are fix releases (v1.0.x).
 - **Ready-to-use fixes (29-Oct-2026, every release edition):** the Pred dropdown lists only the tasks above the row
   (an INDEX range, no OFFSET); leave typed on both the day grid and the month cell is shown (Also Typed Above) and
   counted on Check; report pages repeat their title rows when printed (A3 in template 1.2); `release_check` checks

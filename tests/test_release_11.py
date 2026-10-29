@@ -247,7 +247,8 @@ class P2Test(unittest.TestCase):
 
     def test_committed_rule_count(self):
         report = perf_check.static_report(SAMPLE)
-        self.assertLessEqual(sum(v["rules"] for v in report["cf"].values()), 106)
+        # 106 after F-1109, plus R1-18's highlight of leave typed twice on the day grid
+        self.assertLessEqual(sum(v["rules"] for v in report["cf"].values()), 107)
 
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")

@@ -440,11 +440,14 @@ class EditTest(unittest.TestCase):
 
 @unittest.skipUnless(SOFFICE, "LibreOffice not installed")
 class BlankCheckTest(unittest.TestCase):
-    """A new plan with nothing wrong: the Check sheet's verdict is All clear once the status date is typed."""
+    """A new plan with nothing wrong: the Check sheet's verdict is All clear once the project start (Start, step 1)
+    and the status date are typed."""
 
     def test_all_clear(self):
+        def start(wb):
+            named_cell(wb, "ProjectStartDate").value = dt.date(2026, 9, 7)
         with tempfile.TemporaryDirectory() as tmp:
-            wb = recalc(BLANK, tmp)                                        # recalc types the status date
+            wb = recalc(BLANK, tmp, start)                                 # recalc types the status date
         self.assertEqual(errors_in(wb), [])
         self.assertTrue(named_cell(wb, "chk_Verdict").value.startswith("All clear"), named_cell(wb, "chk_Verdict").value)
 

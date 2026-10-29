@@ -512,3 +512,81 @@ class EngineStructureTest(unittest.TestCase):
 def d(y, m, day):
     import datetime as dt
     return dt.date(y, m, day)
+
+
+class LeaveOnePlaceTest(unittest.TestCase):
+    """v1.1 Future: template 1.2 types leave in one place, the day grid; the month cells are worked out from it."""
+
+    def test_month_cells_read_the_grid(self):
+        wb = openpyxl.load_workbook(SAMPLE)
+        ws = wb["Resources"]
+        res = ws.tables["ResourceTable"]
+        month = next(c for c in res.tableColumns if c.name == "Nov-26")
+        self.assertIn("lv_Key", month.calculatedColumnFormula.attr_text)
+        self.assertNotIn("lv_Twice", wb.defined_names)
+        heads = [c.name for c in ws.tables["LeaveDays"].tableColumns]
+        self.assertNotIn("Also Typed Above", heads)
+        values = openpyxl.load_workbook(SAMPLE, data_only=True)
+        rows = {r["Resource Name"]: r for r in table_rows(values, "Resources", "ResourceTable") if r["Resource Name"]}
+        self.assertEqual(rows["Casey Kim"]["Nov-26"], "16, 17(0.5), 18, 19, 20, 23, 24, 25, 26, 27")
+        self.assertEqual(rows["Sam Rivera"]["Nov-26"], "2(0.5)")       # a month cell before: on the grid now
+
+    def test_same_capacity_as_11(self):
+        """The 1.1 sample has the same leave split between the grid and the month cells: capacity is the same."""
+        a, b = openpyxl.load_workbook(SAMPLE, data_only=True), openpyxl.load_workbook(V11, data_only=True)
+        for grid in ("rw_Util", "rw_Leave", "cap_Days", "cap_Points"):
+            if grid not in b.defined_names:
+                continue
+            values = []
+            for wb in (a, b):
+                sheet, ref = wb.defined_names[grid].attr_text.split("!")
+                values.append([[c.value for c in row] for row in wb[sheet.strip("'")][ref.replace("$", "")]])
+            self.assertEqual(values[0], values[1], grid)
+
+    def test_upgrade_moves_month_leave_to_the_grid(self):
+        from planner import upgrade
+        wb = openpyxl.load_workbook(V11)
+        ws = wb["Resources"]                                   # a day in both places: the grid's amount wins
+        res = ws.tables["ResourceTable"]
+        from openpyxl.utils.cell import range_boundaries
+        c1, r1, c2, r2 = range_boundaries(res.ref)
+        col = {ws.cell(r1, c).value: c for c in range(c1, c2 + 1)}
+        who = next(r for r in range(r1 + 1, r2 + 1) if ws.cell(r, col["Resource Name"]).value == "Jordan Lee")
+        ws.cell(who, col["Oct-26"]).value = "29, 30(0.5)"
+        buf = io.BytesIO()
+        wb.save(buf)
+        try:
+            new = openpyxl.load_workbook(io.BytesIO(upgrade.convert(buf.getvalue(), release="1.2")[0]))
+        finally:
+            classic_again()
+        grid = {(r["Resource"], r["Month"]): r for r in table_rows(new, "Resources", "LeaveDays") if r["Resource"]}
+        self.assertEqual(grid[("Sam Rivera", "Nov-26")]["2"], 0.5)          # from the month cell
+        self.assertEqual(grid[("Casey Kim", "Nov-26")]["17"], 0.5)          # from the 1.1 grid
+        jordan = grid[("Jordan Lee", "Oct-26")]
+        self.assertEqual((jordan["29"], jordan["30"]), (1, 1))               # the 1.1 grid said 30 = 1
+        nov = next(c for c in new["Resources"].tables["ResourceTable"].tableColumns if c.name == "Nov-26")
+        self.assertIsNotNone(nov.calculatedColumnFormula)                     # the month cells are formulas
+
+
+@unittest.skipUnless(__import__("test_planner").SOFFICE, "LibreOffice not installed")
+class TypedNameTest(unittest.TestCase):
+    """v1.1 Future: a predecessor typed by its exact name links to that task; a name two tasks share is flagged."""
+
+    def test_typed_names(self):
+        from test_planner import recalc
+        from test_release import put
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "names.xlsx"
+            make(baselined=True).save(path)
+
+            def edit(wb):
+                put(wb, 14, {"Pred1": "Core API endpoints"})              # UID 13, by name
+                put(wb, 28, {"Task Name": "Lessons learned"})             # now two tasks have this name
+                put(wb, 30, {"Pred1": "Lessons learned"})
+            wb = recalc(path, tmp, edit)
+        classic_again()
+        t = tasks_by_uid(wb)
+        self.assertEqual(errors_in(wb), [])
+        self.assertEqual(t[14]["_Pred1UID"], 13)
+        self.assertIn(t[14]["Link Check"], ("", None))
+        self.assertIn("2 tasks are called Lessons learned", t[30]["Issues"])

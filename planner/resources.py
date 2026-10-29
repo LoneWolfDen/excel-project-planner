@@ -3,7 +3,7 @@ End), how much of their sprint time is delivery (Focus %), and their leave by mo
 on the Cost sheet, which can be deleted before the plan is shared."""
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from .core import DATE, Col, Tab, add_table, col_range, has, name, release, title, v11
+from .core import DATE, Col, Tab, add_table, col_range, has, name, release, title, v11, v12
 from .leave import leave_columns, month_labels, name_leave
 from .tasks import people
 
@@ -100,7 +100,8 @@ def build_resources(wb, blank, n_rows=50, resources=None, leave=None, months=Non
     below = 5 + n_rows + 5
     if release():                                      # Release 1.0: the leave day grid, under the people
         from .leave import build_leave_grid
-        below = build_leave_grid(wb, ws, below, blank) + 5
+        # template 1.2 types leave only on the grid: an import's or upgrade's leave goes there
+        below = build_leave_grid(wb, ws, below, blank, entries=leave if v12() else None) + 5
     if has("agile"):                                   # sprint capacity needs the sprint calendar (B-913)
         capacity_grids(wb, ws, below, n_sprints, n_grid)
     ws.freeze_panes = "C6"

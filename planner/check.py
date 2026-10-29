@@ -10,7 +10,7 @@ from openpyxl.formatting.rule import FormulaRule
 from openpyxl.styles import Font
 
 from .core import (BOX, CALC_FILL, CALC_FONT, LABEL_FONT, NOTE_FONT, TITLE_FONT, Show, fill, font, has, header_cell,
-                   name, ranked_table, v11, m365)
+                   name, ranked_table, v11, v12, m365)
 
 SHEET = "Check"
 ROWS = 20                     # rows per list; drag a table's corner down for more
@@ -43,7 +43,8 @@ def build_check(wb):
     ws["B2"].font = NOTE_FONT
     for col, width in {"A": 3, "B": 34, "C": 10, "D": 46, "E": 14, "F": 14, "G": 60}.items():
         ws.column_dimensions[col].width = width
-    counts = [c for c in COUNTS + (V11_COUNTS if v11() else []) if has("log") or "log_" not in c[1]]
+    counts = [c for c in COUNTS + (V11_COUNTS if v11() else []) if (has("log") or "log_" not in c[1])
+              and not (v12() and "lv_Twice" in c[1])]       # 1.2 types leave in one place: it can't be twice
     if m365():                                         # no key columns: count the tasks and items directly
         from .m365 import COUNTS as DIRECT
         counts = [(label, DIRECT.get(f, f), where) for label, f, where in counts]

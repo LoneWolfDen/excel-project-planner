@@ -145,7 +145,8 @@ def read_planner(data):
     if source in tables:
         months = [h for h in tables[source][1] if isinstance(h, str) and MONTH.match(h)] or None
         for r in _records(tables, source):
-            entries = {m: str(r[m]) for m in months or [] if r.get(m) not in (None, "")}
+            entries = {m: str(r[m]) for m in months or [] if r.get(m) not in (None, "")
+                       and not str(r[m]).startswith("=")}     # template 1.2's month cells are formulas
             if r.get(key) and entries:
                 leave[r[key]] = entries
     people = {r[0] for r in resources}
@@ -256,6 +257,23 @@ def copy_inputs(wb, copies, warnings):
                 ws.cell(r1 + 1 + k, c1 + i).value = v
 
 
+def fold_leave_into_grid(project, copies):
+    """Template 1.2 types leave in one place, the day grid: the month-cell leave of the old workbook and its grid
+    rows (if any) become the new grid's rows, one per person and month. Where both name a day, the grid's amount
+    wins (it is the newer way to enter leave); the build sizes the grid to fit."""
+    from .leave import _days_of, days_text
+    merged = {p: {m: _days_of(t) for m, t in months.items()} for p, months in project.leave.items()}
+    head, rows = copies.pop("LeaveDays", ([], []))
+    if "Resource" in head and "Month" in head:
+        for row in rows:
+            person, month = row[head.index("Resource")], row[head.index("Month")]
+            days = {int(h): row[i] for i, h in enumerate(head)
+                    if str(h).isdigit() and isinstance(row[i], (int, float)) and row[i] > 0}
+            if person and month and days:
+                merged.setdefault(person, {}).setdefault(str(month), {}).update(days)
+    project.leave = {p: {m: days_text(d) for m, d in months.items() if d} for p, months in merged.items()}
+
+
 def rebuild(data, release=None):
     """(the latest template's workbook holding the old workbook's inputs, warnings, the old version). release: True
     moves a classic workbook into the Release 1.0 one, "1.1" into template 1.1, False back to classic; None keeps the
@@ -265,6 +283,8 @@ def rebuild(data, release=None):
     project, copies, sizes, warnings, version = read_planner(data)
     if release is not None:
         project.release = release
+    if project.release == "1.2":
+        fold_leave_into_grid(project, copies)
     if project.modules is not None:
         if project.release and set(MODULES) <= set(project.modules):
             project.modules = None                       # a full workbook: Release 1.0 adds Check and TakeSnapshot

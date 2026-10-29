@@ -106,6 +106,10 @@ class StructureTest(unittest.TestCase):
                     if openpyxl.utils.cell.range_boundaries(str(dv.sqref).split()[0])[0] == col["Pred1"])
         self.assertTrue(rule.formula1.startswith("=INDEX(tsk_PickList,1):INDEX("), rule.formula1)
 
+    def test_predecessor_by_name(self):                         # v1.1 Future: typed task names
+        ws = self.wb["Tasks"]
+        self.assertIn("MATCH(TRIM(Tasks[[#This Row],[Pred1]]),Tasks[Task Name],0)", ws.cell(6, head(ws)["_Predecessors"]).value)
+
     def test_formula_rules(self):
         r = self.report
         self.assertEqual((r["a1_references"], r["missing_references"], r["excel_limit_problems"]), ([], [], []))

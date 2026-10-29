@@ -54,6 +54,43 @@ def errors(wb):
     return out
 
 
+INPUT_BLUES = {"0000FF", "0F6CBD"}            # the input font in the classic look and in template 1.2's
+OPTIONAL_SHEETS = ("Agile", "Log", "History", "Resource Report", "Cost", "Check", "TakeSnapshot")
+V12_SHEETS = ("Board", "Backlog")              # template 1.2 only
+
+
+def lock_problems(wb):
+    """Cells whose lock flag is wrong for Review > Protect Sheet: a blue input that is locked, or a formula (not
+    blue: a blue formula is a default to type over) that is not. Every sheet, not only Tasks."""
+    out = []
+    for ws in wb.worksheets:
+        for row in ws.iter_rows():
+            for c in row:
+                if c.value is None:
+                    continue
+                rgb = c.font.color.rgb if c.font is not None and c.font.color is not None else None
+                blue = isinstance(rgb, str) and rgb[-6:].upper() in INPUT_BLUES
+                formula = isinstance(c.value, str) and c.value.startswith("=")
+                if (blue and c.protection.locked) or (formula and not blue and not c.protection.locked):
+                    out.append(f"{ws.title}!{c.coordinate}")
+    return out
+
+
+def sheet_mentions(wb, sheets):
+    """Formulas, defined names, validations and chart series that name one of these sheets."""
+    texts = [(f"{s}!{c.coordinate}", f) for s, c, f in perf_check.formulas(wb)]
+    texts += [(f"name {n}", d.attr_text or "") for n, d in wb.defined_names.items()]
+    for ws in wb.worksheets:
+        texts += [(f"{ws.title} validation", f"{dv.formula1} {dv.formula2}")
+                  for dv in ws.data_validations.dataValidation]
+    out = []
+    for where, text in texts:
+        for sheet in sheets:
+            if f"'{sheet}'!" in text or re.search(rf"(?<![\w']){re.escape(sheet)}!", text):
+                out.append(f"{where}: {sheet}")
+    return out
+
+
 def validation_problems(wb):
     """Data validations with no cells, or a list / formula naming something that isn't defined."""
     names = set(wb.defined_names.keys())
@@ -120,8 +157,21 @@ def main(argv=None):
     item("Report sheets protected without a password", not unprotected, unprotected)
     tasks = books["sample"]["Tasks"]
     head = {tasks.cell(5, c).value: c for c in range(1, tasks.max_column + 1)}
-    item("Tasks' blue inputs unlocked, formulas locked (ready for Protect Sheet)",
-         not tasks.cell(6, head["Duration"]).protection.locked and tasks.cell(6, head["Finish"]).protection.locked)
+    locks = {k: lock_problems(v) for k, v in books.items()}
+    item("Every sheet: blue inputs unlocked, formulas locked (ready for Review > Protect Sheet)",
+         not any(locks.values()), {k: v[:3] for k, v in locks.items() if v})
+    titled = {s: books["sample"][s].print_title_rows for s in ("Status", "Roadmap", "Resource Report")
+              if s in books["sample"].sheetnames}
+    item("Report pages repeat their title rows (project name, status date) when printed",
+         all(t and t.startswith("$1:") for t in titled.values()), titled)
+    picks = [dv.formula1 for b in books.values() for dv in b["Tasks"].data_validations.dataValidation
+             if dv.formula1 and "tsk_PickList" in dv.formula1]
+    item("Pred dropdowns list only the tasks above the row (a range, no OFFSET)",
+         picks and all(f.startswith("=INDEX(tsk_PickList,1):INDEX(tsk_PickList,") and "OFFSET" not in f
+                       for f in picks), sorted(set(picks))[:2])
+    if "Check" in books["sample"].sheetnames:
+        item("Check counts leave typed twice (day grid and month cell)",
+             any("lv_Twice" in str(c.value) for row in books["sample"]["Check"].iter_rows() for c in row))
     sizes = {k: v.stat().st_size for k, v in FILES.items()}
     item("Each file under 5 MB", max(sizes.values()) < SIZE_MAX, {k: f"{v / 1e6:.1f} MB" for k, v in sizes.items()})
     external = []
@@ -135,6 +185,13 @@ def main(argv=None):
          and sum(1 for r in values["simple"]["Tasks"].iter_rows(min_row=6, min_col=head["Task Name"],
                                                                  max_col=head["Task Name"], values_only=True)
                  if r[0]) == 12)
+    simple_refs = sheet_mentions(books["simple"], OPTIONAL_SHEETS)
+    item("Simple: nothing names Agile, Log, History, Resource Report, Cost, Check or TakeSnapshot",
+         not simple_refs, simple_refs[:3])
+    if a.edition != "1.2":
+        v12_refs = [f"{k}: {m}" for k, b in books.items() for m in sheet_mentions(b, V12_SHEETS)]
+        v12_refs += [f"{k}: sheet {s}" for k, b in books.items() for s in V12_SHEETS if s in b.sheetnames]
+        item("No template 1.2 sheet (Board, Backlog) or reference to one", not v12_refs, v12_refs[:3])
     label = LABELS[a.edition]
     item(f"TemplateVersion is {label} in every workbook",
          all(b.defined_names["TemplateVersion"].attr_text == f'"{label}"' for b in books.values()))

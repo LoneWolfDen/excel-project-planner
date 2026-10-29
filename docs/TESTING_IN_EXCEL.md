@@ -62,7 +62,11 @@ section. If Excel asks, click **Enable Editing**. Report a failure with the shee
 - [ ] Review > Protect Sheet on Tasks (no password): typing in Finish is refused, Duration and Pred1 still take
       typing. Unprotect, then insert a table row: formulas fill in.
 - [ ] File > Print preview on Status, Roadmap and Resource Report: one page each, footer "Project Planner template
-      1.0" and page numbers.
+      1.0" and page numbers. Page Layout > Print Titles shows the title rows (project name, status date).
+- [ ] Tasks > Pred1 on Build complete (UID 19): the dropdown lists only the tasks above it, and opens at once (also
+      in Excel for the web). On the first task it lists one entry.
+- [ ] Resources: type 30 in Jordan Lee's Oct-26 cell (30-Oct is already on the LEAVE BY DAY grid): the grid's Also
+      Typed Above shows 30 in red and Check counts "Leave typed twice". Undo.
 - [ ] Settings > TakeBaseline = Yes, then TakeSnapshot's two baseline links (copy, Paste Special > Values): the Gantt
       outlines follow the current dates. Set it back to No.
 - [ ] Tick each line of [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) marked manual.

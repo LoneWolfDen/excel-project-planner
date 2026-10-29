@@ -21,6 +21,8 @@ COUNTS = [
     ("Tasks sharing a UID", "DuplicateUIDs", "Give one of them Settings > NextFreeUID"),
     ("Named tasks without a UID", "MissingUIDs", "Type Settings > NextFreeUID"),
     ("Ignored predecessor links", 'COUNTIF(tsk_LinkCheck,"?*")', "Tasks > Link Check (DETAIL section)"),
+    ("Leave typed twice (day grid and month cell)", 'COUNTIF(lv_Twice,"?*")',
+     "Resources > LEAVE BY DAY: Also Typed Above; clear the day in one place"),
     ("Over-allocated tasks", "COUNT(tsk_OverAllocKey)", "Resource Report: move work or add people"),
     ("Overdue Log items", "COUNT(log_OverdueKey)", "Log: update the item, its Due date or close it"),
     ("No status date typed", "IF(N(StatusDateInput)=0,1,0)", "Status: type the status date at the top"),

@@ -16,10 +16,14 @@ from openpyxl.formatting.formatting import ConditionalFormattingList
 from openpyxl.styles import Protection
 from openpyxl.utils.cell import range_boundaries
 
-from .core import INPUT_FONT, NOTE_FONT, name, v11
+from .core import INPUT_FONT, NOTE_FONT, name, v11, v12
 from .settings import START
 
 PRINTED = ("Status", "Roadmap", "Resource Report", "Check")
+# rows repeated at the top of every printed page: a printed header can't show a cell's value, so the project name
+# and the status date print from these title rows (Status: name, forecast and the status date row; Roadmap: name,
+# status date and the month headings; Resource Report: name with the status date and the weeks)
+TITLE_ROWS = {"Status": "1:5", "Roadmap": "1:5", "Resource Report": "1:3", "Check": "1:4"}
 OPEN_INPUTS = ("Tasks", "Resources", "Settings", "History", "Backlog")
 
 
@@ -38,6 +42,9 @@ def _print_setup(ws, version):
     ws.oddFooter.right.text = "Page &P of &N"
     for part in (ws.oddHeader.left, ws.oddHeader.right, ws.oddFooter.left, ws.oddFooter.right):
         part.size, part.font = 8, "Arial"
+    ws.print_title_rows = TITLE_ROWS[ws.title]
+    if v12():                                          # template 1.2 prints its wide pages on A3 (B-508)
+        ws.page_setup.paperSize = ws.PAPERSIZE_A3
     ws.print_options.horizontalCentered = True
     ws.page_margins.top = ws.page_margins.bottom = 0.6
     ws.page_margins.header = ws.page_margins.footer = 0.3

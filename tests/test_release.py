@@ -148,7 +148,9 @@ class StructureTest(unittest.TestCase):
         for k in range(1, 5):                            # every picker says what to pick
             for h in (f"Pred{k}", f"Type{k}", f"Lag{k}", f"Res{k}", f"Units{k}"):
                 self.assertTrue(rules[col[h]].showInputMessage and rules[col[h]].prompt, h)
-            self.assertEqual(rules[col[f"Pred{k}"]].formula1, "=tsk_PickList")
+            pick = rules[col[f"Pred{k}"]].formula1        # only the tasks above the row: a range, no OFFSET
+            self.assertTrue(pick.startswith("=INDEX(tsk_PickList,1):INDEX(tsk_PickList,MAX(1,COUNTIF("), pick)
+            self.assertNotIn("OFFSET", pick)
             self.assertEqual(rules[col[f"Res{k}"]].formula1, "=res_Name")
 
     def test_duration_rule_accepts_and_refuses(self):
@@ -192,6 +194,7 @@ class StructureTest(unittest.TestCase):
             self.assertTrue(ws.print_area, sheet)
         for sheet in ("Status", "Roadmap", "Resource Report"):
             self.assertEqual(self.wb[sheet].page_setup.fitToHeight, 1, sheet)
+            self.assertTrue(self.wb[sheet].print_title_rows.startswith("$1:"), sheet)      # name and status date
 
     def test_start_has_five_linked_steps(self):
         ws = self.wb["Start"]
@@ -371,6 +374,13 @@ class EditTest(unittest.TestCase):
             put(wb, 16, {"Duration": "1w", "Predecessors": "9", "Res1": "Jordan Lee", "Units1": 0.5})
             put(wb, 21, {"Pred1": None, "Predecessors": "19FS+1d"})            # the typed text when no picker
             put(wb, 23, {"UID": 22})                                           # a duplicate UID
+            put(wb, 12, {"Pred2": 20})                                         # a predecessor below the task
+            ws = wb["Resources"]                                               # Jordan Lee's 30-Oct, twice:
+            res = ws.tables["ResourceTable"]                                   # on the day grid and the month cell
+            c1, r1, c2, r2 = range_boundaries(res.ref)
+            col = {ws.cell(r1, c).value: c for c in range(c1, c2 + 1)}
+            who = next(r for r in range(r1 + 1, r2 + 1) if ws.cell(r, col["Resource Name"]).value == "Jordan Lee")
+            ws.cell(who, col["Oct-26"]).value = "29, 30"
             named_cell(wb, "TakeBaseline").value = "Yes"
         cls.wb = recalc(cls.path, cls.dir, edit)
         cls.t = tasks_by_uid(cls.wb)
@@ -406,6 +416,17 @@ class EditTest(unittest.TestCase):
         listed = {r["UID"] for r in table_rows(self.wb, "Check", "CheckIssues") if r["UID"] not in (None, "")}
         self.assertIn(22, listed)
 
+    def test_check_lists_each_problem(self):
+        """Check counts what the edits broke: the duplicate UID, the link to a task below, the leave typed twice."""
+        counts = {self.wb["Check"].cell(r, 2).value: self.wb["Check"].cell(r, 3).value for r in range(5, 16)}
+        self.assertEqual(counts["Tasks sharing a UID"], 2)
+        self.assertGreaterEqual(counts["Ignored predecessor links"], 1)
+        self.assertIn("below", self.t[12]["Link Check"])
+        self.assertEqual(counts["Leave typed twice (day grid and month cell)"], 1)
+        twice = [r["Also Typed Above"] for r in table_rows(self.wb, "Resources", "LeaveDays") if r["Resource"]]
+        self.assertIn("30", twice)                                             # the 29th is only in the month cell
+        self.assertNotEqual(named_cell(self.wb, "chk_Verdict").value[:9], "All clear")
+
     def test_take_baseline(self):
         # Yes: BL Source is the current schedule for every task, so the paste re-baselines the whole plan
         for u in (13, 17, 26):
@@ -415,6 +436,17 @@ class EditTest(unittest.TestCase):
         wb = openpyxl.load_workbook(SAMPLE, data_only=True)               # TakeBaseline = No as shipped
         for t in tasks_by_uid(wb).values():
             self.assertEqual(d(t["BL Source Finish"]), d(t["Baseline Finish"]), t["Task Name"])
+
+
+@unittest.skipUnless(SOFFICE, "LibreOffice not installed")
+class BlankCheckTest(unittest.TestCase):
+    """A new plan with nothing wrong: the Check sheet's verdict is All clear once the status date is typed."""
+
+    def test_all_clear(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            wb = recalc(BLANK, tmp)                                        # recalc types the status date
+        self.assertEqual(errors_in(wb), [])
+        self.assertTrue(named_cell(wb, "chk_Verdict").value.startswith("All clear"), named_cell(wb, "chk_Verdict").value)
 
 
 class ToolsTest(unittest.TestCase):

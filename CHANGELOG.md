@@ -35,6 +35,10 @@ reasons behind each item are in [docs/BACKLOG.md](docs/BACKLOG.md).
 - A risk-exposure trend on History, a capacity chart on Agile, fewer conditional-formatting rules.
 
 ## Release 1.0 (`release-1.0/`, PlannerVersion 2.0), frozen
+- **Ready-to-use fixes (29-Oct-2026, every release edition):** the Pred dropdown lists only the tasks above the row
+  (an INDEX range, no OFFSET); leave typed on both the day grid and the month cell is shown (Also Typed Above) and
+  counted on Check; report pages repeat their title rows when printed (A3 in template 1.2); `release_check` checks
+  lock flags on every sheet and that Simple and 1.0 name no sheet they don't have.
 - For first-time project managers: predecessor and resource pickers, Duration as 3 / 3d / 2w, leave by day, a
   duplicate UID refused, dates after the project start, the Check and TakeSnapshot sheets, TakeBaseline, protected
   report sheets, one-page printing, a 12-task Simple sample, a release checklist.

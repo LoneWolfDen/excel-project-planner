@@ -35,7 +35,7 @@ flowchart LR
 | **v2.0 Agile & reporting** | Sprint planning and status reporting | B-402, B-403, B-404, B-505, B-601, B-602 |
 | **v1.7 Simpler to use** | A first plan in minutes; a weekly update on three sheets ([review](SIMPLIFICATION_REVIEW.md)) | B-901 – B-918 (E9) |
 | **v1.8 Real-world fit** | What a PM using it in Excel asked for: one plan sheet, visible slip, real sprint capacity and cost ([design](REAL_WORLD_FIT.md)) | B-1001 – B-1020 (E10), then B-913 / B-914 |
-| **Release 1.0 (final freeze)** | A first-time PM can't break it and reports in 10 minutes: a separate workbook in `release-1.0/` | R1-01 – R1-16 ✅ DONE; the rest is v1.1 Future |
+| **Release 1.0 (final freeze)** | A first-time PM can't break it and reports in 10 minutes: a separate workbook in `release-1.0/` | R1-01 – R1-22 ✅ DONE (v1.0 ready to use); the rest is v1.1 Future |
 | **Later** | | everything else |
 
 ## Next up (v1.8)
@@ -91,6 +91,35 @@ Decisions taken with the owner before coding (the brief asked for some things th
 | R1-15 | ✅ Docs | | | README (Release 1.0, Limits), ARCHITECTURE (named formulas, why no LAMBDA), TESTING_ON_IPHONE (Release 1.0 steps), this backlog, RELEASE_CHECKLIST | | | |
 | R1-16 | ✅ Release checklist | | | [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md), each item checked by `scripts/release_check.py` or a named test | | `python scripts/release_check.py` | |
 
+### P0 (Release 1.0 ready to use, 29-Oct-2026): all done
+
+A review as PM, delivery manager and Excel MVP: no new features, only what stops a first-time PM tripping over the
+template. Fixes go into Release 1.0 (and, being shared code, every later release edition); the classic workbooks
+don't change.
+
+| ID | Item | Problem | Before | Fix | Excel | Acceptance | Perf |
+|---|---|---|---|---|---|---|---|
+| R1-17 | ✅ Pred dropdown lists only the tasks above | Each of the 800 pickers listed every detail task (200 rows): slow to open, and most entries were tasks a link may not use (Link Check then ignored them) | `=tsk_PickList` (a range, the whole list) | The list is the first n entries of the pick list, n = detail tasks above the row: `=INDEX(tsk_PickList,1):INDEX(tsk_PickList,MAX(1,COUNTIF($_IsLeaf$5:$_IsLeaf5,1)))`. Same in 1.1, 1.2 and the M365 edition (1.2 and M365 used OFFSET before) | A range built with INDEX:INDEX: no OFFSET, not volatile, evaluated only when the dropdown opens. Validation may use A1 (CLAUDE.md) | `StructureTest.test_validation`, `test_release_12.DesignTest`, `test_m365.StructureTest`; script: "Pred dropdowns list only the tasks above" | none (validation, not a formula) |
+| R1-18 | ✅ Leave typed twice is found | A day on the leave day grid and in the person's month cell counted twice: two places for one fact | README: "don't enter the same day in both" | LEAVE BY DAY gets **Also Typed Above** (the days on that row that are also in the month cell, red when not empty) and a hidden `_MonthText` helper; Check counts the rows ("Leave typed twice (day grid and month cell)") | TEXTJOIN of 31 `SEARCH(",d,", month text)` tests per row (Excel 2019) | `EditTest.test_check_lists_each_problem` (30-Oct typed in both: listed and counted) | +80 formulas (2 per grid row) + 1 on Check |
+| R1-19 | ✅ Lock flags checked on every sheet | The script checked one Tasks column | Tasks only | `release_check` reads every cell: a blue input must be unlocked, any other formula locked (a blue formula is a default to type over, such as the Stages presets). All four editions pass | | script: "Every sheet: blue inputs unlocked, formulas locked" | none |
+| R1-20 | ✅ Title rows repeat when printed | Excel headers can't show a cell, so a second page had no project name or status date | Footer and sheet name only | Status (rows 1-5), Roadmap (1-5), Resource Report (1-3) and Check (1-4) repeat their title rows on every page; template 1.2 prints them on A3 | Page set-up | `StructureTest.test_printing`; script: "Report pages repeat their title rows" | none |
+| R1-21 | ✅ Simple and 1.0 name only sheets they have | A formula naming a sheet that isn't there is `#REF!` in Excel | `missing_references` (sheets, tables, names) | `release_check` also scans formulas, names and validations for the optional sheets (Agile, Log, History, Resource Report, Cost, Check, TakeSnapshot) in Simple, and for Board / Backlog in every edition but 1.2 | | script: two new items | none |
+| R1-22 | ✅ Check verdict on a clean plan | | Only the sample (which shows issues on purpose) was tested | A blank workbook with a status date reads "All clear"; the edited sample counts a duplicate UID, a link to a task below and leave typed twice | | `BlankCheckTest`, `EditTest.test_check_lists_each_problem` | none |
+
+Asked and done differently:
+
+| Asked | Done instead | Why |
+|---|---|---|
+| The dropdown as `FILTER(Tasks[Task Name], ROW(...) < ROW())` | `INDEX(tsk_PickList,1):INDEX(tsk_PickList,n)` | FILTER is Microsoft 365 only (Excel 2019 is the minimum) and a validation list can't take an array; INDEX:INDEX is a range and needs no OFFSET |
+| The month cell as `=IF(day grid has the month, "", month)` | A warning column and a Check count | The month cells are inputs (blue): a formula there would be typed over, and it would hide leave instead of asking which entry is right |
+| UID = MAX+1 when a Task Name is typed | Unchanged: UIDs pre-filled, a typed UID must be new, Check counts duplicates and missing ones | A formula UID renumbers when rows move and breaks every link (decided for R1-01) |
+| The sample's Check shows "All clear" | The sample keeps its deliberate issues (over-allocation, an overdue Log item, Issues rows) to show what Check does; the blank workbook is tested for "All clear" | The sample is the demo of every check |
+| Protect Tasks, Resources, Settings, History | Unchanged: unprotected, formulas locked, inputs unlocked (now checked on every cell) | Excel can't add table rows on a protected sheet |
+
+v1.1 Future (from this review): a searchable task picker (Microsoft 365's typing filter needs FILTER; the M365 edition
+could use it), leave entry in one place only (retire the month cells once every plan has moved to the day grid),
+UIDs filled in automatically by the optional macros (addons/).
+
 ### P1 / P2: v1.1
 
 Template 1.1 is its own workbook too: `--release 1.1` builds `release-1.1/` (TemplateVersion 1.1, PlannerVersion
@@ -137,7 +166,7 @@ UX, the UX backlog items, the engine items, the add-ons (and the Microsoft 365 e
 | B-706 | ✅ CSV export for Jira / Azure DevOps / Planner | P3 | `scripts/export_csv.py --format jira / azure / planner`: each tool's import columns (Jira keeps the hierarchy with Issue Id / Parent Id; Azure DevOps types Epic / Feature / Task; Planner buckets = phases) | `test_exports` | none |
 | B-803 | ✅ Versioning and releases | P2 | CHANGELOG.md; the version is on Start and in printed footers (TemplateVersion) | review | none |
 | B-804 | ✅ More sample projects | P3 | `--sample construction` (a clinic extension, Construction stages) and `--sample event` (a partner summit with a fixed date), in `release-1.2/samples/` | `test_more_samples` | none |
-| D-1202 | ✅ Pred dropdown lists only the tasks above | P2 | The Pred1-4 validation list is `OFFSET` over the pick list, as long as the number of detail tasks above the row (`COUNTIF` of `_IsLeaf` from the header down): the only tasks a link may use. Validation is evaluated when the dropdown opens, so it adds nothing to recalculation | `test_pick_list_shows_only_tasks_above` | none |
+| D-1202 | ✅ Pred dropdown lists only the tasks above | P2 | The Pred1-4 validation list is `INDEX(tsk_PickList,1):INDEX(tsk_PickList,n)` (OFFSET before R1-17), as long as the number of detail tasks above the row (`COUNTIF` of `_IsLeaf` from the header down): the only tasks a link may use. Validation is evaluated when the dropdown opens, so it adds nothing to recalculation | `test_pick_list_shows_only_tasks_above` | none |
 | B-102 | ✅ Lag in % and elapsed days | P3 | `12FS+50%` = half the predecessor's duration (whole working days); `12+3ed` = 3 calendar days, then the first working day on or after (spec section 2). Typed or in the Lag pickers (text cells); the MS Project export writes elapsed lags as LagFormat 8 | `test_release_12.EngineTest` against `reference_schedule.py` (v12) | +4 helper columns (`_Pred{k}Elapsed`) |
 | B-110 | ✅ Inactive tasks (part) | P3 | Tasks > SCHEDULING: Active = No leaves the task out of the schedule, roll-ups, work and cost; links to it are ignored with a reason; Status says Inactive; struck through; exported as `<Active>0</Active>`. Split tasks stay in the backlog (they need Gantt segments) | `EngineTest.test_inactive` | none (changes `_IsLeaf`) |
 | B-202 | ✅ Remaining duration, actual work, % work complete | P2 | Tasks > ACTUALS: Remaining Duration on a started task sets its finish (from the status date) and progress; Actual Work sets work done and actual cost; % Work Done = actual work / work; Issues explains a value it can't use | `EngineTest.test_remaining_duration_and_actual_work` | +2 columns |

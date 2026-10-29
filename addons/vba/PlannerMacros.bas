@@ -53,6 +53,24 @@ Public Sub InsertTask()
     added.Range.Cells(1, tasks.ListColumns("Task Name").Index).Select
 End Sub
 
+' Every named task without a UID gets the next free one (Settings > NextFreeUID), top to bottom: what Check's
+' "Named tasks without a UID" asks for, done in one go (rows pasted or inserted without a UID).
+Public Sub FillMissingUIDs()
+    Dim tasks As ListObject, names As Range, uids As Range, r As Long, nextUid As Long, filled As Long
+    Set tasks = ThisWorkbook.Worksheets("Tasks").ListObjects("Tasks")
+    Set names = tasks.ListColumns("Task Name").DataBodyRange
+    Set uids = tasks.ListColumns("UID").DataBodyRange
+    nextUid = Application.Max(uids) + 1
+    For r = 1 To names.Rows.Count
+        If Len(Trim(names.Cells(r, 1).Value)) > 0 And IsEmpty(uids.Cells(r, 1).Value) Then
+            uids.Cells(r, 1).Value = nextUid
+            nextUid = nextUid + 1
+            filled = filled + 1
+        End If
+    Next r
+    MsgBox filled & " task(s) given a UID.", vbInformation, "Fill missing UIDs"
+End Sub
+
 ' One level deeper / shallower for the selected tasks (Level is an input; the outline follows).
 Public Sub IndentTask()
     ShiftLevel 1

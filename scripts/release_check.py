@@ -169,7 +169,7 @@ def main(argv=None):
     item("Pred dropdowns list only the tasks above the row (a range, no OFFSET)",
          picks and all(f.startswith("INDEX(tsk_PickList,1):INDEX(tsk_PickList,") and "OFFSET" not in f
                        for f in picks), sorted(set(picks))[:2])
-    if "Check" in books["sample"].sheetnames:
+    if "Check" in books["sample"].sheetnames and a.edition != "1.2":       # 1.2 types leave in one place
         item("Check counts leave typed twice (day grid and month cell)",
              any("lv_Twice" in str(c.value) for row in books["sample"]["Check"].iter_rows() for c in row))
     sizes = {k: v.stat().st_size for k, v in FILES.items()}

@@ -683,6 +683,28 @@ def v12_formulas(f):
     return g
 
 
+def pick_uid(pick):
+    """A Pred picker's UID: "12 Requirements" (picked) or 12 (typed) reads as 12. Template 1.2 and the Microsoft 365
+    edition also take a task's exact name ("Requirements gathering"), found with MATCH on Task Name; a name two
+    tasks share stays unread and Issues says so (names_issues)."""
+    uid = f'VALUE(LEFT({pick}&"",FIND(" ",{pick}&" ")-1))'
+    if v12() or m365():
+        return f'IFERROR({uid},IFERROR(INDEX({C("UID")},MATCH(TRIM({pick}),{C("Name")},0)),{pick}))'
+    return f'IFERROR({uid},{pick})'
+
+
+def names_issues():
+    """Template 1.2 / Microsoft 365: a predecessor typed by a name that more than one task has."""
+    out = ""
+    for k in LINK_NUMBERS:
+        pick = R(f"Pick{k}")
+        uid = f'VALUE(LEFT({pick}&"",FIND(" ",{pick}&" ")-1))'
+        out += (f'&IF({pick}="","",IF(ISERROR({uid}),IF(COUNTIF({C("Name")},TRIM({pick}))>1,"Pred{k}: "&'
+                f'COUNTIF({C("Name")},TRIM({pick}))&" tasks are called "&TRIM({pick})&": pick one from the list '
+                f'(UID and name). ",""),""))')
+    return out
+
+
 def release_issues():
     """Issues text the Release 1.0 inputs add: typed text that the pickers override."""
     picked = lambda keys: "OR(" + ",".join(f'{R(k)}<>""' for k in keys) + ")"
@@ -690,7 +712,8 @@ def release_issues():
             f'pickers are used. ","")'
             f'&IF(AND({R("ResRaw")}<>"",{picked([f"Who{k}" for k in range(1, PEOPLE + 1)])}),"The Resources text is '
             f'ignored: the Res pickers are used. ","")'
-            + (v11_issues() if v11() else "") + (v12_issues() if v12() else "") + (m365_issues() if m365() else ""))
+            + (v11_issues() if v11() else "") + (v12_issues() if v12() else "") + (m365_issues() if m365() else "")
+            + (names_issues() if v12() or m365() else ""))
 
 
 def v12_issues():
@@ -757,7 +780,7 @@ def release_formulas(f):
     # predecessor pickers: Pred k holds a UID or a pick-list entry "12 Requirements"; Type k and Lag k are optional
     def link(k):
         pick, typ, lag = R(f"Pick{k}"), R(f"PickT{k}"), f'N({R(f"PickL{k}")})'
-        uid = f'IFERROR(VALUE(LEFT({pick}&"",FIND(" ",{pick}&" ")-1)),{pick})'
+        uid = pick_uid(pick)
         return (f'IF({pick}="","",{uid}&IF(AND(OR({typ}="",{typ}="FS"),{lag}=0),"",IF({typ}="","FS",{typ})'
                 f'&IF({lag}=0,"",IF({lag}>0,"+","")&{lag}&"d")))')
     if v12():
@@ -765,7 +788,7 @@ def release_formulas(f):
         # working days as before
         def link(k):
             pick, typ, raw = R(f"Pick{k}"), R(f"PickT{k}"), R(f"PickL{k}")
-            uid = f'IFERROR(VALUE(LEFT({pick}&"",FIND(" ",{pick}&" ")-1)),{pick})'
+            uid = pick_uid(pick)
             lag = f'TRIM({raw}&"")'
             none = f'OR({lag}="",{lag}="0")'
             return (f'IF({pick}="","",{uid}&IF(AND(OR({typ}="",{typ}="FS"),{none}),"",IF({typ}="","FS",{typ})'
@@ -1149,6 +1172,10 @@ RELEASE_PROMPTS = {
                                   "DefaultUnits.") for k in range(1, PEOPLE + 1)},
 }
 # template 1.2: a lag may be a % of the predecessor or elapsed (calendar) days (B-102)
+# template 1.2 and the Microsoft 365 edition: a predecessor may be typed by name
+NAME_PROMPTS = {f"Pick{k}": (f"Predecessor {k}", "Pick the task that must come first, or type its UID or its exact "
+                                                "name. It must be a detail task listed above this one.")
+                for k in LINK_NUMBERS}
 V12_PROMPTS = {f"PickL{k}": (f"Lag {k}", "Optional: 2 = two working days, -1 = a lead, 50% = half the "
                                         "predecessor's duration, 3ed = three calendar days.") for k in LINK_NUMBERS}
 
@@ -1177,7 +1204,8 @@ def _validation_and_formatting(ws, L, n_rows):
             r = copy.copy(rule)
             r.sqref = MultiCellRange()
             prompts = ({**PROMPTS, **RELEASE_PROMPTS, **(V11_PROMPTS if v11() else {}),
-                        **(V12_PROMPTS if v12() else {})} if release() else PROMPTS)
+                        **(V12_PROMPTS if v12() else {}), **(NAME_PROMPTS if v12() or m365() else {})}
+                       if release() else PROMPTS)
             if k in prompts:
                 r.showInputMessage, (r.promptTitle, r.prompt) = True, prompts[k]
             ws.add_data_validation(r)

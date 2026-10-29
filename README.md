@@ -47,7 +47,9 @@ and greys, Segoe UI, clearer red / amber / green, report pages without gridlines
 Start sheet), a predecessor dropdown that lists only the tasks above the row, a **Board** of task cards by status and
 a product **Backlog**, MS Project status names, custom fields, A3 printing and dates that read the same in every
 Excel language. The schedule adds % and elapsed lags, inactive tasks, Remaining Duration and Actual Work, baselines 2
-and 3 (Settings > CompareBaseline), and the Cost sheet a cost per use and fixed costs. Two more samples are in `release-1.2/samples/` (a clinic extension, a partner summit; build others
+and 3 (Settings > CompareBaseline), and the Cost sheet a cost per use and fixed costs. Leave is typed in one place,
+the LEAVE BY DAY grid (the month columns on each person's row are worked out from it; an upgrade moves month-cell
+leave onto the grid), and a predecessor can be typed by its exact task name as well as picked or typed by UID. Two more samples are in `release-1.2/samples/` (a clinic extension, a partner summit; build others
 with `--sample construction|event`). Tools: `scripts/network_diagram.py` (Mermaid / Graphviz) and
 `scripts/export_csv.py --format jira|azure|planner`. See [CHANGELOG.md](CHANGELOG.md) and
 [docs/BACKLOG.md](docs/BACKLOG.md). Build with `--release 1.2`; check with
@@ -57,7 +59,8 @@ with `--sample construction|event`). Tools: `scripts/network_diagram.py` (Mermai
 ## Release 1.1 M365
 The Microsoft 365 edition, in [`release-1.1-m365/`](release-1.1-m365/): template 1.1 with the newer Excel functions,
 for teams that all have Excel for Microsoft 365 (or Excel 2021+). Named **LAMBDA** functions in Name Manager
-(`L_PARSE_DURATION`, `L_WORKING_DAYS`, `L_IS_WORKING_DAY`) replace the long formulas they stand for, the Check
+(`L_PARSE_DURATION`, `L_WORKING_DAYS`, `L_IS_WORKING_DAY`) replace the long formulas they stand for, a predecessor
+can be typed by its exact task name (Microsoft 365's dropdowns also filter as you type), the Check
 sheet's lists are **FILTER** formulas (no key columns), and Issues flags actual dates on a day off. The schedule is
 the same as 1.1. It is a separate folder so a problem there can't affect 1.1. It is saved without calculated values
 (LibreOffice, which the tests use, can't calculate LAMBDA or FILTER), so Excel calculates it when it opens; check it
@@ -71,7 +74,7 @@ with docs/TESTING_IN_EXCEL.md section 8. Build with `--release m365` (no `--reca
   `--modules agile,log,history,resources,cost` (`--simple` = none of them); nothing in it points at a sheet that
   isn't there, and an upgrade keeps the same set.
 - `release-1.0/`, `release-1.1/`, `release-1.1-m365/` – the release workbooks (above).
-- `addons/` – optional VBA macros and Office Scripts that automate the baseline, snapshot and insert-task steps
+- `addons/` – optional VBA macros and Office Scripts that automate the baseline, snapshot, insert-task and missing-UID steps
   ([README](addons/README.md)); the workbooks never need them.
 - `docs/` – [architecture and rules](docs/ARCHITECTURE.md), [scheduling spec](docs/SCHEDULING_SPEC.md), [MS Project gap analysis](docs/MSP_GAP_ANALYSIS.md), [backlog](docs/BACKLOG.md), [testing in Excel desktop](docs/TESTING_IN_EXCEL.md), [testing on iPhone](docs/TESTING_ON_IPHONE.md).
 - `planner/` – the generator: one module per sheet (`tasks.py`, `gantt.py`, `agile.py`, `log.py`, `status.py`, ...) plus `core.py` helpers.

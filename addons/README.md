@@ -11,6 +11,7 @@ rows and columns don't break them.
 | Keep a baseline as 2 / 3 (template 1.2) | TakeSnapshot > KEEP A BASELINE | `KeepBaseline` | `keepBaseline.ts` |
 | Record snapshot | TakeSnapshot > SNAPSHOT: copy the snapshot row, paste values on History | `RecordSnapshot` | `recordSnapshot.ts` |
 | Insert task | Start > Inserting tasks: insert a row, type NextFreeUID | `InsertTask` | `insertTask.ts` |
+| Fill missing UIDs | Check > Named tasks without a UID: type NextFreeUID into each | `FillMissingUIDs` | `fillUids.ts` |
 | Indent / outdent | change Level | `IndentTask`, `OutdentTask` | `indentTask.ts` (`by` = 1 or -1) |
 | Expand / collapse | the outline buttons 1 / 9 | `ExpandAll`, `CollapseAll` | (Excel for the web's outline buttons) |
 

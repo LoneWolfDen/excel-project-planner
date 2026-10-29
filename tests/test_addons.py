@@ -37,7 +37,8 @@ class AddonsTest(unittest.TestCase):
     def test_files(self):
         self.assertTrue(BAS.read_text().startswith('Attribute VB_Name = "PlannerMacros"'))
         self.assertEqual({p.name for p in SCRIPTS},
-                         {"setBaseline.ts", "keepBaseline.ts", "recordSnapshot.ts", "insertTask.ts", "indentTask.ts"})
+                         {"setBaseline.ts", "keepBaseline.ts", "recordSnapshot.ts", "insertTask.ts", "indentTask.ts",
+                          "fillUids.ts"})
         for p in SCRIPTS:
             self.assertIn("function main(workbook: ExcelScript.Workbook", p.read_text(), p.name)
 

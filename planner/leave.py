@@ -21,7 +21,7 @@ from openpyxl.formatting.rule import FormulaRule
 from openpyxl.styles import Font
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from .core import Col, Tab, add_table, col_range, fill, font, name, release
+from .core import Col, Tab, add_table, col_range, fill, font, name, release, v12
 
 TABLE = "ResourceTable"           # the months are columns of the Resources table, after each person's details
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -87,7 +87,8 @@ def leave_days(start, end, row, columns):
     month_column(...)), ...] for each calendar month the period can touch. Pass row and columns as references to
     helper cells, so each lookup is done once per grid row / column rather than in every cell."""
     cell = lambda col: f"INDEX(leave_Grid,{row},{col})"
-    if release():                                      # Release 1.0: plus the days ticked on the leave day grid
+    if release() and not v12():                        # Release 1.0 / 1.1: plus the days ticked on the day grid
+        # (template 1.2's month cells are worked out from the grid: adding it again would count it twice)
         cell = lambda col: (f"INDEX(leave_Grid,{row},{col})&\",\"&IFERROR(INDEX(lv_Days,MATCH(INDEX({TABLE}"
                             f"[Resource Name],{row})&\"|\"&INDEX(leave_Months,{col}),lv_Key,0)),\"\")")
     terms = [f'IF(OR({row}=0,{col}=0),0,{_in_month(start, end, first, _text(cell(col)))})' for first, col in columns]
@@ -106,8 +107,17 @@ def team_leave_hours(grid, column):
 
 def leave_columns(people, blank, entries=None, months=None):
     """The month columns of ResourceTable: one per month header, holding each person's days off (people = the
-    Resources rows, name first). entries: {person: {month header: days text}} replacing the sample (an import)."""
+    Resources rows, name first). entries: {person: {month header: days text}} replacing the sample (an import).
+    Template 1.2: leave is typed in one place, the day grid; each month cell reads its person and month's row there
+    (grey, calculated), so the reports read the month columns as before and nothing counts twice. The entries then
+    go to the grid (build_leave_grid)."""
     labels = months or month_labels()
+    if v12():
+        person = Tab(TABLE).row("Resource Name")
+        return [Col(label, "calc", 11, formula=f'IFERROR(INDEX(lv_Days,MATCH({person}&"|"&'
+                                                f'{TABLE}[[#Headers],[{label}]],lv_Key,0)),"")',
+                    note=f"Days off in {label}, from the LEAVE BY DAY grid below (type leave there).")
+                for label in labels]
     data = entries if entries is not None else {} if blank else SAMPLE
     if release() and entries is None:                  # the Release 1.0 sample enters some leave on the day grid
         data = {p: m for p, m in data.items() if p not in GRID_SAMPLE}
@@ -145,17 +155,34 @@ def _days_of(text):
     return out
 
 
-def build_leave_grid(wb, ws, top, blank, n_rows=GRID_ROWS):
+def grid_rows(entries):
+    """{person: {month: days text}} as day-grid rows (person, month, {day: amount}), in a stable order."""
+    return [(person, month, _days_of(text)) for person, months in entries.items()
+            for month, text in months.items() if str(text or "").strip()]
+
+
+def days_text(days):
+    """{16: 1, 17: 0.5} -> "16, 17(0.5)": the month cells' notation."""
+    return ", ".join(f"{d}" if a == 1 else f"{d}({a:g})" for d, a in sorted(days.items()))
+
+
+def build_leave_grid(wb, ws, top, blank, n_rows=GRID_ROWS, entries=None):
     """Release 1.0: the leave day grid (table LeaveDays) under the Resources table. One row per person per month:
     pick the person and the month, then type 1 (a day) or 0.5 (half a day) under each day off. Days builds the
     same text a month cell holds ("16, 17(0.5)") with TEXTJOIN, and every leave look-up adds it to the person's
     month cell, so either way of entering leave counts. A day typed in both would count twice: "Also Typed Above"
     lists such days (from the month cell's text, cleaned in _MonthText) and the Check sheet counts the rows, so the
-    double entry is found before it skews capacity. Returns the row under the grid."""
+    double entry is found before it skews capacity. Template 1.2: the grid is the only place leave is typed (the
+    month cells read it), so neither check is needed. entries: {person: {month: days text}} (an import or an
+    upgrade); the grid grows to hold them. Returns the row under the grid."""
+    one_place = v12()
     ws.cell(top - 2, 2, "LEAVE BY DAY: one row per person and month; type 1 (all day) or 0.5 (half a day) under "
-                        "each day off. It adds to the month columns above.").font = font(bold=True, color="1F4E78")
-    data = {} if blank else GRID_SAMPLE
-    entries = [(person, month, _days_of(text)) for person, months in data.items() for month, text in months.items()]
+                        "each day off. " + ("The month columns above are worked out from it." if one_place else
+                                            "It adds to the month columns above.")).font = font(bold=True,
+                                                                                               color="1F4E78")
+    data = entries if entries is not None else {} if blank else SAMPLE if one_place else GRID_SAMPLE
+    entries = grid_rows(data)
+    n_rows = max(n_rows, len(entries) + 10)
     t = Tab(GRID)
     day = lambda k: t.row(str(k))
     text = ",".join(f'IF({day(k)}="","",{k}&IF(N({day(k)})=1,"","("&N({day(k)})&")"))' for k in range(1, 32))
@@ -172,22 +199,28 @@ def build_leave_grid(wb, ws, top, blank, n_rows=GRID_ROWS):
             *[Col(str(k), "in", 3.6, center=True, values=[e[2].get(k) for e in entries]) for k in range(1, 32)],
             Col("Days", "calc", 26, formula=f'_xlfn.TEXTJOIN(", ",TRUE(),{text})',
                 note="The days off as the month cells write them: what the reports read."),
-            Col("Also Typed Above", "calc", 18, formula=f'_xlfn.TEXTJOIN(", ",TRUE(),{twice})',
-                note="Days on this row that are also in the person's month cell above: they count twice. Clear one."),
+            *([] if one_place else [
+                Col("Also Typed Above", "calc", 18, formula=f'_xlfn.TEXTJOIN(", ",TRUE(),{twice})',
+                    note="Days on this row that are also in the person's month cell above: they count twice. "
+                         "Clear one.")]),
             Col("_Key", "help", 6, formula=f'{t.row("Resource")}&"|"&{t.row("Month")}',
                 note="Person|month: the look-up key (helper)."),
-            Col("_MonthText", "help", 8, formula=month_text,
-                note="The person's month cell as \",16,17,(0.5),\": each day between commas (helper).")]
+            *([] if one_place else [
+                Col("_MonthText", "help", 8, formula=month_text,
+                    note="The person's month cell as \",16,17,(0.5),\": each day between commas (helper).")])]
     letters = add_table(ws, GRID, top, 2, cols, n_rows)
     for helper in ("_Key", "_MonthText"):
-        ws.column_dimensions[letters[helper]].hidden = True
+        if helper in letters:
+            ws.column_dimensions[letters[helper]].hidden = True
     name(wb, "lv_Days", f"{GRID}[Days]")
     name(wb, "lv_Key", f"{GRID}[_Key]")
-    name(wb, "lv_Twice", f"{GRID}[Also Typed Above]")
     first, last = top + 1, top + n_rows
-    twice_cells = col_range(letters["Also Typed Above"], first, last)
-    ws.conditional_formatting.add(twice_cells, FormulaRule(formula=[f'{letters["Also Typed Above"]}{first}<>""'],
-                                                           font=Font(color="9C0006", bold=True), fill=fill("FFC7CE")))
+    if not one_place:
+        name(wb, "lv_Twice", f"{GRID}[Also Typed Above]")
+        twice_cells = col_range(letters["Also Typed Above"], first, last)
+        ws.conditional_formatting.add(twice_cells, FormulaRule(
+            formula=[f'{letters["Also Typed Above"]}{first}<>""'], font=Font(color="9C0006", bold=True),
+            fill=fill("FFC7CE")))
     for formula, key, kind in (("=res_Name", "Resource", "list"), ("=leave_Months", "Month", "list")):
         dv = DataValidation(type=kind, formula1=formula, showErrorMessage=True, showInputMessage=True,
                             promptTitle=key, prompt=cols[0 if key == "Resource" else 1].note)

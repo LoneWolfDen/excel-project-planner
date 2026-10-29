@@ -54,7 +54,7 @@ python scripts/build_planner.py release-1.1-m365/Project_Planner.xlsx --release 
 python scripts/build_planner.py release-1.1-m365/Project_Planner_Blank.xlsx --release m365 --blank
 python scripts/build_planner.py release-1.1-m365/Project_Planner_Simple.xlsx --release m365 --baselined --simple
 python scripts/build_export_page.py
-python -m unittest discover -s tests -v
+python -m unittest discover -s tests -v      # or: python scripts/run_tests.py -j 4 (same tests, in parallel)
 python scripts/build_planner.py /tmp/stress.xlsx --tasks 1000 --stress 33
 python scripts/perf_check.py Project_Planner.xlsx --profile sample --timing
 python scripts/perf_check.py /tmp/stress.xlsx --profile stress --timing
@@ -67,6 +67,9 @@ python scripts/release_check.py
 python scripts/release_check.py --edition 1.1
 python scripts/release_check.py --edition 1.2
 ```
+
+Builds are reproducible (`planner/reproducible.py`): rebuilding an unchanged workbook leaves `git status` clean, so a
+workbook that shows as changed really changed. A `v*` tag publishes a GitHub Release (`.github/workflows/release.yml`).
 
 LibreOffice rewrites `TRUE`/`FALSE` as `TRUE()`/`FALSE()`; write them that way in formulas so the committed files
 match the build.

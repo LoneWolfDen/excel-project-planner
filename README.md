@@ -177,3 +177,17 @@ committed workbooks match the build script, tables keep their calculated columns
 reference. GitHub Actions runs the same suite on every push, then `scripts/perf_check.py` on the sample and on a
 1,000-task stress workbook (formula count, volatile functions, recalculation time against `perf_budget.json`).
 Recalculation tests are skipped if LibreOffice is not installed.
+
+The suite takes a while because LibreOffice recalculates many workbooks. `python scripts/run_tests.py -j 4` runs
+the same tests four classes at a time (each with its own LibreOffice profile); CI splits them over three machines
+with `--shard k/3`.
+
+**Same build, same bytes.** A rebuild of an unchanged workbook gives an identical file: chart axis ids, the dates in
+the file properties and the zip timestamps are fixed after each save (`planner/reproducible.py`), so `git diff`
+shows a workbook as changed only when its content changed.
+
+**Releases.** Pushing a tag such as `v1.2` or `v1.0.1` (or publishing a release in GitHub's web page) runs
+`.github/workflows/release.yml`: on the tag's own code it checks that a fresh build matches the committed workbooks
+and that `release_check` passes, then publishes the edition's workbooks with `SHA256SUMS.txt` and its CHANGELOG
+section as a GitHub Release. For a tag made before the workflow existed (`v1.0`), run it by hand: Actions > Release
+> Run workflow, tag `v1.0`.

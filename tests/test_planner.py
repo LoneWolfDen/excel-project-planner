@@ -70,8 +70,9 @@ def recalc(src, outdir, edit=None, status_date=True):
     stage = Path(tempfile.mkdtemp(dir=outdir))
     staged = stage / src.name
     wb.save(staged)
-    subprocess.run([SOFFICE, "--headless", "--calc", "--convert-to", "xlsx", "--outdir", str(stage / "out"), str(staged)],
-                   check=True, capture_output=True, timeout=900)
+    from planner.build import lo_profile               # each parallel worker has its own LibreOffice profile
+    subprocess.run([SOFFICE, *lo_profile(), "--headless", "--calc", "--convert-to", "xlsx", "--outdir",
+                    str(stage / "out"), str(staged)], check=True, capture_output=True, timeout=900)
     return openpyxl.load_workbook(stage / "out" / src.name, data_only=True)
 
 

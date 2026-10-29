@@ -1,0 +1,70 @@
+name: Release
+
+# Publish an edition's workbooks as a GitHub Release when its tag is pushed (v1.0, v1.0.1, v1.2, v1.3 ...) or when a
+# release is drafted in GitHub's web page and published. The tag names the edition:
+#   v1.0*  release-1.0/            v1.1*  release-1.1/ and release-1.1-m365/
+#   v1.2*  release-1.2/ (samples)  v1.3*  release-1.3/
+# The tag's committed workbooks are attached as they are, after the job checks, on the tag's own code, that a fresh
+# build of the edition matches them cell for cell (tests) and that release_check passes. They go up with
+# SHA256SUMS.txt and the edition's CHANGELOG section(s) as the release notes. For a tag made before this workflow
+# existed (v1.0), run it by hand: Actions > Release > Run workflow, tag v1.0.
+on:
+  push:
+    tags: ["v*"]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (it must exist), e.g. v1.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Which tag
+        id: tag
+        run: |
+          tag="${{ github.event.inputs.tag || github.event.release.tag_name || github.ref_name }}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      # the workbooks, tests and checklist come from the tag; only the asset script comes from this workflow's
+      # commit, so a tag made before this workflow existed (v1.0) is published by running it by hand
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - uses: actions/checkout@v4
+        with:
+          path: tooling
+
+      - name: Install LibreOffice and Python packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libreoffice-calc python3-uno python3-pip
+          python3 -m pip install --break-system-packages -r requirements-dev.txt
+
+      - name: Edition, files and checks
+        id: edition
+        run: python3 tooling/scripts/release_assets.py "${{ steps.tag.outputs.tag }}" dist release-notes.md --root . >> "$GITHUB_OUTPUT"
+
+      - name: The committed workbooks match a fresh build
+        run: cd tests && python3 -m unittest -v ${{ steps.edition.outputs.tests }}
+
+      - name: Release checklist
+        run: python3 scripts/release_check.py --edition ${{ steps.edition.outputs.check }}
+
+      - name: Create or update the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --title "${{ steps.edition.outputs.title }}" --notes-file release-notes.md
+          fi

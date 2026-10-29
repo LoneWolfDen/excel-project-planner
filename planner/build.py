@@ -8,6 +8,7 @@
 """
 import argparse
 from dataclasses import dataclass, field
+import os
 import re
 import shutil
 import subprocess
@@ -202,6 +203,14 @@ def _tables(z):
     return out
 
 
+def lo_profile():
+    """LibreOffice's -env:UserInstallation when PLANNER_LO_PROFILE names a folder: each parallel test worker
+    (scripts/run_tests.py) gets its own profile, since two LibreOffice processes can't share one. Unset: the
+    default profile, as before."""
+    folder = os.environ.get("PLANNER_LO_PROFILE")
+    return [f"-env:UserInstallation={Path(folder).resolve().as_uri()}"] if folder else []
+
+
 CALC_PR = '<calcPr calcId="191029" calcMode="auto" fullCalcOnLoad="1"/>'
 
 
@@ -228,8 +237,12 @@ def restore_tables(original, recalculated):
 
 
 def save(wb, out, recalc):
+    """Save the workbook (recalculated by LibreOffice when recalc), then make the file reproducible: the same
+    build gives the same bytes (planner/reproducible.py)."""
+    from .reproducible import normalise
     if not recalc:
         wb.save(out)
+        normalise(out)
         return
     soffice = shutil.which("soffice") or shutil.which("libreoffice")
     if not soffice:
@@ -237,10 +250,11 @@ def save(wb, out, recalc):
     with tempfile.TemporaryDirectory() as tmp:
         raw = Path(tmp) / Path(out).name
         wb.save(raw)
-        subprocess.run([soffice, "--headless", "--calc", "--convert-to", "xlsx", "--outdir", str(Path(tmp) / "out"),
-                        str(raw)], check=True, capture_output=True, timeout=1800)
+        subprocess.run([soffice, *lo_profile(), "--headless", "--calc", "--convert-to", "xlsx", "--outdir",
+                        str(Path(tmp) / "out"), str(raw)], check=True, capture_output=True, timeout=1800)
         done = Path(tmp) / "out" / raw.name
         restore_tables(raw, done)
+        normalise(done)
         shutil.copyfile(done, out)
 
 

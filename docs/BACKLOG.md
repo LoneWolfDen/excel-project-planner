@@ -155,6 +155,15 @@ they keep both ways to type leave, with R1-18's warning.
 
 F-1110b stays open: the tests' LibreOffice (24.2, also on the CI runners' Ubuntu 24.04) can't evaluate LAMBDA.
 
+## Production readiness (29-Oct-2026)
+
+| ID | Item | State |
+|---|---|---|
+| PR-03 | Reproducible builds: fixed chart axis ids, file dates and zip timestamps (`planner/reproducible.py`) | ✅ done |
+| PR-04 | Automated releases: a `v*` tag publishes the edition's workbooks, SHA256SUMS and notes (`release.yml`) | ✅ done |
+| PR-06 | Faster CI: parallel test shards, each worker with its own LibreOffice profile (`scripts/run_tests.py`) | ✅ done |
+| PR-07 | Guided setup on Start: a checklist that ticks itself (template 1.3) | next |
+
 ## Template 1.2: design, UX and the rest of the backlog
 
 Built with `--release 1.2` into `release-1.2/` (TemplateVersion 1.2, PlannerVersion 2.2) from the 1.1 code; 1.0, 1.1

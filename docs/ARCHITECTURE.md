@@ -420,6 +420,7 @@ Run on every PR by `.github/workflows/ci.yml`:
 | Recalculation time: full, a duration edit near the top, the last task, a note; sample and 1,000-task stress workbook | `perf_check.py --timing` (LibreOffice) | above budget |
 | Committed workbooks match the build | unit test | the `.xlsx` wasn't rebuilt after a code change |
 | Tables keep their calculated-column formulas | unit test | Excel wouldn't auto-fill inserted rows |
+| Same build, same bytes | `tests/test_reproducible.py` | two builds differ, or a committed workbook isn't normalised |
 
 The results appear in the CI run summary. A budget may be raised only with a reason in the PR description.
 
@@ -433,3 +434,18 @@ python scripts/perf_check.py /tmp/stress.xlsx --profile stress --timing
 ```
 
 `--timing` needs LibreOffice and `python3-uno`.
+
+**Parallel tests.** `scripts/run_tests.py` runs each test class in its own process, several at once. Two copies of
+LibreOffice can't share a user profile, so each worker gets its own (`PLANNER_LO_PROFILE`, read by `planner.build`,
+`tests/test_planner.recalc`, `tests/lo_session` and `perf_check`) and its own UNO port range (`PLANNER_LO_PORT`).
+`--shard k/n` balances classes over CI machines by the times in `tests/durations.json` (`--record` refreshes it).
+
+**Reproducible files** (`planner/reproducible.py`). `build.save` normalises every saved workbook: LibreOffice's
+random chart axis ids are renumbered in order of appearance, `docProps/core.xml`'s times become a fixed date (or
+`SOURCE_DATE_EPOCH`), and every zip entry gets the same timestamp. Cells, styles and charts are untouched.
+
+**Release workflow** (`.github/workflows/release.yml`, `scripts/release_assets.py`). A `v*` tag names an edition
+(`v1.0*` release-1.0, `v1.1*` release-1.1 and the M365 edition, `v1.2*` release-1.2 and its samples). The job checks
+out the tag, reruns that edition's committed-workbook tests and `release_check`, and attaches the workbooks (named
+with the edition), `SHA256SUMS.txt` and the CHANGELOG section. The asset script comes from the workflow's own
+commit, so older tags can be published with a manual run.

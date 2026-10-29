@@ -4,6 +4,7 @@ The unit tests otherwise edit input cells with openpyxl, which can't show how Ex
 formulas when rows move. Needs LibreOffice and python3-uno; tests skip without them.
 """
 import itertools
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -16,7 +17,15 @@ try:
 except ImportError:                      # pragma: no cover - depends on the machine
     AVAILABLE = False
 
-_ports = itertools.count(2101)
+# parallel workers (scripts/run_tests.py) each get their own range of ports and their own profile
+_ports = itertools.count(int(os.environ.get("PLANNER_LO_PORT", "2101")))
+
+
+def lo_profile():
+    """-env:UserInstallation for a parallel worker's own LibreOffice profile (PLANNER_LO_PROFILE; see
+    planner.build.lo_profile, which this mirrors so this module needs no planner import)."""
+    folder = os.environ.get("PLANNER_LO_PROFILE")
+    return [f"-env:UserInstallation={Path(folder).resolve().as_uri()}"] if folder else []
 
 
 def _prop(name, value):
@@ -33,7 +42,7 @@ class Calc:
 
     def __enter__(self):
         port = next(_ports)
-        self.proc = subprocess.Popen(["soffice", "--headless", "--invisible", "--norestore", "--nologo",
+        self.proc = subprocess.Popen(["soffice", *lo_profile(), "--headless", "--invisible", "--norestore", "--nologo",
                                       f"--accept=socket,host=localhost,port={port};urp;"],
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         ctx = uno.getComponentContext()

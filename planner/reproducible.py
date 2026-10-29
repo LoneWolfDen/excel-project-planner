@@ -9,6 +9,8 @@ each save:
     appear in each chart: the same chart gets the same ids every time;
   * docProps/core.xml's created and modified times become FIXED_TIME (or SOURCE_DATE_EPOCH, the usual
     reproducible-builds variable, when it is set);
+  * LibreOffice writes a sheet's data-validation rules in no fixed order: they are sorted (each covers its own
+    cells, so the order doesn't change what Excel does);
   * every zip entry gets the same timestamp (ZIP_TIME).
 
 Nothing a user sees changes: Excel doesn't show axis ids, and the version is in TemplateVersion, not the file date.
@@ -23,6 +25,8 @@ from pathlib import Path
 FIXED_TIME = "2026-01-01T00:00:00Z"
 ZIP_TIME = (1980, 1, 1, 0, 0, 0)                      # the earliest a zip entry can hold
 AXIS = re.compile(r'<c:(axId|crossAx) val="(\d+)"/>')
+VALIDATIONS = re.compile(r"(<dataValidations[^>]*>)(.*?)(</dataValidations>)", re.S)
+RULE = re.compile(r"<dataValidation\b(?:[^>]*/>|.*?</dataValidation>)", re.S)
 CORE_TIME = re.compile(r'(<dcterms:(?:created|modified)[^>]*>)[^<]*(</dcterms:(?:created|modified)>)')
 
 
@@ -42,6 +46,16 @@ def _axes(xml):
     return AXIS.sub(lambda m: f'<c:{m.group(1)} val="{ids[m.group(2)]}"/>', xml)
 
 
+def _validations(xml):
+    """Sort one sheet's data-validation rules (LibreOffice writes them in hash order)."""
+    def one(m):
+        rules = RULE.findall(m.group(2))
+        if sum(map(len, rules)) != len(m.group(2)):    # anything between the rules: leave the sheet as it is
+            return m.group(0)
+        return m.group(1) + "".join(sorted(rules)) + m.group(3)
+    return VALIDATIONS.sub(one, xml)
+
+
 def normalise(path):
     """Rewrite the saved workbook at path in place so the same content gives the same bytes."""
     path = Path(path)
@@ -52,6 +66,8 @@ def normalise(path):
             data = zin.read(item.filename)
             if item.filename.startswith("xl/charts/chart") and item.filename.endswith(".xml"):
                 data = _axes(data.decode("utf-8")).encode("utf-8")
+            elif item.filename.startswith("xl/worksheets/sheet") and b"<dataValidations" in data:
+                data = _validations(data.decode("utf-8")).encode("utf-8")
             elif item.filename == "docProps/core.xml":
                 data = CORE_TIME.sub(lambda m: m.group(1) + when + m.group(2), data.decode("utf-8")).encode("utf-8")
             info = zipfile.ZipInfo(item.filename, date_time=ZIP_TIME)

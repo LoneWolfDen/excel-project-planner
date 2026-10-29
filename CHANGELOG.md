@@ -20,12 +20,16 @@ reasons behind each item are in [docs/BACKLOG.md](docs/BACKLOG.md).
   (Active = No, B-110); Remaining Duration and Actual Work with % Work Done (B-202); baselines 2 and 3 with a
   Compare against setting (B-201).
 - **Cost:** a cost per use on the rate card and a Fixed Costs table per task (B-302).
+- **Leave in one place:** the LEAVE BY DAY grid is where leave is typed; the month columns are worked out from it,
+  and an upgrade moves month-cell leave onto the grid. **Predecessors by name:** Pred1-4 take a task's exact name
+  too; a name two tasks share is flagged in Issues.
 
 - **Optional add-ons** (`addons/`): VBA macros for desktop Excel (B-704) and Office Scripts for Excel for the web
-  (B-705) that automate the baseline, snapshot, insert-task and indent steps.
+  (B-705) that automate the baseline, snapshot, insert-task and indent steps, and fill in missing UIDs.
 
 ## Microsoft 365 edition (`release-1.1-m365/`, PlannerVersion 2.1-m365)
 - The Check lists spill (real dynamic arrays) and the Pred dropdown lists only the tasks above (F-1110).
+- A predecessor can be typed by its exact task name; Microsoft 365's dropdown also filters as you type.
 - Template 1.1 with named LAMBDA functions (`L_PARSE_DURATION`, `L_WORKING_DAYS`, `L_IS_WORKING_DAY`) and FILTER
   lists on the Check sheet; a working-day check on actual dates. Saved without values; Excel calculates on open.
 

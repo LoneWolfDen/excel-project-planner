@@ -116,9 +116,7 @@ Asked and done differently:
 | The sample's Check shows "All clear" | The sample keeps its deliberate issues (over-allocation, an overdue Log item, Issues rows) to show what Check does; the blank workbook is tested for "All clear" | The sample is the demo of every check |
 | Protect Tasks, Resources, Settings, History | Unchanged: unprotected, formulas locked, inputs unlocked (now checked on every cell) | Excel can't add table rows on a protected sheet |
 
-v1.1 Future (from this review): a searchable task picker (Microsoft 365's typing filter needs FILTER; the M365 edition
-could use it), leave entry in one place only (retire the month cells once every plan has moved to the day grid),
-UIDs filled in automatically by the optional macros (addons/).
+v1.1 Future (from this review): all three done on 29-Oct-2026 (F-1111 – F-1113 below).
 
 ### P1 / P2: v1.1
 
@@ -145,6 +143,17 @@ Template 1.1 is its own workbook too: `--release 1.1` builds `release-1.1/` (Tem
 | ID | Item | Pri | Notes |
 |---|---|---|---|
 | F-1110b | Microsoft 365 edition: CI recalculation | P3 | Once LibreOffice (24.8+) or another engine can evaluate LAMBDA and FILTER (the spilled lists and the pick list are done in template 1.2's PR: F-1110 below) |
+
+Done on 29-Oct-2026 (the v1.1 Future items from the Release 1.0 review). Release 1.0 and template 1.1 don't change:
+they keep both ways to type leave, with R1-18's warning.
+
+| ID | Item | Pri | Done as | Acceptance | Perf |
+|---|---|---|---|---|---|
+| F-1111 | ✅ Leave typed in one place (template 1.2) | P2 | The LEAVE BY DAY grid is the only place to type leave. Each month cell on a person's Resources row is a grey formula, `IFERROR(INDEX(lv_Days,MATCH([@Resource Name]&"\|"&ResourceTable[[#Headers],[Nov-26]],lv_Key,0)),"")`, so every report reads the month columns as before and nothing counts twice (`leave_days` no longer adds the grid in 1.2). Imports and upgrades put leave on the grid, which grows to fit; where an upgraded workbook had the same day in both places, the grid's amount wins. Also Typed Above and its Check count are not needed in 1.2 | `test_release_12.LeaveOnePlaceTest` (month cells read the grid; capacity equals the 1.1 sample's; the upgrade from 1.1 moves month-cell leave onto the grid) | +1,800 formulas (36 months x 50 people; a MATCH each); the grid's 2 warning columns go |
+| F-1112 | ✅ Predecessors typed by name (template 1.2, Microsoft 365) | P2 | Pred1-4 take a task's exact name as well as "UID Name" and a UID: `IFERROR(VALUE(...),IFERROR(INDEX(Tasks[UID],MATCH(TRIM(pick),Tasks[Task Name],0)),pick))`. A name two tasks share stays unread and Issues says "Pred1: 2 tasks are called X: pick one from the list". Microsoft 365's dropdowns also filter as you type (Excel's own feature), so a searchable list needs no FILTER | `TypedNameTest`, `test_m365.test_predecessor_by_name` | a MATCH only when the pick isn't a UID |
+| F-1113 | ✅ UIDs filled in by the add-ons | P3 | `FillMissingUIDs` (VBA) and `fillUids.ts` (Office Script): every named task without a UID gets the next free one, top to bottom: what Check's "Named tasks without a UID" asks for, in one go | `tests/test_addons.py` | none (not in the .xlsx) |
+
+F-1110b stays open: the tests' LibreOffice (24.2, also on the CI runners' Ubuntu 24.04) can't evaluate LAMBDA.
 
 ## Template 1.2: design, UX and the rest of the backlog
 

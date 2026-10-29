@@ -94,6 +94,14 @@ calculate. Every value should equal the 1.1 sample's (`release-1.1/Project_Plann
 - [ ] Settings > Sandbox = Yes: the red banner on Status, Core API endpoints (UID 13) gets 7 days. Set No.
 - [ ] Save, then export it with docs/export.html (the converter reads the values Excel saved).
 
+## 8a. Template 1.2: leave and predecessors by name
+
+- [ ] Resources: the month columns are grey (calculated). Type 1 under day 4 on a LEAVE BY DAY row for Sam Rivera,
+      Jan-27: his Jan-27 cell reads 4, and the Resource Report's leave for that week rises. Undo.
+- [ ] Tasks > Pred1 on Payment gateway integration (UID 14): type `Core API endpoints`; its Predecessors by ID shows
+      task 13's ID and Link Check stays empty. Undo.
+- [ ] Microsoft 365: start typing a task name in a Pred dropdown: the list narrows as you type.
+
 ## 9. Optional add-ons (`addons/`)
 
 Only for teams that use them (addons/README.md). In a copy saved as `.xlsm` with `vba/PlannerMacros.bas` imported,
@@ -106,3 +114,5 @@ or in Excel for the web with the scripts in `office-scripts/`, on the template 1
 - [ ] InsertTask / insertTask.ts on Core API endpoints: a row below it at level 3 with UID = the old NextFreeUID; the
       formula columns filled; no `#REF!`.
 - [ ] IndentTask / OutdentTask / indentTask.ts: Level changes by one; the WBS and the outline follow.
+- [ ] Clear two UIDs, then FillMissingUIDs / fillUids.ts: both get the next free UIDs; Check's "Named tasks without
+      a UID" is back to 0.

@@ -1,9 +1,11 @@
 """Start sheet: the six settings a plan needs (written by planner.settings), a quick start, the weekly update, and
 the full reference below them."""
-from openpyxl.styles import Alignment
+from openpyxl.formatting.rule import FormulaRule
+from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.worksheet.hyperlink import Hyperlink
 
-from .core import CALC_FILL, HEADER_FILLS, HEADER_FONT, INPUT_FONT, NOTE_FONT, font, has, missing, release, v11
+from .core import (CALC_FILL, CALC_FONT, HEADER_FILLS, HEADER_FONT, INPUT_FONT, NOTE_FONT, font, has, missing, name,
+                   release, v11, v13)
 from .settings import ESSENTIAL, START, START_ROW
 
 # (label, text, sheet to link to)
@@ -39,6 +41,25 @@ RELEASE_QUICK_START = [
                     "columns to copy and the Baseline columns to paste values onto (Settings > TakeBaseline says "
                     "which tasks).", "TakeSnapshot"),
 ]
+# Template 1.3: the steps as a checklist that ticks itself. (label, text, sheet to link to, when it is done: an
+# Excel 2019 condition on defined names). The Check step needs the Check sheet: without it (Simple) the condition
+# reads the Issues column instead.
+SETUP = [
+    ("1. Your project", RELEASE_QUICK_START[0][1], "Settings",
+     'AND(TRIM(ProjectName)<>"",ProjectName<>"New Project",N(ProjectStartDate)>0)'),
+    ("2. People", RELEASE_QUICK_START[1][1], "Resources", 'COUNTIF(res_Name,"?*")>0'),
+    ("3. Tasks", RELEASE_QUICK_START[2][1], "Tasks", 'COUNTIF(tsk_Name,"?*")>0'),
+    ("4. Check", RELEASE_QUICK_START[3][1], "Check", 'AND(COUNTIF(tsk_Name,"?*")>0,SUM(chk_Counts)=0)'),
+    ("5. Baseline", RELEASE_QUICK_START[4][1], "TakeSnapshot", "BaselineSet"),
+    ("6. First status", "Type the status date at the top of Status: progress, the RAG and the reports are worked "
+                        "out at that date. From then on it is the weekly update below.", "Status",
+     "N(StatusDateInput)>0"),
+]
+SETUP_SIMPLE_CHECK = ("4. Check", "Fix anything in the Issues column (red) on Tasks, then look at the Gantt "
+                                  "timeline to the right of the table and the Roadmap.", "Tasks",
+                      'AND(COUNTIF(tsk_Name,"?*")>0,COUNTIF(tsk_Issues,"?*")=0)')
+SETUP_SIMPLE_BASELINE = ("5. Baseline", QUICK_START[4][1], "Tasks", "BaselineSet")
+DONE, TO_DO = "Done", "To do"
 RELEASE_WEEKLY = [
     ("Status sheet", "Type the status date at the top of Status and follow its steps (progress on Tasks, the Log, "
                      "the RAG, the commentary). Then the Check sheet, and the snapshot row on TakeSnapshot. A report "
@@ -97,6 +118,12 @@ V11_EXTRA = [
     ("Summary", "Status > SUMMARY writes the status in one paragraph (RAG, finish, progress, late tasks, next "
                 "milestone, top risk, late dependencies): copy it into the commentary and add the why."),
 ]
+# template 1.3 reference entries
+V13_EXTRA = [
+    ("Set up", "The SET UP steps at the top of Start tick themselves: each says Done once the workbook holds it (a "
+               "project name and start date, a person, a task, Check all clear, a baseline, a status date). The "
+               "Progress line names the next step, which is highlighted; its link goes to the place to do it."),
+]
 WEEKLY = [
     ("Status sheet", "The weekly update starts on the Status sheet: type the status date at its top, then follow "
                      "the steps under it (progress on Tasks, the Log, the RAG, the commentary, the History "
@@ -109,7 +136,7 @@ def text(sizes, wizard=False):
     if release():
         entries = [(RELEASE_TEXT[e[0]] if e[0] in RELEASE_TEXT else e) for e in entries]
         at = next(i for i, e in enumerate(entries) if e[0] == "RULES (same as MS Project)")
-        entries[at:at] = RELEASE_EXTRA + (V11_EXTRA if v11() else [])
+        entries[at:at] = RELEASE_EXTRA + (V11_EXTRA if v11() else []) + (V13_EXTRA if v13() else [])
     return entries
 
 
@@ -336,7 +363,12 @@ def build_instructions(wb, sizes, wizard=False):
     _header(ws, START_ROW - 1, "YOUR PROJECT")
     r = START_ROW + len(ESSENTIAL) + 1
     quick, weekly = (RELEASE_QUICK_START, RELEASE_WEEKLY) if release() else (QUICK_START, WEEKLY)
+    if v13():
+        r = _setup(ws, r)
+        quick = []
     for heading, steps in (("QUICK START", quick), ("EVERY WEEK", weekly)):
+        if not steps:
+            continue
         _header(ws, r, heading)
         r += 1
         for k, (label, body, sheet) in enumerate(steps):
@@ -371,6 +403,46 @@ def build_instructions(wb, sizes, wizard=False):
                 c.fill = CALC_FILL
         r += 1
     return ws
+
+
+def _setup(ws, r):
+    """Template 1.3: the set-up steps as a checklist. Column D says Done or To do from what the workbook already
+    holds (a name and start date, people, tasks, Check all clear, a baseline, a status date), a progress line under
+    the heading names the next step, and that step's row is highlighted. Nothing to tick by hand, so it can't go
+    stale; the rows are plain cells with formulas on defined names, the same in Excel desktop, web and iPhone."""
+    steps = [SETUP_SIMPLE_CHECK if s[0] == "4. Check" and missing("Check") else
+             SETUP_SIMPLE_BASELINE if s[0] == "5. Baseline" and missing("TakeSnapshot") else s for s in SETUP]
+    _header(ws, r, "SET UP")
+    ws.cell(r, 4).fill = HEADER_FILLS["in"]
+    progress = ws.cell(r + 1, 3)
+    first = r + 2
+    last = first + len(steps) - 1
+    for k, (label, body, sheet, done) in enumerate(steps):
+        row = first + k
+        ws.cell(row, 2, label).font = font(bold=True)
+        c = ws.cell(row, 3, f"{body}  Go to {sheet}.")
+        c.alignment = Alignment(wrap_text=True, vertical="top")
+        c.hyperlink = Hyperlink(ref=c.coordinate, location=f"'{sheet}'!A1")
+        c.font = font(color="1F4E78", underline="single")
+        d = ws.cell(row, 4, f'=IF({done},"{DONE}","{TO_DO}")')
+        d.font, d.fill = CALC_FONT, CALC_FILL
+        d.alignment = Alignment(horizontal="center", vertical="top")
+    name(ws.parent, "start_Steps", f"{ws.title}!$B${first}:$B${last}")
+    name(ws.parent, "start_Done", f"{ws.title}!$D${first}:$D${last}")
+    ws.cell(r + 1, 2, "Progress").font = font(bold=True)
+    progress.value = (f'=IF(COUNTIF(start_Done,"{TO_DO}")=0,"All "&ROWS(start_Done)&" steps done: the plan is set '
+                      f'up. Every week: the Status sheet.",COUNTIF(start_Done,"{DONE}")&" of "&ROWS(start_Done)&'
+                      f'" steps done. Next: "&INDEX(start_Steps,MATCH("{TO_DO}",start_Done,0)))')
+    progress.font, progress.fill = font(bold=True), CALC_FILL
+    ws.column_dimensions["D"].width = 10
+    # A1 only in conditional formatting (CLAUDE.md): the first To do row is the next step; Done in green
+    steps_range = f"B{first}:D{last}"
+    ws.conditional_formatting.add(steps_range, FormulaRule(
+        formula=[f'AND($D{first}="{TO_DO}",COUNTIF($D${first}:$D{first},"{TO_DO}")=1)'],
+        fill=PatternFill("solid", start_color="FFF4CE", end_color="FFF4CE"), font=Font(bold=True)))
+    ws.conditional_formatting.add(f"D{first}:D{last}", FormulaRule(
+        formula=[f'$D{first}="{DONE}"'], font=Font(color="107C10", bold=True)))
+    return last + 2
 
 
 def _header(ws, r, label):

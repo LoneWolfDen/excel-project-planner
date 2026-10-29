@@ -42,6 +42,14 @@ History (open RAID scores added up at each snapshot) and an available vs planned
 with `python scripts/release_check.py --edition 1.1`; move a 1.0 workbook up with
 `python scripts/upgrade_planner.py Old.xlsx New.xlsx --release 1.1`. `release-1.0/` doesn't change.
 
+## Release 1.3
+Template 1.3, in [`release-1.3/`](release-1.3/), is 1.2 with a **guided setup on Start**: the six set-up steps
+(your project, people, tasks, Check, baseline, first status) are a checklist that ticks itself. Each step says Done
+once the workbook holds it, from what you have already typed: there is nothing to tick by hand. A Progress line
+names the next step, which is highlighted, and each step links to the place to do it. Build with `--release 1.3`;
+check with `python scripts/release_check.py --edition 1.3`; move a workbook up with
+`python scripts/upgrade_planner.py Old.xlsx New.xlsx --release 1.3`.
+
 ## Release 1.2
 Template 1.2, in [`release-1.2/`](release-1.2/), is 1.1 with a refreshed **Fluent design** (Microsoft 365 blues
 and greys, Segoe UI, clearer red / amber / green, report pages without gridlines, tab colours by role, a landing-page

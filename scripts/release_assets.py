@@ -22,6 +22,7 @@ EDITIONS = {
              "1.1", ["test_release_11.CommittedTest", "test_m365.CommittedTest"]),
     "v1.2": ("Template 1.2", [("release-1.2", "1.2"), ("release-1.2/samples", "1.2")], "1.2",
              ["test_release_12.CommittedTest", "test_release_12.SampleBuildTest"]),
+    "v1.3": ("Template 1.3", [("release-1.3", "1.3")], "1.3", ["test_release_13.CommittedTest"]),
 }
 
 

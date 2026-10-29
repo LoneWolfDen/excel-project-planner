@@ -394,6 +394,11 @@ exactly as before; `test_release.ClassicUnchangedTest` builds both in one proces
   workbook (a colour table for fonts, fills, borders and conditional formats; fonts; tabs; gridlines), so no builder
   knows about colours twice. It runs after protection, which still finds inputs by the classic blue. The upgrade
   recognises input headers in either look (`upgrade.INPUT_FILLS`).
+- **Template 1.3** (`--release 1.3`, `core.v13()`): template 1.2 with Start's set-up steps as a checklist
+  (`instructions._setup`). Column D of each step is `=IF(condition,"Done","To do")` on defined names only
+  (`ProjectName`, `res_Name`, `tsk_Name`, `chk_Counts` or `tsk_Issues` in Simple, `BaselineSet`, `StatusDateInput`);
+  `start_Steps` / `start_Done` name the rows, the Progress line reads them with COUNTIF / INDEX / MATCH, and the next
+  step's highlight is conditional formatting (A1 there only). Nothing is ticked by hand, so it can't go stale.
 - **Microsoft 365 edition** (`--release m365`, `core.m365()`, `planner/m365.py`): template 1.1 where `_Days`, the
   Log's Gap, the finish variance and a working-day check call named LAMBDAs, and Check lists FILTER the tasks. A
   LAMBDA is stored as Excel stores it: `_xlfn.LAMBDA(_xlpm.x,_xlfn.LET(_xlpm.t,...))`, and called by its name; the
@@ -445,7 +450,8 @@ random chart axis ids are renumbered in order of appearance, `docProps/core.xml`
 `SOURCE_DATE_EPOCH`), and every zip entry gets the same timestamp. Cells, styles and charts are untouched.
 
 **Release workflow** (`.github/workflows/release.yml`, `scripts/release_assets.py`). A `v*` tag names an edition
-(`v1.0*` release-1.0, `v1.1*` release-1.1 and the M365 edition, `v1.2*` release-1.2 and its samples). The job checks
+(`v1.0*` release-1.0, `v1.1*` release-1.1 and the M365 edition, `v1.2*` release-1.2 and its samples, `v1.3*`
+release-1.3). The job checks
 out the tag, reruns that edition's committed-workbook tests and `release_check`, and attaches the workbooks (named
 with the edition), `SHA256SUMS.txt` and the CHANGELOG section. The asset script comes from the workflow's own
 commit, so older tags can be published with a manual run.

@@ -283,7 +283,7 @@ def rebuild(data, release=None):
     project, copies, sizes, warnings, version = read_planner(data)
     if release is not None:
         project.release = release
-    if project.release == "1.2":
+    if project.release in ("1.2", "1.3"):
         fold_leave_into_grid(project, copies)
     if project.modules is not None:
         if project.release and set(MODULES) <= set(project.modules):

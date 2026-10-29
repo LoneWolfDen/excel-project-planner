@@ -22,8 +22,9 @@ import openpyxl  # noqa: E402
 
 import perf_check  # noqa: E402
 
-FOLDERS = {"1.0": "release-1.0", "1.1": "release-1.1", "m365": "release-1.1-m365", "1.2": "release-1.2"}
-LABELS = {"1.0": "1.0", "1.1": "1.1", "m365": "1.1 M365", "1.2": "1.2"}       # TemplateVersion and the README heading
+FOLDERS = {"1.0": "release-1.0", "1.1": "release-1.1", "m365": "release-1.1-m365", "1.2": "release-1.2",
+           "1.3": "release-1.3"}
+LABELS = {"1.0": "1.0", "1.1": "1.1", "m365": "1.1 M365", "1.2": "1.2", "1.3": "1.3"}       # TemplateVersion and the README heading
 
 
 def files(edition):
@@ -169,7 +170,7 @@ def main(argv=None):
     item("Pred dropdowns list only the tasks above the row (a range, no OFFSET)",
          picks and all(f.startswith("INDEX(tsk_PickList,1):INDEX(tsk_PickList,") and "OFFSET" not in f
                        for f in picks), sorted(set(picks))[:2])
-    if "Check" in books["sample"].sheetnames and a.edition != "1.2":       # 1.2 types leave in one place
+    if "Check" in books["sample"].sheetnames and a.edition not in ("1.2", "1.3"):       # 1.2 types leave in one place
         item("Check counts leave typed twice (day grid and month cell)",
              any("lv_Twice" in str(c.value) for row in books["sample"]["Check"].iter_rows() for c in row))
     sizes = {k: v.stat().st_size for k, v in FILES.items()}
@@ -188,7 +189,7 @@ def main(argv=None):
     simple_refs = sheet_mentions(books["simple"], OPTIONAL_SHEETS)
     item("Simple: nothing names Agile, Log, History, Resource Report, Cost, Check or TakeSnapshot",
          not simple_refs, simple_refs[:3])
-    if a.edition != "1.2":
+    if a.edition not in ("1.2", "1.3"):
         v12_refs = [f"{k}: {m}" for k, b in books.items() for m in sheet_mentions(b, V12_SHEETS)]
         v12_refs += [f"{k}: sheet {s}" for k, b in books.items() for s in V12_SHEETS if s in b.sheetnames]
         item("No template 1.2 sheet (Board, Backlog) or reference to one", not v12_refs, v12_refs[:3])

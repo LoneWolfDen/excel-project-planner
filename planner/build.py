@@ -23,7 +23,7 @@ from .agile import build_agile
 from .gantt import build_timeline
 from .instructions import build_instructions
 from .msp import build_msp_resources, build_msp_tasks
-from .core import MODULES, all_modules, edition_of, has, name, protect_view, release, set_modules, set_release
+from .core import LEVELS, MODULES, all_modules, edition_of, has, name, protect_view, release, set_modules, set_release
 from .cost import build_cost
 from .history import build_history
 from .log import build_log
@@ -86,8 +86,8 @@ class ProjectData:
 VERSION = "1.8"          # PlannerVersion in every workbook: planner/upgrade.py reads it to know what to convert
 # PlannerVersion of each release-line edition (the code that builds it; planner/upgrade.py reads it), by its
 # TemplateVersion (the release users see: Start, every printed footer)
-PLANNER_VERSIONS = {"1.0": "2.0", "1.1": "2.1", "m365": "2.1-m365", "1.2": "2.2"}
-TEMPLATE_LABELS = {"1.0": "1.0", "1.1": "1.1", "m365": "1.1 M365", "1.2": "1.2"}  # TemplateVersion, as users see it
+PLANNER_VERSIONS = {"1.0": "2.0", "1.1": "2.1", "m365": "2.1-m365", "1.2": "2.2", "1.3": "2.3"}
+TEMPLATE_LABELS = {"1.0": "1.0", "1.1": "1.1", "m365": "1.1 M365", "1.2": "1.2", "1.3": "1.3"}  # TemplateVersion, as users see it
 RELEASE_VERSION, TEMPLATE_VERSION = PLANNER_VERSIONS["1.0"], "1.0"
 
 
@@ -137,7 +137,7 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
         rows = [sample.to_pickers(r) for r in rows]
         if release_edition != "1.0":                  # template 1.1 inputs (RACI, estimates, a sandbox duration)
             rows = [sample.with_v11(r) for r in rows]
-        if release_edition == "1.2":
+        if LEVELS[release_edition] >= 2:
             rows = [sample.with_v12(r) for r in rows]
     tasks_ws, letters = build_tasks(wb, rows, n_tasks)
     build_timeline(wb, tasks_ws, letters, n_tasks, sizes.gantt_columns)
@@ -183,7 +183,7 @@ def make_workbook(blank=False, n_tasks=200, stress=0, sizes=None, data=None, imp
     wb._sheets = [wb[n] for n in ORDER if n in wb.sheetnames]
     for ws in wb.worksheets:
         ws.sheet_properties.tabColor = TAB_COLOURS.get(ws.title, "595959")
-    if release_edition == "1.2":                      # the Fluent look: one pass after everything is built
+    if release_edition and LEVELS[release_edition] >= 2:     # the Fluent look: one pass after everything is built
         from . import locale_safe, theme
         locale_safe.apply(wb)                          # B-010: date labels in every Excel language
         theme.apply(wb)
@@ -289,8 +289,10 @@ def main(argv=None):
                    help="a release-line workbook: 1.0 (the default; release-1.0/: predecessor and resource pickers, a "
                         "leave day grid, Duration as 3 / 3d / 2w, the Check and TakeSnapshot sheets, more protection, "
                         "print set-up), 1.1 (release-1.1/: adds RACI, dependencies on Status, Sandbox, the status "
-                        "narrative and PERT estimates) or m365 (release-1.1-m365/: 1.1 with named LAMBDA functions and "
-                        "FILTER lists; Microsoft 365 only, saved without --recalc)")
+                        "narrative and PERT estimates), m365 (release-1.1-m365/: 1.1 with named LAMBDA functions and "
+                        "FILTER lists; Microsoft 365 only, saved without --recalc), 1.2 (release-1.2/: the Fluent "
+                        "look, Board, Backlog and the engine items) or 1.3 (release-1.3/: 1.2 with a setup "
+                        "checklist on Start that ticks itself)")
     p.add_argument("--sample", choices=["construction", "event"],
                    help="another sample project (B-804): a clinic extension or a partner summit, instead of the "
                         "software sample")

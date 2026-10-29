@@ -162,7 +162,7 @@ F-1110b stays open: the tests' LibreOffice (24.2, also on the CI runners' Ubuntu
 | PR-03 | Reproducible builds: fixed chart axis ids, file dates and zip timestamps (`planner/reproducible.py`) | ✅ done |
 | PR-04 | Automated releases: a `v*` tag publishes the edition's workbooks, SHA256SUMS and notes (`release.yml`) | ✅ done |
 | PR-06 | Faster CI: parallel test shards, each worker with its own LibreOffice profile (`scripts/run_tests.py`) | ✅ done |
-| PR-07 | Guided setup on Start: a checklist that ticks itself (template 1.3) | next |
+| PR-07 | Guided setup on Start: a checklist that ticks itself (template 1.3, `release-1.3/`) | ✅ done |
 
 ## Template 1.2: design, UX and the rest of the backlog
 

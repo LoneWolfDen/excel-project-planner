@@ -118,7 +118,7 @@ def _start_page(ws):
     tint = PatternFill("solid", start_color=BRAND_TINT, end_color=BRAND_TINT)
     for r in range(3, ws.max_row + 1):
         label = ws.cell(r, 2)
-        if isinstance(label.value, str) and label.value[:2] in ("1.", "2.", "3.", "4.", "5.") and \
+        if isinstance(label.value, str) and label.value[:2] in ("1.", "2.", "3.", "4.", "5.", "6.") and \
                 ws.cell(r, 3).hyperlink is not None:
             label.fill = tint
             label.font = Font(name=FONT_NAME, size=11, bold=True, color=BRAND_DARK)
